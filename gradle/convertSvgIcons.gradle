@@ -1,0 +1,88 @@
+/**
+ * Convierte SVG → Android Vector Drawable (XML) para Compose Multiplatform.
+ *
+ * Fuente:  shared/src/commonMain/iconsSvg/*.svg
+ * Destino: shared/src/commonMain/composeResources/drawable/<nombre>.xml
+ *
+ * Manual:  ./gradlew :shared:convertSvgIcons
+ * Auto:    antes de prepareComposeResources*
+ *
+ * Requiere Node.js (npx svg2vectordrawable).
+ */
+
+import javax.inject.Inject
+import org.gradle.process.ExecOperations
+
+abstract class ConvertSvgIconsTask extends DefaultTask {
+    @Inject
+    abstract ExecOperations getExecOperations()
+
+    @InputDirectory
+    @PathSensitive(PathSensitivity.RELATIVE)
+    @Optional
+    abstract DirectoryProperty getSvgDir()
+
+    @OutputDirectory
+    abstract DirectoryProperty getDrawableDir()
+
+    @TaskAction
+    void convert() {
+        def sanitize = { String raw ->
+            def name = raw.toLowerCase()
+                .replaceAll("[^a-z0-9_]", "_")
+                .replaceAll("_+", "_")
+            name = name.replaceAll("^_+|_+\$", "")
+            return name ? name : "icon"
+        }
+
+        def svgDirFile = svgDir.get().asFile
+        def outDir = drawableDir.get().asFile
+        outDir.mkdirs()
+
+        def svgs = svgDirFile.exists()
+            ? svgDirFile.listFiles()?.findAll { it.isFile() && it.name.toLowerCase().endsWith(".svg") }?.sort { it.name }
+            : []
+
+        if (!svgs) {
+            logger.lifecycle("convertSvgIcons: sin SVG en ${svgDirFile.path}")
+            return
+        }
+
+        def isWindows = System.getProperty("os.name").toLowerCase().contains("windows")
+        def npx = isWindows ? "npx.cmd" : "npx"
+
+        svgs.each { svg ->
+            def baseName = svg.name.replaceFirst(/\.[^.]+$/, "")
+            def outXml = new File(outDir, "${sanitize(baseName)}.xml")
+            logger.lifecycle("convertSvgIcons: ${svg.name} → ${outXml.name}")
+
+            def result = execOperations.exec {
+                commandLine npx, "--yes", "svg2vectordrawable", "-i", svg.absolutePath, "-o", outXml.absolutePath
+                ignoreExitValue = true
+            }
+            if (result.exitValue != 0) {
+                throw new GradleException(
+                    "Fallo al convertir ${svg.name} (exit ${result.exitValue}). " +
+                    "¿Node.js disponible? Prueba: npx --yes svg2vectordrawable -i ${svg.name} -o out.xml"
+                )
+            }
+        }
+    }
+}
+
+tasks.register("convertSvgIcons", ConvertSvgIconsTask) {
+    group = "gowayki"
+    description = "Convierte iconsSvg/*.svg a composeResources/drawable/*.xml"
+    svgDir.set(layout.projectDirectory.dir("src/commonMain/iconsSvg"))
+    drawableDir.set(layout.projectDirectory.dir("src/commonMain/composeResources/drawable"))
+}
+
+tasks.matching { task ->
+    def n = task.name
+    n.startsWith("prepareComposeResources") ||
+        n.startsWith("copyNonXmlValueResources") ||
+        n.startsWith("generateResourceAccessors") ||
+        n.startsWith("generateComposeResClass")
+}.configureEach {
+    dependsOn("convertSvgIcons")
+}

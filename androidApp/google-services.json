@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "21304726166",
+    "project_id": "gowayki",
+    "storage_bucket": "gowayki.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:21304726166:android:5119a29967f06f2e27e8b7",
+        "android_client_info": {
+          "package_name": "com.gowayki.nesh"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "21304726166-1a7m32rgrahonh5md2v58rqtvaea9vl8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.gowayki.nesh",
+            "certificate_hash": "def9aed94040f2e74058f61592c412ea2a1e8a65"
+          }
+        },
+        {
+          "client_id": "21304726166-16dakb4a1qfjl6d4qpsifnlr3m1q4sl3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBEBUDgjOoxXwBDPy0hSpzsnPco5dehx-4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "21304726166-16dakb4a1qfjl6d4qpsifnlr3m1q4sl3.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "21304726166-47j4759irahet52kss1ujrs9knmfs0qo.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.gowayki.nesh"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:21304726166:android:a3873fa85d56e92c27e8b7",
+        "android_client_info": {
+          "package_name": "com.gowayki.pulse"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "21304726166-16dakb4a1qfjl6d4qpsifnlr3m1q4sl3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBEBUDgjOoxXwBDPy0hSpzsnPco5dehx-4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "21304726166-16dakb4a1qfjl6d4qpsifnlr3m1q4sl3.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "21304726166-47j4759irahet52kss1ujrs9knmfs0qo.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.gowayki.nesh"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
