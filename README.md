@@ -8,3 +8,5 @@
 
 Salida: `shared/src/commonMain/composeResources/drawable/*.xml`  
 Requisito: Node.js (`npx svg2vectordrawable`)
+
+prueba pr main upstream
