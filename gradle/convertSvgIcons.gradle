@@ -74,6 +74,7 @@ tasks.register("convertSvgIcons", ConvertSvgIconsTask) {
     group = "gowayki"
     description = "Convierte iconsSvg/*.svg a composeResources/drawable/*.xml"
     svgDir.set(layout.projectDirectory.dir("src/commonMain/iconsSvg"))
+    svgDir.get().asFile.mkdirs()
     drawableDir.set(layout.projectDirectory.dir("src/commonMain/composeResources/drawable"))
 }
 

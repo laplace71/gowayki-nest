@@ -1,17 +1,15 @@
 package com.gowayki.nesh.core.theme.src
 
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import com.gowayki.nesh.core.theme.src.core.AppColors
 
-/**
- * 🌑 Esquema de colores Material 3 — Tema Oscuro "Puya" (Gowayki Nesh).
- */
+// Esquema claro Wayki en la estructura del git (el KMP usaba el oscuro "Puya").
 object AppColorScheme {
 
-    val dark: ColorScheme = darkColorScheme(
+    val light: ColorScheme = lightColorScheme(
 
-        primary              = AppColors.primaryLight,
+        primary              = AppColors.primary,
         onPrimary            = AppColors.onPrimary,
         primaryContainer     = AppColors.primaryContainer,
         onPrimaryContainer   = AppColors.onPrimaryContainer,

@@ -8,7 +8,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.gowayki.nesh.app.di.AppDi
-import com.gowayki.nesh.infra.auth.handleAndroidAuthDeepLink
 
 class MainActivity : ComponentActivity() {
 
@@ -17,7 +16,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         AppDi.start()
-        handleAndroidAuthDeepLink(intent)
 
         setContent {
             App()
@@ -27,9 +25,6 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (AppDi.started) {
-            handleAndroidAuthDeepLink(intent)
-        }
     }
 }
 
