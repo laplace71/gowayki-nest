@@ -1,10 +1,12 @@
 package com.gowayki.nesh.infra.auth
 
 import android.content.Intent
-import com.gowayki.nesh.app.di.SupabaseDi
-import io.github.jan.supabase.auth.handleDeeplinks
 
+// DORMIDO — Deep link OAuth de Supabase.
+// Fase JSON/fake: no-op. Para reactivar (con SupabaseClient):
+//   SupabaseDi.client().handleDeeplinks(intent)
+// y volver a llamar handleAndroidAuthDeepLink desde MainActivity.
 fun handleAndroidAuthDeepLink(intent: Intent?) {
     if (intent == null) return
-    SupabaseDi.client().handleDeeplinks(intent)
+    // no-op en fase JSON (sin SupabaseClient)
 }

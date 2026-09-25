@@ -11,7 +11,6 @@ object AuthCopy {
     const val connectingGoogle = "Conectando…"
     const val securityTerms = "Al continuar aceptas las políticas de uso y privacidad."
     const val authFailed = "No se pudo completar el inicio de sesión."
-    const val missingSupabase = "El servicio de autenticación no está configurado."
     const val closedByUser = "Inicio de sesión cancelado."
     const val legalNotice = "© 2026 GoWayki"
     const val signedInAs = "Sesión iniciada"
@@ -28,4 +27,6 @@ object AuthCopy {
     const val termsRequired = "Debes aceptar los términos para continuar."
     const val registrationFailed = "No se pudo guardar el perfil."
     const val accountStatusFailed = "No se pudo verificar tu cuenta."
+    const val passwordShow = "Mostrar"
+    const val passwordHide = "Ocultar"
 }

@@ -1,100 +1,94 @@
 package com.gowayki.nesh.core.theme.src.core
 
 import androidx.compose.ui.graphics.Color
+import com.gowayki.nesh.app.common.ui.shared.BlobLight
+import com.gowayki.nesh.app.common.ui.shared.BlobMid
+import com.gowayki.nesh.app.common.ui.shared.BlobPink
+import com.gowayki.nesh.app.common.ui.shared.Ink
+import com.gowayki.nesh.app.common.ui.shared.Lavender
+import com.gowayki.nesh.app.common.ui.shared.Muted
+import com.gowayki.nesh.app.common.ui.shared.Surface
 
-/**
- * 🎨 Paleta de colores de Gowayki Nesh — "Puya" Edition.
- *
- * ┌─────────────────────────────────────────────────────────────┐
- * │  Violeta Puya   #7B4FA0 · Primario                          │
- * │  Jade Andino    #2A8F6F · Secundario                        │
- * │  Malva          #6B5580 · Apoyo                             │
- * │  Crema Adobe    #EDE4D3 · On-dark (compartida Culpeo)       │
- * │  Obsidiana      #130F1E · Fondo oscuro                      │
- * │  Ocre Claro     #F0D08A · Acento (compartido Culpeo)        │
- * └─────────────────────────────────────────────────────────────┘
- *
- * Familia Gowayki: comparte Crema Adobe y Ocre Claro con Culpeo.
- * Fuente tipográfica: Nunito
- */
+// Paleta Wayki Nest volcada en la estructura del git: mismos nombres de
+// tokens que el KMP, valores de tu marca (no queda nada del morado "Puya").
 object AppColors {
 
-    // ── Marca · Violeta Puya ─────────────────────────────────────────────────
+    // ── Marca · Lavanda (botones) + Ink (textos/hero) ────────────────────────
 
-    val primary             = Color(0xFF7B4FA0)
-    val primaryLight        = Color(0xFF9B70C0)
-    val primaryDark         = Color(0xFF542E78)
-    val primaryContainer    = Color(0xFF2E1040)
-    val onPrimaryContainer  = Color(0xFFD4AEFF)
-    val onPrimary           = Color(0xFFFFFFFF)
+    val primary             = Lavender
+    val primaryLight        = Lavender
+    val primaryDark         = Ink
+    val primaryContainer    = BlobLight
+    val onPrimaryContainer  = Ink
+    val onPrimary           = Ink
 
-    // ── Secundario · Jade Andino ──────────────────────────────────────────────
+    // ── Secundario · Muted ───────────────────────────────────────────────────
 
-    val secondary             = Color(0xFF2A8F6F)
-    val secondaryLight        = Color(0xFF4AAF90)
-    val secondaryDark         = Color(0xFF165A44)
-    val secondaryContainer    = Color(0xFF0A2A1E)
-    val onSecondaryContainer  = Color(0xFF8ADAC0)
-    val onSecondary           = Color(0xFFFFFFFF)
+    val secondary             = Muted
+    val secondaryLight        = BlobMid
+    val secondaryDark         = Ink
+    val secondaryContainer    = BlobLight
+    val onSecondaryContainer  = Ink
+    val onSecondary           = Surface
 
-    // ── Acento · Ocre Claro (compartido Culpeo) ───────────────────────────────
+    // ── Acento · BlobPink ────────────────────────────────────────────────────
 
-    val accent             = Color(0xFFF0D08A)
-    val accentDark         = Color(0xFF4A3200)
-    val onAccent           = Color(0xFF130F1E)
+    val accent             = BlobPink
+    val accentDark         = Muted
+    val onAccent           = Ink
 
-    // ── Apoyo · Malva ─────────────────────────────────────────────────────────
+    // ── Apoyo · Muted ────────────────────────────────────────────────────────
 
-    val support            = Color(0xFF6B5580)
-    val supportLight       = Color(0xFF8A74A0)
-    val supportDark        = Color(0xFF4A3560)
+    val support            = Muted
+    val supportLight       = BlobMid
+    val supportDark        = Ink
 
-    // ── Neutros (tema oscuro) ─────────────────────────────────────────────────
+    // ── Neutros (tema claro Wayki) ───────────────────────────────────────────
 
-    val background         = Color(0xFF130F1E)
-    val surface            = Color(0xFF1A1428)
-    val surfaceVariant     = Color(0xFF221A35)
-    val surfaceHigh        = Color(0xFF2C2245)
-    val outline            = Color(0xFF3A2A50)
-    val outlineVariant     = Color(0xFF221A35)
+    val background         = Surface
+    val surface            = Color.White
+    val surfaceVariant     = BlobLight
+    val surfaceHigh        = Color.White
+    val outline            = Lavender
+    val outlineVariant     = BlobLight
 
-    val onBackground       = Color(0xFFEDE4D3)   // Crema Adobe
-    val onSurface          = Color(0xFFEDE4D3)
-    val onSurfaceMuted     = Color(0xFF9A8AAA)
+    val onBackground       = Ink
+    val onSurface          = Ink
+    val onSurfaceMuted     = Muted
 
-    // ── Semánticos ────────────────────────────────────────────────────────────
+    // ── Semánticos ───────────────────────────────────────────────────────────
 
-    val success            = Color(0xFF4AAF90)
-    val successLight       = Color(0xFF70CFAF)
-    val successContainer   = Color(0xFF0A2A1E)
-    val onSuccess          = Color(0xFFFFFFFF)
+    val success            = Ink
+    val successLight       = Muted
+    val successContainer   = BlobLight
+    val onSuccess          = Surface
 
-    val error              = Color(0xFFCF6679)
-    val errorLight         = Color(0xFFE89AA8)
-    val errorContainer     = Color(0xFF3A1A20)
-    val onError            = Color(0xFFFFFFFF)
+    val error              = Color(0xFFBA1A1A)
+    val errorLight         = Color(0xFFBA1A1A)
+    val errorContainer     = BlobLight
+    val onError            = Surface
 
-    val warning            = Color(0xFFD9A441)
-    val warningContainer   = Color(0xFF3A2A00)
-    val onWarning          = Color(0xFF130F1E)
+    val warning            = Muted
+    val warningContainer   = BlobLight
+    val onWarning          = Ink
 
-    val info               = Color(0xFF9B70C0)
-    val infoContainer      = Color(0xFF2E1040)
-    val onInfo             = Color(0xFFFFFFFF)
+    val info               = Lavender
+    val infoContainer      = BlobLight
+    val onInfo             = Ink
 
-    // ── Mapa / Nesh UI ────────────────────────────────────────────────────────
+    // ── Mapa / Nesh UI ───────────────────────────────────────────────────────
 
-    val mapOverlay         = Color(0xCC1A1428)
-    val routePrimary       = Color(0xFF9B70C0)
-    val routeSecondary     = Color(0xFF4AAF90)
-    val routeTertiary      = Color(0xFFF0D08A)
-    val busStop            = Color(0xFFF0D08A)
-    val busStopActive      = Color(0xFF7B4FA0)
-    val userLocation       = Color(0xFF4AAF90)
+    val mapOverlay         = Surface.copy(alpha = 0.8f)
+    val routePrimary       = Lavender
+    val routeSecondary     = Muted
+    val routeTertiary      = BlobPink
+    val busStop            = BlobPink
+    val busStopActive      = Lavender
+    val userLocation       = Muted
 
-    // ── Utilitarios ───────────────────────────────────────────────────────────
+    // ── Utilitarios ──────────────────────────────────────────────────────────
 
     val transparent        = Color(0x00000000)
     val scrim              = Color(0x99000000)
-    val divider            = Color(0xFF221A35)
+    val divider            = Lavender
 }

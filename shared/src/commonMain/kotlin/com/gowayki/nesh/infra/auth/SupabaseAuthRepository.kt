@@ -1,5 +1,15 @@
 package com.gowayki.nesh.infra.auth
 
+// DORMIDO — Supabase (base de datos) no se usa en la fase JSON/fake.
+// La app corre con FakeAuthRepository y pantallas locales.
+// Para reactivar, hacer en orden:
+//   1. Restaurar dependencias supabase/ktor/serialization en libs.versions.toml
+//      y shared/build.gradle.kts (ya estaban; se quitaron temporalmente).
+//   2. Descomentar el bloque de abajo.
+//   3. En app/di/AuthDi.kt registrar este repositorio con el cliente de
+//      infra/supabase/SupabaseClientFactory.kt.
+
+/*
 import com.gowayki.nesh.app.features.sign_in.domain.models.AccountStatus
 import com.gowayki.nesh.app.features.sign_in.domain.models.CompleteProfileInput
 import com.gowayki.nesh.app.features.sign_in.domain.models.CompleteProfileResult
@@ -71,3 +81,4 @@ class SupabaseAuthRepository(
         return (element as? JsonPrimitive)?.contentOrNull
     }
 }
+*/

@@ -1,5 +1,13 @@
 package com.gowayki.nesh.infra.supabase
 
+// DORMIDO — Supabase (base de datos) no se usa en la fase JSON/fake.
+// Para reactivar:
+//   1. Restaurar dependencias supabase/ktor/serialization en libs.versions.toml
+//      y shared/build.gradle.kts.
+//   2. Descomentar el bloque de abajo.
+//   3. En app/di/SupabaseDi.install(): registerLazy<SupabaseClient> { createNeshSupabaseClient() }
+
+/*
 import com.gowayki.nesh.core.config.AppConfig
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
@@ -27,3 +35,4 @@ fun createNeshSupabaseClient(): SupabaseClient {
         install(Postgrest)
     }
 }
+*/

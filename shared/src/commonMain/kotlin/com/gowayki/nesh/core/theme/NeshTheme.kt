@@ -14,7 +14,7 @@ import com.gowayki.nesh.core.theme.src.core.AppSpacing
 import com.gowayki.nesh.core.theme.src.core.StatusColors
 
 /**
- * 🎨 Tema raíz de Gowayki Nesh — paleta "Puya".
+ * 🎨 Tema raíz de Gowayki Nesh — paleta Wayki (clara).
  *
  * ```kotlin
  * NeshTheme {
@@ -32,7 +32,7 @@ fun NeshTheme(
     content: @Composable () -> Unit
 ) {
     MaterialTheme(
-        colorScheme = AppColorScheme.dark,
+        colorScheme = AppColorScheme.light,
         typography  = AppTextStyles.typography,
         content     = content
     )
