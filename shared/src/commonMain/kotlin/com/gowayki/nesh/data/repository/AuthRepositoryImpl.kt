@@ -42,7 +42,7 @@ class FakeAuthRepository : AuthRepository {
         if (idToken.isBlank()) {
             return Result.failure(IllegalArgumentException("No se pudo obtener la cuenta de Google"))
         }
-        return Result.success(User(id = "demo-google", name = "Google"))
+        return Result.success(User(id = "demo-google", name = "Google", email = "demo@wayki.com"))
     }
 
     override suspend fun savePin(phone: String, pin: String): Result<User> {

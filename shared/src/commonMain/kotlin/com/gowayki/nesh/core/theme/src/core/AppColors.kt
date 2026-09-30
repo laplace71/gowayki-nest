@@ -1,94 +1,62 @@
 package com.gowayki.nesh.core.theme.src.core
 
 import androidx.compose.ui.graphics.Color
-import com.gowayki.nesh.app.common.ui.shared.BlobLight
-import com.gowayki.nesh.app.common.ui.shared.BlobMid
-import com.gowayki.nesh.app.common.ui.shared.BlobPink
-import com.gowayki.nesh.app.common.ui.shared.Ink
-import com.gowayki.nesh.app.common.ui.shared.Lavender
-import com.gowayki.nesh.app.common.ui.shared.Muted
-import com.gowayki.nesh.app.common.ui.shared.Surface
 
-// Paleta Wayki Nest volcada en la estructura del git: mismos nombres de
-// tokens que el KMP, valores de tu marca (no queda nada del morado "Puya").
+/**
+ * Paleta minima de Gowayki Nesh: solo 5 colores base y sus roles.
+ *
+ * Las variantes (containers, borders suaves, scrim, blobs) se derivan del
+ * color base con opacidad (`Color.copy(alpha)`) en el punto de uso o en
+ * [AppColorScheme] — no se declara un color por variante.
+ */
 object AppColors {
 
-    // ── Marca · Lavanda (botones) + Ink (textos/hero) ────────────────────────
+    // ── 5 colores base de la marca ───────────────────────────────────────────
 
-    val primary             = Lavender
-    val primaryLight        = Lavender
-    val primaryDark         = Ink
-    val primaryContainer    = BlobLight
-    val onPrimaryContainer  = Ink
-    val onPrimary           = Ink
+    /** Fondo calido casi blanco. */
+    val cream = Color(0xFFFFFDF6)
 
-    // ── Secundario · Muted ───────────────────────────────────────────────────
+    /** Malva claro (lavanda): acciones, superficies suaves. */
+    val mauve = Color(0xFFE2D4E0)
 
-    val secondary             = Muted
-    val secondaryLight        = BlobMid
-    val secondaryDark         = Ink
-    val secondaryContainer    = BlobLight
-    val onSecondaryContainer  = Ink
-    val onSecondary           = Surface
+    /** Acero gris-azulado: bordes y secundario. */
+    val steel = Color(0xFF949AB1)
 
-    // ── Acento · BlobPink ────────────────────────────────────────────────────
+    /** Gris azulado: texto secundario. */
+    val slate = Color(0xFF7C7E9D)
 
-    val accent             = BlobPink
-    val accentDark         = Muted
-    val onAccent           = Ink
+    /** Pizarra oscura: textos y tarjeta hero. */
+    val ink   = Color(0xFF4C5372)
 
-    // ── Apoyo · Muted ────────────────────────────────────────────────────────
+    // ── Roles semanticos (reutilizan solo los 5 colores) ─────────────────────
 
-    val support            = Muted
-    val supportLight       = BlobMid
-    val supportDark        = Ink
+    val primary   = mauve
+    val onPrimary = ink
 
-    // ── Neutros (tema claro Wayki) ───────────────────────────────────────────
+    val secondary = steel
+    val onSecondary = ink
 
-    val background         = Surface
-    val surface            = Color.White
-    val surfaceVariant     = BlobLight
-    val surfaceHigh        = Color.White
-    val outline            = Lavender
-    val outlineVariant     = BlobLight
+    val tertiary  = slate
+    val onTertiary = cream
 
-    val onBackground       = Ink
-    val onSurface          = Ink
-    val onSurfaceMuted     = Muted
+    val background = cream
+    val onBackground = ink
 
-    // ── Semánticos ───────────────────────────────────────────────────────────
+    val surface = cream
+    val onSurface = ink
 
-    val success            = Ink
-    val successLight       = Muted
-    val successContainer   = BlobLight
-    val onSuccess          = Surface
+    val surfaceVariant = mauve
+    val onSurfaceVariant = slate
 
-    val error              = Color(0xFFBA1A1A)
-    val errorLight         = Color(0xFFBA1A1A)
-    val errorContainer     = BlobLight
-    val onError            = Surface
+    // Alias historico de Wayki: texto secundario/muted.
+    val onSurfaceMuted = slate
 
-    val warning            = Muted
-    val warningContainer   = BlobLight
-    val onWarning          = Ink
+    val outline = steel
+    val outlineVariant = steel.copy(alpha = 0.45f)
 
-    val info               = Lavender
-    val infoContainer      = BlobLight
-    val onInfo             = Ink
+    // Semantico de estado: se deriva del base mas oscuro (contraste sobre claro).
+    val error   = ink
+    val onError = cream
 
-    // ── Mapa / Nesh UI ───────────────────────────────────────────────────────
-
-    val mapOverlay         = Surface.copy(alpha = 0.8f)
-    val routePrimary       = Lavender
-    val routeSecondary     = Muted
-    val routeTertiary      = BlobPink
-    val busStop            = BlobPink
-    val busStopActive      = Lavender
-    val userLocation       = Muted
-
-    // ── Utilitarios ──────────────────────────────────────────────────────────
-
-    val transparent        = Color(0x00000000)
-    val scrim              = Color(0x99000000)
-    val divider            = Lavender
+    val transparent = Color(0x00000000)
 }

@@ -4,16 +4,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * ðŸ“± Breakpoints de la app para diseÃ±o responsive.
+ * Breakpoints de la app para diseno responsive.
  *
  * Inspirado en Material Design Adaptive Layout:
  *
- * Escala â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
- * [compact]   â†’  < 600 dp  (telÃ©fonos portrait)
- * [medium]    â†’  600â€“839 dp  (telÃ©fonos landscape / tablets pequeÃ±as)
- * [expanded]  â†’  â‰¥ 840 dp  (tablets y desktop)
+ * Escala
+ * [compact]   ->  < 600 dp  (telefonos portrait)
+ * [medium]    ->  600-839 dp (telefonos landscape / tablets pequenas)
+ * [expanded]  ->  >= 840 dp  (tablets y desktop)
  *
- * Uso â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ * Uso
  * ```kotlin
  * val windowSize = LocalWindowSizeClass.current
  * val isCompact = windowSize.widthSizeClass == WindowWidthSizeClass.Compact
@@ -28,16 +28,16 @@ import androidx.compose.ui.unit.dp
  */
 object AppBreakpoints {
 
-    /** MÃ¡ximo ancho de pantalla "compact" (< 600 dp). */
+    /** Maximo ancho de pantalla "compact" (< 600 dp). */
     val compact  : Dp = 600.dp
 
-    /** MÃ¡ximo ancho de pantalla "medium" (< 840 dp). */
+    /** Maximo ancho de pantalla "medium" (< 840 dp). */
     val medium   : Dp = 840.dp
 
-    /** Ancho mÃ­nimo de pantalla "expanded" (â‰¥ 840 dp). */
+    /** Ancho minimo de pantalla "expanded" (>= 840 dp). */
     val expanded : Dp = 840.dp
 
-    // â”€â”€ Columnas de grilla sugeridas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // --- Columnas de grilla sugeridas ---
 
     /** Columnas de grilla para pantalla compact. */
     const val COLUMNS_COMPACT  = 4
@@ -48,7 +48,7 @@ object AppBreakpoints {
     /** Columnas de grilla para pantalla expanded. */
     const val COLUMNS_EXPANDED = 12
 
-    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // --- Helpers ---
 
     enum class Tier { COMPACT, MEDIUM, EXPANDED }
 
@@ -59,4 +59,3 @@ object AppBreakpoints {
         else             -> Tier.EXPANDED
     }
 }
-

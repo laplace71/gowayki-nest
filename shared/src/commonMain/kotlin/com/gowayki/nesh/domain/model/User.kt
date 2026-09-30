@@ -5,6 +5,8 @@ package com.gowayki.nesh.domain.model
 data class User(
     val id: String,
     val name: String,
+    // Alineado con AuthUser (infra): el email viene del proveedor (Supabase/Google).
+    val email: String = "",
     val dni: String = "",
     val phone: String = "",
 )
