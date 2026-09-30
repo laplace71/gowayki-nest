@@ -1,48 +1,37 @@
 ﻿package com.gowayki.nesh.core.theme.src
 
 import androidx.compose.material3.Typography
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import gowaykinesh.shared.generated.resources.Res
+import gowaykinesh.shared.generated.resources.inter
+import gowaykinesh.shared.generated.resources.unbounded
+import org.jetbrains.compose.resources.Font
 
 /**
- * âœï¸ Estilos tipogrÃ¡ficos â€” Fuente: Nunito (Google Fonts)
+ * Estilos tipograficos de la app.
  *
- * Â¿Por quÃ© Nunito?
- *   â€¢ Formas redondeadas que armonizan con la calidez de la paleta Culpeo.
- *   â€¢ Muy legible en tamaÃ±os pequeÃ±os para datos de trÃ¡nsito.
- *   â€¢ VersÃ¡til: desde displays hasta labels de 11sp.
- *   â€¢ Personalidad amable y moderna â€” refleja el espÃ­ritu de movilidad.
+ * Material 3 completa (Typography por defecto) mas los estilos del flujo Wayki,
+ * que cargan las fuentes de composeResources: Inter (texto) y Unbounded
+ * (titulos/logos). Archivos: `shared/src/commonMain/composeResources/font/`.
  *
- * Para cargar la fuente en tu proyecto KMP, agrega los archivos .ttf
- * en `shared/src/commonMain/composeResources/font/` y reemplaza
- * [FontFamily.Default] con:
+ * Uso
  * ```kotlin
- * FontFamily(
- *     Font(Res.font.nunito_regular, weight = FontWeight.Normal),
- *     Font(Res.font.nunito_medium,  weight = FontWeight.Medium),
- *     Font(Res.font.nunito_semibold,weight = FontWeight.SemiBold),
- *     Font(Res.font.nunito_bold,    weight = FontWeight.Bold),
- * )
- * ```
- *
- * Descarga: https://fonts.google.com/specimen/Nunito
- *
- * Uso â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
- * ```kotlin
- * Text(text = "Ruta 42", style = AppTextStyles.titleLarge)
- * // O vÃ­a MaterialTheme (recomendado):
+ * Text(text = "Bienvenido", style = AppTextStyles.waykiTitle)
+ * // O via MaterialTheme (recomendado):
  * Text(text = "Body", style = MaterialTheme.typography.bodyMedium)
  * ```
  */
 object AppTextStyles {
 
-    // â”€â”€ Familia tipogrÃ¡fica â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // Reemplazar con FontFamily de Nunito cuando se carguen los assets.
+    // --- Familia tipografica (fallback Material) ---
+
     private val nunito = FontFamily.Default
 
-    // â”€â”€ Display â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // --- Display ---
 
     val displayLarge = TextStyle(
         fontFamily    = nunito,
@@ -68,7 +57,7 @@ object AppTextStyles {
         letterSpacing = 0.sp
     )
 
-    // â”€â”€ Headline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // --- Headline ---
 
     val headlineLarge = TextStyle(
         fontFamily    = nunito,
@@ -94,7 +83,7 @@ object AppTextStyles {
         letterSpacing = 0.sp
     )
 
-    // â”€â”€ Title â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // --- Title ---
 
     val titleLarge = TextStyle(
         fontFamily    = nunito,
@@ -120,7 +109,7 @@ object AppTextStyles {
         letterSpacing = 0.1.sp
     )
 
-    // â”€â”€ Body â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // --- Body ---
 
     val bodyLarge = TextStyle(
         fontFamily    = nunito,
@@ -146,7 +135,7 @@ object AppTextStyles {
         letterSpacing = 0.4.sp
     )
 
-    // â”€â”€ Label â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // --- Label ---
 
     val labelLarge = TextStyle(
         fontFamily    = nunito,
@@ -172,7 +161,7 @@ object AppTextStyles {
         letterSpacing = 0.5.sp
     )
 
-    // â”€â”€ IntegraciÃ³n con Material 3 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // --- Integracion con Material 3 ---
 
     val typography = Typography(
         displayLarge   = displayLarge,
@@ -191,5 +180,99 @@ object AppTextStyles {
         labelMedium    = labelMedium,
         labelSmall     = labelSmall,
     )
-}
 
+    // --- Wayki (fuentes variables de composeResources) ---
+    // UNICO lugar donde se definen los tamanos de letra del flujo Wayki.
+    // Font(FontResource) es @Composable en Compose MP: getters composables.
+
+    private val waykiInter
+        @Composable
+        get() = FontFamily(
+            Font(Res.font.inter, weight = FontWeight.Normal),
+            Font(Res.font.inter, weight = FontWeight.Medium),
+        )
+
+    private val waykiUnbounded
+        @Composable
+        get() = FontFamily(
+            Font(Res.font.unbounded, weight = FontWeight.Bold),
+            Font(Res.font.unbounded, weight = FontWeight.ExtraBold),
+        )
+
+    val waykiTitle
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiUnbounded, fontWeight = FontWeight.Bold,
+            fontSize = 38.sp, lineHeight = 46.sp,
+        )
+
+    val waykiHeroTitle
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiUnbounded, fontWeight = FontWeight.ExtraBold,
+            fontSize = 34.sp,
+        )
+
+    val waykiSubtitle
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiInter, fontWeight = FontWeight.Normal,
+            fontSize = 16.sp,
+        )
+
+    val waykiButtonLarge
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiUnbounded, fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+        )
+
+    val waykiButtonSmall
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiUnbounded, fontWeight = FontWeight.Bold,
+            fontSize = 16.sp,
+        )
+
+    val waykiGoogle
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiUnbounded, fontWeight = FontWeight.ExtraBold,
+            fontSize = 22.sp,
+        )
+
+    val waykiBoxDigit
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiUnbounded, fontWeight = FontWeight.Bold,
+            fontSize = 20.sp,
+        )
+
+    val waykiInput
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiInter, fontWeight = FontWeight.Normal,
+            fontSize = 16.sp,
+        )
+
+    val waykiLabel
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiInter, fontWeight = FontWeight.Normal,
+            fontSize = 14.sp,
+        )
+
+    val waykiLabelMedium
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiInter, fontWeight = FontWeight.Medium,
+            fontSize = 14.sp,
+        )
+
+    val waykiMini
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiInter, fontWeight = FontWeight.Medium,
+            fontSize = 12.sp,
+        )
+}

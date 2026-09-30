@@ -21,7 +21,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackground
 import com.gowayki.nesh.app.common.ui.shared.WaykiErrorText
@@ -32,6 +31,7 @@ import com.gowayki.nesh.app.common.ui.shared.WaykiPrimaryButton
 import com.gowayki.nesh.app.common.ui.shared.WaykiSwitchAuth
 import com.gowayki.nesh.app.common.ui.shared.WaykiTextField
 import com.gowayki.nesh.app.common.ui.shared.WaykiTitle
+import com.gowayki.nesh.core.theme.src.core.AppSpacing
 
 @Composable
 fun RegisterScreen(
@@ -51,17 +51,26 @@ fun RegisterScreen(
         Column(
             Modifier.align(Alignment.TopCenter).fillMaxWidth()
                 .statusBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, top = 8.dp),
+                .padding(
+                    start = AppSpacing.pageHorizontal,
+                    end = AppSpacing.pageHorizontal,
+                    top = AppSpacing.sm,
+                ),
         ) {
             WaykiBackButton(onClick = onBack)
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(AppSpacing.topSection))
             WaykiTitle("Crear\ncuenta")
         }
 
         // Centro: datos, REGISTRARSE y Google abajo.
         Column(
             Modifier.align(Alignment.Center).fillMaxWidth()
-                .padding(start = 20.dp, end = 20.dp, top = 200.dp, bottom = 80.dp)
+                .padding(
+                    start = AppSpacing.pageHorizontal,
+                    end = AppSpacing.pageHorizontal,
+                    top = AppSpacing.authContentTop,
+                    bottom = AppSpacing.contentBottomMargin,
+                )
                 .verticalScroll(rememberScrollState()),
         ) {
             WaykiTextField(
@@ -71,7 +80,7 @@ fun RegisterScreen(
                 keyboardType = KeyboardType.Text,
                 imeAction = ImeAction.Next,
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(AppSpacing.formFieldGap))
             WaykiTextField(
                 value = dni,
                 onValueChange = { if (it.length <= 8) dni = it.filter(Char::isDigit) },
@@ -79,7 +88,7 @@ fun RegisterScreen(
                 keyboardType = KeyboardType.Number,
                 imeAction = ImeAction.Next,
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(AppSpacing.formFieldGap))
             WaykiTextField(
                 value = phone,
                 onValueChange = { if (it.length <= 9) phone = it.filter(Char::isDigit) },
@@ -88,9 +97,9 @@ fun RegisterScreen(
                 imeAction = ImeAction.Done,
                 onImeAction = { onRegisterClick(name, dni, phone) },
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(AppSpacing.formFieldGap))
             WaykiErrorText(error)
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(AppSpacing.xs))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 WaykiPrimaryButton(
                     text = "REGISTRARSE",
@@ -99,9 +108,9 @@ fun RegisterScreen(
                     fullWidth = false,
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(AppSpacing.sm))
             WaykiOrDivider()
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(AppSpacing.sm))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 WaykiGoogleCircle(onClick = onGoogleClick)
             }
@@ -111,7 +120,7 @@ fun RegisterScreen(
         Box(
             Modifier.align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 12.dp),
+                .padding(bottom = AppSpacing.md),
         ) {
             WaykiSwitchAuth(
                 prefix = "¿Ya tienes cuenta?",

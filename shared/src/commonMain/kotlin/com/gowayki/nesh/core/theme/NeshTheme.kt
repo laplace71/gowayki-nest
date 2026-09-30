@@ -7,11 +7,9 @@ import com.gowayki.nesh.core.theme.src.AppColorScheme
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppBreakpoints
 import com.gowayki.nesh.core.theme.src.core.AppColors
-import com.gowayki.nesh.core.theme.src.core.AppIconSizes
 import com.gowayki.nesh.core.theme.src.core.AppMotion
 import com.gowayki.nesh.core.theme.src.core.AppRadius
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
-import com.gowayki.nesh.core.theme.src.core.StatusColors
 
 /**
  * 🎨 Tema raíz de Gowayki Nesh — paleta Wayki (clara).
@@ -43,9 +41,7 @@ object NeshTheme {
     val spacing     = AppSpacing
     val radius      = AppRadius
     val motion      = AppMotion
-    val iconSizes   = AppIconSizes
     val breakpoints = AppBreakpoints
-    val status      = StatusColors
 
     val typography
         @ReadOnlyComposable @Composable

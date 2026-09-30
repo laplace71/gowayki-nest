@@ -93,9 +93,18 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
             }
         }
 
-        val supabaseUrl = envMap["SUPABASE_URL"] ?: ""
-        val supabaseAnonKey = envMap["SUPABASE_ANON_KEY"] ?: ""
-        val googleWebClientId = envMap["GOOGLE_WEB_CLIENT_ID"] ?: ""
+        val missing = listOf("SUPABASE_URL", "SUPABASE_ANON_KEY", "GOOGLE_WEB_CLIENT_ID")
+            .filter { envMap[it].isNullOrBlank() }
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "Faltan variables en el .env de la raíz: ${missing.joinToString(", ")}. " +
+                    "Copia .env.example a .env y rellena los valores."
+            )
+        }
+
+        val supabaseUrl = envMap.getValue("SUPABASE_URL").trim()
+        val supabaseAnonKey = envMap.getValue("SUPABASE_ANON_KEY").trim()
+        val googleWebClientId = envMap.getValue("GOOGLE_WEB_CLIENT_ID").trim()
 
         val content = """
             |package com.gowayki.nesh.core.config

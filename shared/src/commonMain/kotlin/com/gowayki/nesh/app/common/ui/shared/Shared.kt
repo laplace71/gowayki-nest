@@ -2,8 +2,10 @@
 @file:Suppress("SpellCheckingInspection")
 package com.gowayki.nesh.app.common.ui.shared
 
-// Capa compartida de Wayki Nest: tokens, tipografías y componentes que usan
-// todas las vistas (welcome, login, registro). Un solo archivo.
+// Capa compartida de Wayki Nest: componentes que usan todas las vistas
+// (welcome, login, registro). Sin colores/tamaños declarados aquí: todo
+// viene de los tokens de core/theme (AppColors, AppSpacing, AppRadius,
+// AppTextStyles).
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -29,7 +31,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -67,9 +68,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -80,41 +78,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.gowayki.nesh.app.common.modules.auth.AuthCopy
+import com.gowayki.nesh.core.theme.src.AppTextStyles
+import com.gowayki.nesh.core.theme.src.core.AppColors
+import com.gowayki.nesh.core.theme.src.core.AppRadius
+import com.gowayki.nesh.core.theme.src.core.AppSpacing
 import gowaykinesh.shared.generated.resources.Res
 import gowaykinesh.shared.generated.resources.hormiga
-import gowaykinesh.shared.generated.resources.inter
-import gowaykinesh.shared.generated.resources.unbounded
 import kotlin.math.roundToInt
-import org.jetbrains.compose.resources.Font
 import org.jetbrains.compose.resources.imageResource
 import kotlin.time.Duration.Companion.seconds
-
-// ---------- Colores (mismos tokens que la web) ----------
-@Suppress("unused") // reservado para branding futuro
-val PageBg = Color(0xFFEDEAF3)
-val Surface = Color(0xFFF4F2F0)
-val Ink = Color(0xFF2D2B4E)
-val Muted = Color(0xFF7B7FA3)
-val Lavender = Color(0xFFC4BDDE)
-val BlobLight = Color(0xFFDEDAE8)
-val BlobMid = Color(0xFFB7B8C9)
-val BlobPink = Color(0xFFB8A8C8)
-val Road = Color(0xFF969CB4)
-
-// ---------- Tipografías (fuentes variables en composeResources/font) ----------
-// Font(FontResource) es @Composable en Compose MP: se exponen como getters composables.
-val Unbounded
-    @Composable get() = FontFamily(
-        Font(Res.font.unbounded, FontWeight.Bold),
-        Font(Res.font.unbounded, FontWeight.ExtraBold),
-    )
-val Inter
-    @Composable get() = FontFamily(
-        Font(Res.font.inter, FontWeight.Normal),
-        Font(Res.font.inter, FontWeight.Medium),
-    )
 
 // ---------- Círculo flotante animado (flota en elipse, rebote suave) ----------
 @Composable
@@ -165,14 +138,14 @@ fun WaykiBackground(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Surface)
+            .background(AppColors.background)
             .clipToBounds(),
     ) {
-        FloatingBlob((-90).dp, (-70).dp, 260.dp, 240.dp, BlobLight.copy(alpha = 0.7f), durationMillis = 4200)
-        FloatingBlob(280.dp, (-50).dp, 180.dp, 170.dp, Muted.copy(alpha = 0.5f), durationMillis = 5200, delayMillis = 400)
-        FloatingBlob(150.dp, (-30).dp, 80.dp, 80.dp, BlobMid.copy(alpha = 0.85f), durationMillis = 3400, delayMillis = 200)
-        FloatingBlob((-60).dp, 320.dp, 140.dp, 130.dp, BlobMid.copy(alpha = 0.4f), durationMillis = 5600, delayMillis = 300)
-        FloatingBlob(320.dp, 480.dp, 90.dp, 90.dp, BlobLight.copy(alpha = 0.8f), durationMillis = 4400, delayMillis = 1000)
+        FloatingBlob((-90).dp, (-70).dp, 260.dp, 240.dp, AppColors.surfaceVariant.copy(alpha = 0.7f), durationMillis = 4200)
+        FloatingBlob(280.dp, (-50).dp, 180.dp, 170.dp, AppColors.slate.copy(alpha = 0.5f), durationMillis = 5200, delayMillis = 400)
+        FloatingBlob(150.dp, (-30).dp, 80.dp, 80.dp, AppColors.outline.copy(alpha = 0.85f), durationMillis = 3400, delayMillis = 200)
+        FloatingBlob((-60).dp, 320.dp, 140.dp, 130.dp, AppColors.outline.copy(alpha = 0.4f), durationMillis = 5600, delayMillis = 300)
+        FloatingBlob(320.dp, 480.dp, 90.dp, 90.dp, AppColors.surfaceVariant.copy(alpha = 0.8f), durationMillis = 4400, delayMillis = 1000)
         if (withRoads) {
             WaykiRoads()
         }
@@ -185,9 +158,8 @@ fun WaykiBackground(
 fun WaykiTitle(text: String, modifier: Modifier = Modifier) {
     Text(
         text, modifier,
-        color = Ink, fontFamily = Unbounded,
-        fontWeight = FontWeight.Bold, fontSize = 38.sp,
-        lineHeight = 46.sp,
+        color = AppColors.onBackground,
+        style = AppTextStyles.waykiTitle,
     )
 }
 
@@ -195,22 +167,20 @@ fun WaykiTitle(text: String, modifier: Modifier = Modifier) {
 fun WaykiSubtitle(text: String, modifier: Modifier = Modifier) {
     Text(
         text, modifier,
-        color = Muted, fontFamily = Inter,
-        fontWeight = FontWeight.Normal, fontSize = 16.sp,
+        color = AppColors.onSurfaceMuted,
+        style = AppTextStyles.waykiSubtitle,
     )
 }
 
-// ---------- Botón primario (pastilla lavanda, igual que ENTRAR) ----------
+// ---------- Botón primario (pastilla, igual que ENTRAR) ----------
 @Composable
 private fun ArrowIcon() {
-    val density = LocalDensity.current.density
-    Canvas(Modifier.size(32.dp, 32.dp)) {
-        scale(density, density, pivot = Offset.Zero) {
-            drawCircle(Muted, 16f, Offset(16f, 16f))
-            drawLine(Surface, Offset(9f, 16f), Offset(23f, 16f), 2.5f, StrokeCap.Round)
-            drawLine(Surface, Offset(23f, 16f), Offset(16f, 9f), 2.5f, StrokeCap.Round)
-            drawLine(Surface, Offset(23f, 16f), Offset(16f, 23f), 2.5f, StrokeCap.Round)
-        }
+    Canvas(Modifier.size(AppSpacing.arrowIconSize, AppSpacing.arrowIconSize)) {
+        val s = size.width
+        drawCircle(AppColors.onSurfaceMuted, s * 0.5f, Offset(s / 2f, s / 2f))
+        drawLine(AppColors.cream, Offset(s * 0.28f, s * 0.5f), Offset(s * 0.72f, s * 0.5f), s * 0.09f, StrokeCap.Round)
+        drawLine(AppColors.cream, Offset(s * 0.72f, s * 0.5f), Offset(s * 0.5f, s * 0.28f), s * 0.09f, StrokeCap.Round)
+        drawLine(AppColors.cream, Offset(s * 0.72f, s * 0.5f), Offset(s * 0.5f, s * 0.72f), s * 0.09f, StrokeCap.Round)
     }
 }
 
@@ -225,21 +195,25 @@ fun WaykiPrimaryButton(
     Button(
         onClick = onClick,
         modifier = modifier
-            .then(if (fullWidth) Modifier.fillMaxWidth() else Modifier.width(210.dp))
-            .height(if (fullWidth) 72.dp else 56.dp)
+            .then(if (fullWidth) Modifier.fillMaxWidth() else Modifier.width(AppSpacing.buttonFixedWidth))
+            .height(if (fullWidth) AppSpacing.buttonPrimaryHeight else AppSpacing.buttonSecondaryHeight)
             .shadow(
-                24.dp, RoundedCornerShape(50.dp),
-                ambientColor = Muted.copy(alpha = 0.27f), spotColor = Muted.copy(alpha = 0.27f),
+                AppSpacing.xl, AppRadius.pill,
+                ambientColor = AppColors.onSurfaceMuted.copy(alpha = 0.27f),
+                spotColor = AppColors.onSurfaceMuted.copy(alpha = 0.27f),
             ),
-        shape = RoundedCornerShape(50.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Lavender, contentColor = Ink),
+        shape = AppRadius.pill,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = AppColors.primary,
+            contentColor = AppColors.onPrimary,
+        ),
     ) {
         Text(
-            text, fontFamily = Unbounded,
-            fontWeight = FontWeight.Bold, fontSize = if (fullWidth) 18.sp else 15.sp,
+            text,
+            style = if (fullWidth) AppTextStyles.waykiButtonLarge else AppTextStyles.waykiButtonSmall,
         )
         if (showArrow) {
-            Box(Modifier.padding(start = 12.dp)) { ArrowIcon() }
+            Box(Modifier.padding(start = AppSpacing.md)) { ArrowIcon() }
         }
     }
 }
@@ -253,16 +227,16 @@ fun WaykiGoogleCircle(
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier.size(52.dp)
-            .border(1.5.dp, Lavender.copy(alpha = 0.6f), CircleShape)
-            .background(Color.White, CircleShape)
+        modifier.size(AppSpacing.googleCircleSize)
+            .border(AppSpacing.borderThin, AppColors.primary.copy(alpha = 0.6f), CircleShape)
+            .background(AppColors.cream, CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            "G", fontFamily = Unbounded,
-            fontWeight = FontWeight.ExtraBold, fontSize = 22.sp,
-            color = Ink,
+            "G",
+            style = AppTextStyles.waykiGoogle,
+            color = AppColors.onBackground,
         )
     }
 }
@@ -274,13 +248,13 @@ fun WaykiBackButton(
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier.size(48.dp).clickable(onClick = onClick),
+        modifier.size(AppSpacing.backButtonSize).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(22.dp)) {
+        Canvas(Modifier.size(AppSpacing.backArrowSize)) {
             val s = size.width
-            drawLine(Ink, Offset(s * 0.65f, s * 0.2f), Offset(s * 0.3f, s * 0.5f), 2.5f, StrokeCap.Round)
-            drawLine(Ink, Offset(s * 0.3f, s * 0.5f), Offset(s * 0.65f, s * 0.8f), 2.5f, StrokeCap.Round)
+            drawLine(AppColors.onBackground, Offset(s * 0.65f, s * 0.2f), Offset(s * 0.3f, s * 0.5f), 2.5f, StrokeCap.Round)
+            drawLine(AppColors.onBackground, Offset(s * 0.3f, s * 0.5f), Offset(s * 0.65f, s * 0.8f), 2.5f, StrokeCap.Round)
         }
     }
 }
@@ -292,16 +266,16 @@ fun WaykiOrDivider(
     text: String = "o",
 ) {
     Row(
-        modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier.fillMaxWidth().padding(vertical = AppSpacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.weight(1f).height(1.dp).background(Muted.copy(alpha = 0.4f)))
+        Box(Modifier.weight(1f).height(1.dp).background(AppColors.onSurfaceMuted.copy(alpha = 0.4f)))
         Text(
-            "  $text  ", fontFamily = Inter,
-            fontWeight = FontWeight.Normal, fontSize = 13.sp,
-            color = Muted,
+            "  $text  ",
+            style = AppTextStyles.waykiMini,
+            color = AppColors.onSurfaceMuted,
         )
-        Box(Modifier.weight(1f).height(1.dp).background(Muted.copy(alpha = 0.4f)))
+        Box(Modifier.weight(1f).height(1.dp).background(AppColors.onSurfaceMuted.copy(alpha = 0.4f)))
     }
 }
 
@@ -314,20 +288,20 @@ fun WaykiSwitchAuth(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier.fillMaxWidth().padding(vertical = 8.dp),
+        modifier.fillMaxWidth().padding(vertical = AppSpacing.sm),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            prefix, fontFamily = Inter,
-            fontWeight = FontWeight.Normal, fontSize = 13.sp,
-            color = Muted,
+            prefix,
+            style = AppTextStyles.waykiMini,
+            color = AppColors.onSurfaceMuted,
         )
-        TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 4.dp)) {
+        TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = AppSpacing.xs)) {
             Text(
-                link, fontFamily = Inter,
-                fontWeight = FontWeight.Medium, fontSize = 13.sp,
-                color = Ink,
+                link,
+                style = AppTextStyles.waykiLabelMedium,
+                color = AppColors.onBackground,
             )
         }
     }
@@ -342,14 +316,15 @@ fun WaykiLink(
 ) {
     TextButton(onClick = onClick, modifier = modifier.fillMaxWidth()) {
         Text(
-            text, color = Muted, fontFamily = Inter,
-            fontWeight = FontWeight.Medium, fontSize = 14.sp,
+            text,
+            color = AppColors.onSurfaceMuted,
+            style = AppTextStyles.waykiLabelMedium,
             textDecoration = TextDecoration.Underline,
         )
     }
 }
 
-// ---------- Campo de texto (pastilla blanca estilo diseño) ----------
+// ---------- Campo de texto (pastilla estilo diseño) ----------
 @Composable
 fun WaykiTextField(
     value: String,
@@ -366,29 +341,24 @@ fun WaykiTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier.fillMaxWidth(),
-        placeholder = { Text(label, fontFamily = Inter, color = Muted, fontSize = 14.sp) },
+        placeholder = { Text(label, style = AppTextStyles.waykiLabel, color = AppColors.onSurfaceMuted) },
         singleLine = true,
-        textStyle = TextStyle(
-            fontFamily = Inter,
-            fontWeight = FontWeight.Normal,
-            fontSize = 15.sp,
-            color = Ink,
-        ),
-        shape = RoundedCornerShape(50.dp),
+        textStyle = AppTextStyles.waykiInput.copy(color = AppColors.onBackground),
+        shape = AppRadius.pill,
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Ink,
-            unfocusedBorderColor = Lavender.copy(alpha = 0.5f),
+            focusedBorderColor = AppColors.onBackground,
+            unfocusedBorderColor = AppColors.primary.copy(alpha = 0.5f),
             disabledBorderColor = Color.Transparent,
             errorBorderColor = Color.Transparent,
-            focusedLabelColor = Ink,
-            unfocusedLabelColor = Muted,
-            cursorColor = Ink,
-            focusedContainerColor = Color.White,
-            unfocusedContainerColor = Color.White,
-            disabledContainerColor = Color.White,
-            errorContainerColor = Color.White,
-            focusedTextColor = Ink,
-            unfocusedTextColor = Ink,
+            focusedLabelColor = AppColors.onBackground,
+            unfocusedLabelColor = AppColors.onSurfaceMuted,
+            cursorColor = AppColors.onBackground,
+            focusedContainerColor = AppColors.cream,
+            unfocusedContainerColor = AppColors.cream,
+            disabledContainerColor = AppColors.cream,
+            errorContainerColor = AppColors.cream,
+            focusedTextColor = AppColors.onBackground,
+            unfocusedTextColor = AppColors.onBackground,
         ),
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
         keyboardActions = KeyboardActions(onAny = { onImeAction() }),
@@ -398,7 +368,8 @@ fun WaykiTextField(
                 TextButton(onClick = { visible = !visible }) {
                     Text(
                         if (visible) AuthCopy.passwordHide else AuthCopy.passwordShow,
-                        fontFamily = Inter, color = Muted, fontSize = 13.sp,
+                        style = AppTextStyles.waykiMini,
+                        color = AppColors.onSurfaceMuted,
                     )
                 }
             }
@@ -417,7 +388,7 @@ fun WaykiTextField(
 fun WaykiPinInput(
     modifier: Modifier = Modifier,
     length: Int = 4,
-    boxSize: Dp = 62.dp,
+    boxSize: Dp = AppSpacing.pinBoxDefault,
     // false = siempre ● (login); true = último dígito visible 1 s (crear PIN).
     revealLast: Boolean = true,
     onComplete: (String) -> Unit = {},
@@ -470,7 +441,7 @@ fun WaykiPinInput(
                 indication = null,
                 onClick = { focusRequester.requestFocus() },
             ),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.sm, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         repeat(length) { i ->
@@ -483,19 +454,17 @@ fun WaykiPinInput(
             Box(
                 Modifier.size(boxSize)
                     .border(
-                        1.5.dp,
-                        if (activeBox == i) Ink else Lavender.copy(alpha = 0.6f),
-                        RoundedCornerShape(20.dp),
+                        AppSpacing.borderThin,
+                        if (activeBox == i) AppColors.onBackground else AppColors.primary.copy(alpha = 0.6f),
+                        AppRadius.pinBox,
                     )
-                    .background(Color.White, RoundedCornerShape(20.dp)),
+                    .background(AppColors.cream, AppRadius.pinBox),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     shown,
-                    fontFamily = Unbounded,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp,
-                    color = Ink,
+                    style = AppTextStyles.waykiBoxDigit,
+                    color = AppColors.onBackground,
                 )
             }
         }
@@ -507,10 +476,10 @@ fun WaykiPinInput(
 fun WaykiLoadingOverlay(visible: Boolean) {
     if (visible) {
         Box(
-            Modifier.fillMaxSize().background(Ink.copy(alpha = 0.25f)),
+            Modifier.fillMaxSize().background(AppColors.onBackground.copy(alpha = 0.25f)),
             contentAlignment = Alignment.Center,
         ) {
-            CircularProgressIndicator(color = Surface)
+            CircularProgressIndicator(color = AppColors.cream)
         }
     }
 }
@@ -523,8 +492,8 @@ fun WaykiErrorText(
     if (error != null) {
         Text(
             error, modifier.fillMaxWidth(),
-            color = Color(0xFFBA1A1A), fontFamily = Inter,
-            fontWeight = FontWeight.Medium, fontSize = 13.sp,
+            color = AppColors.error,
+            style = AppTextStyles.waykiLabelMedium,
             textAlign = TextAlign.Center,
         )
     }
@@ -639,7 +608,7 @@ private fun RoadCanvas(
         scale(density, density, pivot = Offset.Zero) {
             drawPath(
                 road,
-                Road, style = Stroke(5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), phase)),
+                AppColors.outline, style = Stroke(5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), phase)),
             )
             val pos = measure.getPosition(measure.length * trip)
             val tan = measure.getTangent(measure.length * trip)
@@ -660,7 +629,7 @@ private fun RoadCanvas(
                         (center.y - antH / 2).roundToInt(),
                     ),
                     dstSize = IntSize(antW.roundToInt(), antH.roundToInt()),
-                    colorFilter = ColorFilter.tint(Lavender),
+                    colorFilter = ColorFilter.tint(AppColors.primary),
                 )
             }
         }

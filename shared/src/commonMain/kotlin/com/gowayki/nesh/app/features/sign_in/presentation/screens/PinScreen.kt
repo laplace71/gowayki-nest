@@ -20,13 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.gowayki.nesh.app.common.ui.shared.Inter
-import com.gowayki.nesh.app.common.ui.shared.Muted
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackground
 import com.gowayki.nesh.app.common.ui.shared.WaykiErrorText
@@ -35,6 +29,9 @@ import com.gowayki.nesh.app.common.ui.shared.WaykiPinInput
 import com.gowayki.nesh.app.common.ui.shared.WaykiPrimaryButton
 import com.gowayki.nesh.app.common.ui.shared.WaykiSubtitle
 import com.gowayki.nesh.app.common.ui.shared.WaykiTitle
+import com.gowayki.nesh.core.theme.src.AppTextStyles
+import com.gowayki.nesh.core.theme.src.core.AppColors
+import com.gowayki.nesh.core.theme.src.core.AppSpacing
 
 @Composable
 fun PinScreen(
@@ -53,49 +50,58 @@ fun PinScreen(
         Column(
             Modifier.align(Alignment.TopCenter).fillMaxWidth()
                 .statusBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, top = 8.dp),
+                .padding(
+                    start = AppSpacing.pageHorizontal,
+                    end = AppSpacing.pageHorizontal,
+                    top = AppSpacing.sm,
+                ),
         ) {
             WaykiBackButton(onClick = onBack)
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(AppSpacing.topSection))
             WaykiTitle("Crea\ntu PIN")
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(AppSpacing.xs))
             WaykiSubtitle("Será tu contraseña para ingresar después")
         }
 
         // Centro: crea + repite + guardar.
         Column(
             Modifier.align(Alignment.Center).fillMaxWidth()
-                .padding(start = 20.dp, end = 20.dp, top = 230.dp, bottom = 80.dp)
+                .padding(
+                    start = AppSpacing.pageHorizontal,
+                    end = AppSpacing.pageHorizontal,
+                    top = AppSpacing.pinContentTop,
+                    bottom = AppSpacing.contentBottomMargin,
+                )
                 .verticalScroll(rememberScrollState()),
         ) {
             Text(
                 "Crea tu PIN",
-                color = Muted, fontFamily = Inter,
-                fontWeight = FontWeight.Medium, fontSize = 14.sp,
+                color = AppColors.onSurfaceMuted,
+                style = AppTextStyles.waykiLabelMedium,
             )
-            Spacer(Modifier.height(12.dp))
-            WaykiPinInput(length = 6, boxSize = 44.dp, onComplete = { pin1 = it })
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(AppSpacing.sm))
+            WaykiPinInput(length = 6, boxSize = AppSpacing.pinBoxScreen, onComplete = { pin1 = it })
+            Spacer(Modifier.height(AppSpacing.lg))
             Text(
                 "Repite tu PIN",
-                color = Muted, fontFamily = Inter,
-                fontWeight = FontWeight.Medium, fontSize = 14.sp,
+                color = AppColors.onSurfaceMuted,
+                style = AppTextStyles.waykiLabelMedium,
             )
-            Spacer(Modifier.height(12.dp))
-            WaykiPinInput(length = 6, boxSize = 44.dp, onComplete = { pin2 = it })
+            Spacer(Modifier.height(AppSpacing.sm))
+            WaykiPinInput(length = 6, boxSize = AppSpacing.pinBoxScreen, onComplete = { pin2 = it })
             if (showError) {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(AppSpacing.sm))
                 Text(
                     "Los PIN no coinciden",
                     modifier = Modifier.fillMaxWidth(),
-                    color = Color(0xFFBA1A1A), fontFamily = Inter,
-                    fontWeight = FontWeight.Medium, fontSize = 14.sp,
+                    color = AppColors.error,
+                    style = AppTextStyles.waykiLabelMedium,
                     textAlign = TextAlign.Center,
                 )
             }
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(AppSpacing.lg))
             WaykiErrorText(error)
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(AppSpacing.xs))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 WaykiPrimaryButton(
                     text = "GUARDAR",
