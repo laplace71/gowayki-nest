@@ -7,6 +7,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.gowayki.nesh.app.features.reports.presentation.screens.ReportsScreen
 import com.gowayki.nesh.app.features.sign_in.presentation.StateFlow.AuthViewModel
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.LoginScreen
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.PinScreen
@@ -44,7 +45,7 @@ fun WaykiNav(
             LaunchedEffect(state.user) {
                 if (state.user != null) {
                     vm.consumeUser()
-                    /* TODO: nav.navigate("home") */
+                    nav.navigate(Routes.REPORTS) { popUpTo(Routes.WELCOME) { inclusive = false } }
                 }
             }
         }
@@ -61,7 +62,7 @@ fun WaykiNav(
             LaunchedEffect(state.user) {
                 if (state.user != null) {
                     vm.consumeUser()
-                    nav.navigate(Routes.PIN)
+                    nav.navigate(Routes.REPORTS) { popUpTo(Routes.WELCOME) { inclusive = false } }
                 }
             }
         }
@@ -75,9 +76,19 @@ fun WaykiNav(
             LaunchedEffect(state.user) {
                 if (state.user != null) {
                     vm.consumeUser()
-                    /* TODO: nav.navigate("home") */
+                    nav.navigate(Routes.REPORTS) { popUpTo(Routes.WELCOME) { inclusive = false } }
                 }
             }
+        }
+        composable(Routes.REPORTS) {
+            ReportsScreen(
+                onBack = { nav.popBackStack() },
+                onHomeClick = { /* TODO: home conductor */ },
+                onSosClick = { /* TODO: SOS */ },
+                onMapClick = { /* ya estás en reportes */ },
+                onSettingsClick = { /* TODO: ajustes */ },
+                onLogoutClick = { nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } } },
+            )
         }
     }
 }
