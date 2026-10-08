@@ -130,9 +130,12 @@ fun FloatingBlob(
 
 // ---------- Fondo compartido: pantalla llena + blobs sutiles ----------
 // withRoads = true agrega las rutas punteadas con hormigas (login/registro).
+// roadsAnimated = false las dibuja estáticas (dashboard: el mapa ya es lo
+// que se mueve; ahorra GPU y entrada más fluida).
 @Composable
 fun WaykiBackground(
     withRoads: Boolean = false,
+    roadsAnimated: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
@@ -147,7 +150,7 @@ fun WaykiBackground(
         FloatingBlob((-60).dp, 320.dp, 140.dp, 130.dp, AppColors.outline.copy(alpha = 0.4f), durationMillis = 5600, delayMillis = 300)
         FloatingBlob(320.dp, 480.dp, 90.dp, 90.dp, AppColors.surfaceVariant.copy(alpha = 0.8f), durationMillis = 4400, delayMillis = 1000)
         if (withRoads) {
-            WaykiRoads()
+            WaykiRoads(animated = roadsAnimated)
         }
         content()
     }
@@ -507,7 +510,18 @@ fun WaykiErrorText(
 // Para mover una ruta: `canvasSizeX/Y` + `offsetX/Y` de cada RoadCanvas.
 // Para cambiar la forma: `moveTo/cubicTo` de cada road*.
 @Composable
-fun WaykiRoads() {
+fun WaykiRoads(animated: Boolean = true) {
+    if (!animated) {
+        // Versión estática: solo las rutas sin animación
+        val density = LocalDensity.current.density
+        val roadA = remember { Path().apply { moveTo(54.14f, 625.11f); cubicTo(-12.01f, 305.0f, 524.43f, 417.46f, 468.54f, 38.23f) } }
+        val roadB = remember { Path().apply { moveTo(77.40f, 453.2f); cubicTo(11.24f, 133.09f, 348.75f, 119.08f, 518.75f, 167.58f) } }
+        val roadC = remember { Path().apply { moveTo(-10f, 470f); cubicTo(120f, 420f, 80f, 300f, 200f, 250f); cubicTo(320f, 200f, 300f, 100f, 442f, 0f) } }
+        StaticRoadCanvas(534.dp, 671.dp, (-56).dp, 247.dp, roadA, density)
+        StaticRoadCanvas(519.dp, 567.dp, (-50).dp, 546.dp, roadB, density)
+        StaticRoadCanvas(500.dp, 560.dp, (-30).dp, 90.dp, roadC, density)
+        return
+    }
     val density = LocalDensity.current.density
     val flow = rememberInfiniteTransition(label = "roads")
     // 20f = 10 + 10 (suma del dash) para un bucle sin salto.
@@ -586,6 +600,26 @@ fun WaykiRoads() {
         road = roadC, measure = measureC,
         trip = tripC, phase = phaseC, density = density, ant = ant, antW = antW, antH = antH,
     )
+}
+
+// Una ruta quieta: solo la línea punteada, sin animación (0 % GPU en reposo).
+@Composable
+private fun StaticRoadCanvas(
+    canvasSizeX: Dp,
+    canvasSizeY: Dp,
+    offsetX: Dp,
+    offsetY: Dp,
+    road: Path,
+    density: Float,
+) {
+    Canvas(Modifier.size(canvasSizeX, canvasSizeY).offset(offsetX, offsetY)) {
+        scale(density, density, pivot = Offset.Zero) {
+            drawPath(
+                road,
+                AppColors.outline, style = Stroke(5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)),
+            )
+        }
+    }
 }
 
 // Una ruta: línea punteada que marcha + hormiga encima.

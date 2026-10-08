@@ -1,21 +1,28 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Reglas de Wayki Nest (release con minify + shrink).
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# --- kotlinx.serialization: los serializers generados se buscan por nombre ---
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.**
+-keepclassmembers class kotlinx.serialization.json.** { *; }
+-keepclasseswithmembernames class * {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep,includedescriptorclasses class com.gowayki.nesh.**$$serializer { *; }
+-keepclassmembers class com.gowayki.nesh.** {
+    *** Companion;
+}
+-keepclasseswithmembers class com.gowayki.nesh.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# --- Ktor client (OkHttp/CIO usan reflexión y ServiceLoader) ---
+-keep class io.ktor.** { *; }
+-dontwarn io.ktor.**
+-keep class io.ktor.client.engine.** { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# --- Supabase SDK ---
+-keep class io.github.jan-tennert.** { *; }
+-dontwarn io.github.jan-tennert.**
+
+# --- Compose Multiplatform resources (acceso por nombre generado) ---
+-keep class gowaykinesh.shared.generated.resources.** { *; }

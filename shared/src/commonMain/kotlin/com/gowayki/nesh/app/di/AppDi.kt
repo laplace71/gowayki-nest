@@ -1,5 +1,7 @@
 package com.gowayki.nesh.app.di
 
+import kotlin.concurrent.Volatile
+
 /**
  * Contenedor DI ligero (estilo GetIt de gowayki / pulse).
  * Las features resuelven dependencias aquí; no conocen `infra`.

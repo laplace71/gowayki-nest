@@ -59,6 +59,8 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.ktor.client.core)
+            implementation(libs.compose.icons.feather)
+            implementation(libs.compose.icons.fontawesome)
             implementation(project.dependencies.platform(libs.supabase.bom))
             implementation(libs.supabase.auth)
             implementation(libs.supabase.compose.auth)
