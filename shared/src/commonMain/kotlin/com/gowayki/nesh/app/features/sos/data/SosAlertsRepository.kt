@@ -6,6 +6,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.statement.bodyAsText
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -52,8 +53,12 @@ class SosAlertsRepository(private val baseUrl: String) {
                 ),
             )
         }
-        check(response.status.value in 200..299) {
-            "No se pudo compartir la ubicación con el servidor (${response.status.value})."
+        if (response.status.value !in 200..299) {
+            val serverMessage = response.bodyAsText().takeIf(String::isNotBlank)
+            error(
+                serverMessage
+                    ?: "No se pudo compartir la ubicación con el servidor (${response.status.value}).",
+            )
         }
     }
 

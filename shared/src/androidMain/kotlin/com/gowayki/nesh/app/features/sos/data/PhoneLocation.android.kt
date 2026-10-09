@@ -7,6 +7,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Looper
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -67,8 +68,8 @@ actual fun rememberPhoneLocation(enabled: Boolean): PhoneLocationState {
                 .filter(locationManager::isProviderEnabled)
             val listener = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
-                    val ageMs = System.currentTimeMillis() - location.time
-                    if (ageMs !in 0..MAX_LOCATION_AGE_MS) return
+                    val ageNanos = SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos
+                    if (ageNanos !in 0..MAX_LOCATION_AGE_NANOS) return
                     state = state.copy(
                         location = OsmLatLng(location.latitude, location.longitude),
                         permissionGranted = true,
@@ -127,4 +128,4 @@ actual fun rememberPhoneLocation(enabled: Boolean): PhoneLocationState {
 }
 
 private const val LOCATION_UPDATE_INTERVAL_MS = 2_000L
-private const val MAX_LOCATION_AGE_MS = 15_000L
+private const val MAX_LOCATION_AGE_NANOS = 15_000_000_000L
