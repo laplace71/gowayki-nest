@@ -3,6 +3,7 @@
 .gradle
 **/build/
 sos-server/bin/
+hardware/esp32_sos_button/secrets.h
 xcuserdata
 !src/**/build/
 local.properties

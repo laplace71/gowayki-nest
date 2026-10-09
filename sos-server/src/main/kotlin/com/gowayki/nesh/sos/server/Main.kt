@@ -20,6 +20,7 @@ data class SosAlertRequest(
     val latitude: Double,
     val longitude: Double,
     val occurredAt: String,
+    val simulated: Boolean = false,
 )
 
 @Serializable
@@ -61,6 +62,7 @@ private class AlertStore {
             latitude = request.latitude,
             longitude = request.longitude,
             occurredAt = request.occurredAt,
+            simulated = request.simulated,
         )
         alerts.add(alert)
         lastAcceptedAtNanos[request.deviceId] = now

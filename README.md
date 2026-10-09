@@ -23,8 +23,8 @@ El servicio usa polling HTTP como alternativa sencilla a WebSocket. Los eventos 
 deduplican por `(deviceId, eventId)`, por lo que se puede reintentar el mismo POST sin
 crear otra alerta. Además, el servidor rechaza con HTTP 429 una segunda alerta del mismo
 dispositivo durante 2 segundos, como protección adicional contra rebotes del botón. El
-firmware aún debe aplicar su propio debounce y conservar el mismo `eventId` al reintentar.
-El almacenamiento es en memoria y se pierde al reiniciar el proceso;
+firmware también aplica debounce local de 40 ms y conserva el mismo `eventId` al
+reintentar. El almacenamiento es en memoria y se pierde al reiniciar el proceso;
 este proyecto no tenía un historial SOS persistente.
 
 ### Configurar y ejecutar
@@ -55,6 +55,20 @@ este proyecto no tenía un historial SOS persistente.
    Si la URL está configurada, la pantalla consulta el backend y muestra errores de
    conexión/reintenta en el siguiente ciclo.
 
+### Cargar el firmware de prueba ESP32
+
+1. Copia `hardware/esp32_sos_button/secrets.example.h` como
+   `hardware/esp32_sos_button/secrets.h`; rellena localmente Wi-Fi, IPv4 de la PC,
+   identificador y el mismo token que configuraste en `SOS_DEVICE_TOKENS`.
+2. Instala el paquete de placas **esp32 by Espressif Systems** en Arduino IDE. Abre
+   `hardware/esp32_sos_button/esp32_sos_button.ino`, selecciona **ESP32 Dev Module** y
+   el puerto USB de la ESP32 DevKitC V4. El sketch usa `WiFi`, `HTTPClient` y
+   `Preferences` incluidos en ese paquete; no necesita librerías Arduino adicionales.
+3. Carga el programa y abre Serial Monitor a 115200 baudios. El pulsador entre GPIO14
+   y GND genera una alerta únicamente después de sincronizar la hora UTC. La app la
+   etiqueta como simulada. Reintentos de red conservan el mismo ID; la placa también
+   filtra rebotes durante 40 ms.
+
 Ejemplo de cuerpo que el ESP32 debe enviar (la fecha debe ser UTC ISO-8601 y el
 `eventId` debe mantenerse igual en todos los reintentos de esa pulsación):
 
@@ -64,16 +78,19 @@ Ejemplo de cuerpo que el ESP32 debe enviar (la fecha debe ser UTC ISO-8601 y el
   "deviceId": "ESP32-AQP-017",
   "latitude": -12.0464,
   "longitude": -77.0422,
-  "occurredAt": "2026-10-09T05:30:00Z"
+  "occurredAt": "2026-10-09T05:30:00Z",
+  "simulated": true
 }
 ```
 
-Ese ejemplo de coordenadas es ilustrativo, no es una emergencia ni la ubicación del
-hardware. El proyecto no incluye módulo GPS, placa, cableado del botón ni firmware;
-por tanto, todavía no hay integración física y no se debe activar una ubicación fija
-como si fuera GPS real. Antes de preparar el sketch exacto hacen falta el modelo de
-placa ESP32, el modelo del GPS (o la fuente de coordenadas alternativa) y el GPIO
-conectado al botón.
+Ese ejemplo usa coordenadas de muestra ya definidas en la app; no es una emergencia ni
+la ubicación del hardware. El sketch de
+`hardware/esp32_sos_button/esp32_sos_button.ino` está limitado a modo de prueba, usa el
+botón GPIO 14 conectado entre el pin y GND, y siempre envía `simulated: true`. La placa
+informada es ESP32 DevKitC V4. No hay módulo GPS conectado ni otra fuente de ubicación,
+así que el sketch no reporta ubicaciones reales y el mapa identifica esas alertas como
+simuladas. Para ubicar emergencias reales falta agregar un GPS y seleccionar su modelo,
+cableado UART y velocidad antes de habilitar coordenadas reales.
 
 ## Iconos (SVG → XML)
 
