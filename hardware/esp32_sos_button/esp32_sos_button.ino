@@ -6,9 +6,6 @@
 #include "secrets.h"
 
 constexpr uint8_t SOS_BUTTON_PIN = 14;
-constexpr bool TEST_MODE = true;
-constexpr double TEST_LATITUDE = -12.0464;
-constexpr double TEST_LONGITUDE = -77.0422;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 40;
 constexpr uint32_t RETRY_INTERVAL_MS = 5000;
 constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;
@@ -52,11 +49,7 @@ void clearPendingAlert() {
   savePendingAlert();
 }
 
-void createTestAlert() {
-  if (!TEST_MODE) {
-    Serial.println("SOS bloqueado: este sketch no incluye un receptor GPS.");
-    return;
-  }
+void createAlertEvent() {
   if (pendingAlert) {
     Serial.println("Hay una alerta pendiente de entrega; se conserva su ID para reintentar.");
     return;
@@ -77,7 +70,7 @@ void createTestAlert() {
   pendingEventId = "evt-" + mac + "-" + String(nextEventSequence);
   pendingAlert = true;
   savePendingAlert();
-  Serial.println("Prueba SOS creada; coordenadas ficticias, no usar como ubicación real.");
+  Serial.println("Evento SOS físico creado; el servidor usará solo el GPS reciente del teléfono.");
 }
 
 void readButton() {
@@ -92,7 +85,7 @@ void readButton() {
   }
   stableButton = raw;
   if (stableButton == LOW) {
-    createTestAlert();
+    createAlertEvent();
   }
 }
 
@@ -152,10 +145,7 @@ void sendPendingAlert() {
   const String body =
       "{\"eventId\":\"" + pendingEventId +
       "\",\"deviceId\":\"" + String(SOS_DEVICE_ID) +
-      "\",\"latitude\":" + String(TEST_LATITUDE, 7) +
-      ",\"longitude\":" + String(TEST_LONGITUDE, 7) +
-      ",\"occurredAt\":\"" + pendingOccurredAt +
-      "\",\"simulated\":true}";
+      "\",\"occurredAt\":\"" + pendingOccurredAt + "\"}";
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", "Bearer " + String(SOS_DEVICE_TOKEN));
   const int responseCode = http.POST(body);
@@ -197,7 +187,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
   lastWifiAttemptMs = millis() - RETRY_INTERVAL_MS;
   configTime(0, 0, "pool.ntp.org", "time.google.com");
-  Serial.println("ESP32 SOS lista; TEST_MODE usa coordenadas ficticias solo si el móvil no aporta GPS.");
+  Serial.println("ESP32 SOS lista; las alertas requieren GPS reciente del teléfono.");
   Serial.println("Botón físico: GPIO14 a GND. Conecta la placa a Wi-Fi 2.4 GHz.");
 }
 

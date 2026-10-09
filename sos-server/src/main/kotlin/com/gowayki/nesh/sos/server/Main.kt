@@ -72,23 +72,14 @@ private class AlertStore {
         true
     }
 
-    fun create(request: SosAlertRequest, allowSimulated: Boolean): CreateResult = synchronized(lock) {
+    fun create(request: SosAlertRequest): CreateResult = synchronized(lock) {
         alerts.firstOrNull { it.deviceId == request.deviceId && it.eventId == request.eventId }
             ?.let { return CreateResult(it, created = false) }
         val phoneLocation = locations[request.deviceId]?.takeIf {
             System.currentTimeMillis() - it.receivedAtEpochMs <= MAX_LOCATION_AGE_MS &&
                 it.accuracyMeters <= MAX_LOCATION_ACCURACY_METERS
         }
-        val simulatedLocation = if (
-            phoneLocation == null && allowSimulated && request.simulated &&
-            request.latitude != null && request.longitude != null
-        ) {
-            request.latitude to request.longitude
-        } else {
-            null
-        }
-        val position = phoneLocation?.let { it.latitude to it.longitude } ?: simulatedLocation
-        if (position == null) return CreateResult(alert = null, created = false, missingLocation = true)
+            ?: return CreateResult(alert = null, created = false, missingLocation = true)
         val now = System.nanoTime()
         val previous = lastAcceptedAtNanos[request.deviceId]
         if (previous != null && now - previous < BUTTON_DEBOUNCE_NANOS) {
@@ -98,10 +89,10 @@ private class AlertStore {
             id = UUID.randomUUID().toString(),
             eventId = request.eventId,
             deviceId = request.deviceId,
-            latitude = position.first,
-            longitude = position.second,
+            latitude = phoneLocation.latitude,
+            longitude = phoneLocation.longitude,
             occurredAt = request.occurredAt,
-            simulated = phoneLocation == null,
+            simulated = false,
         )
         alerts.add(alert)
         lastAcceptedAtNanos[request.deviceId] = now
@@ -138,7 +129,6 @@ private val deviceIdPattern = Regex("[A-Za-z0-9._-]{1,64}")
 fun main() {
     val deviceTokens = loadDeviceTokens()
     val mobileLocationToken = loadSecret("SOS_MOBILE_LOCATION_TOKEN")
-    val allowSimulated = System.getenv("SOS_ALLOW_SIMULATED")?.equals("true", ignoreCase = true) == true
     val port = (System.getenv("SOS_SERVER_PORT") ?: "8080").toIntOrNull()
         ?.takeIf { it in 1..65535 }
         ?: error("SOS_SERVER_PORT debe ser un puerto TCP válido.")
@@ -148,7 +138,7 @@ fun main() {
     val server = HttpServer.create(InetSocketAddress(bindAddress, port), 0)
     server.executor = Executors.newFixedThreadPool(4)
     val handler: (HttpExchange) -> Unit = { exchange ->
-        handleRequest(exchange, store, deviceTokens, mobileLocationToken, allowSimulated)
+        handleRequest(exchange, store, deviceTokens, mobileLocationToken)
     }
     server.createContext("/api/sos/alerts", handler)
     server.createContext("/api/sos/locations", handler)
@@ -161,13 +151,12 @@ private fun handleRequest(
     store: AlertStore,
     deviceTokens: Map<String, String>,
     mobileLocationToken: String,
-    allowSimulated: Boolean,
 ) {
     try {
         val path = URI.create(exchange.requestURI.toString()).path
         when {
             exchange.requestMethod == "POST" && path == "/api/sos/alerts" ->
-                receiveAlert(exchange, store, deviceTokens, allowSimulated)
+                receiveAlert(exchange, store, deviceTokens)
             exchange.requestMethod == "POST" && path == "/api/sos/locations" ->
                 receivePhoneLocation(exchange, store, mobileLocationToken)
             exchange.requestMethod == "GET" && path == "/api/sos/alerts" ->
@@ -188,7 +177,6 @@ private fun receiveAlert(
     exchange: HttpExchange,
     store: AlertStore,
     deviceTokens: Map<String, String>,
-    allowSimulated: Boolean,
 ) {
     if (!isJson(exchange)) {
         respond(exchange, 415, ApiError("Se requiere Content-Type application/json."))
@@ -214,7 +202,7 @@ private fun receiveAlert(
         respond(exchange, 400, ApiError("Identificador, coordenadas o fecha de activación inválidos."))
         return
     }
-    val result = store.create(request, allowSimulated)
+    val result = store.create(request)
     if (result.missingLocation) {
         respond(exchange, 409, ApiError("No hay una ubicación GPS reciente y precisa para este dispositivo."))
         return

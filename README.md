@@ -48,10 +48,7 @@ este proyecto no tenía un historial SOS persistente.
    $mobileToken = [Convert]::ToBase64String($mobileBytes)
    $env:SOS_DEVICE_TOKENS = "ESP32-AQP-017=$deviceToken"
    $env:SOS_MOBILE_LOCATION_TOKEN = $mobileToken
-   # Para probar con el switch físico y coordenadas ficticias del firmware:
-   $env:SOS_ALLOW_SIMULATED = "true"
-   Write-Output "Token de dispositivo (copiar a secrets.h): $deviceToken"
-   Write-Output "Token móvil (pegar en la pantalla SOS): $mobileToken"
+   # Copia cada token directamente desde esta consola a su destino local.
    .\gradlew.bat :sos-server:run
    ```
 
@@ -64,13 +61,10 @@ este proyecto no tenía un historial SOS persistente.
 4. Abre la pantalla SOS, escribe el valor local de `$mobileToken` en el campo del token
    móvil y pulsa **Compartir GPS mientras la app esté abierta**. Android solicitará
    permiso; permite ubicación precisa y deja abierta la pantalla. Al pulsar GPIO14, la
-   ESP32 envía su ID y el servidor añade la última lectura GPS fresca de ese dispositivo.
-   Si no hay ubicación fresca, el servidor devuelve `409` y no crea una emergencia real;
-   la placa conserva ese evento para reintentar.
-   Con `SOS_ALLOW_SIMULATED=true`, el backend acepta las coordenadas ficticias del
-   firmware cuando no ha llegado un GPS móvil fresco. No se genera ninguna alerta desde
-   un botón virtual de la pantalla: el evento debe llegar por HTTP desde el ESP32.
-   Desactiva ese flag para uso real; sin GPS móvil reciente, la alerta se rechaza.
+   ESP32 envía su ID y el servidor usa exclusivamente la última lectura GPS fresca del
+   teléfono para crear la alerta. Si no hay ubicación fresca, el servidor devuelve `409`
+   y no crea una emergencia; la placa conserva ese evento para reintentar. No se aceptan
+   coordenadas simuladas ni se genera una alerta desde un botón virtual.
 
 ### Cargar el firmware de prueba ESP32
 
@@ -83,9 +77,8 @@ este proyecto no tenía un historial SOS persistente.
    el puerto USB de la ESP32 DevKitC V4. El sketch usa `WiFi`, `HTTPClient` y
    `Preferences` incluidos en ese paquete; no necesita librerías Arduino adicionales.
 3. Carga el programa y abre Serial Monitor a 115200 baudios. El botón entre GPIO14 y
-   GND genera el evento después de sincronizar UTC. El sketch de prueba incluye
-   coordenadas de muestra marcadas como simuladas: si hay un GPS móvil fresco, el
-   servidor lo prioriza y el mapa identifica que la posición vino del teléfono.
+   GND genera el evento después de sincronizar UTC. La placa no incluye coordenadas:
+   el servidor solo crea la alerta si recibe el GPS reciente del teléfono.
    Reintentos conservan el ID; la placa filtra rebotes durante 40 ms.
    La ESP32 DevKitC V4 requiere Wi-Fi de 2.4 GHz; si el router separa las bandas,
    configura el SSID/clave de 2.4 GHz. La red de la placa y la PC servidor deben

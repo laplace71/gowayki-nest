@@ -11,6 +11,8 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -39,6 +41,7 @@ class SosAlertsRepository(private val baseUrl: String) {
     ) {
         val response = client.post("$baseUrl/api/sos/locations") {
             header("Authorization", "Bearer $token")
+            contentType(ContentType.Application.Json)
             setBody(
                 PhoneLocationUpdate(
                     deviceId = deviceId,
