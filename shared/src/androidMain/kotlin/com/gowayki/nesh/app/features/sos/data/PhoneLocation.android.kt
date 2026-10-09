@@ -63,8 +63,12 @@ actual fun rememberPhoneLocation(enabled: Boolean): PhoneLocationState {
         if (!enabled || !hasLocationPermission) {
             onDispose { }
         } else {
+            val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+                .filter(locationManager::isProviderEnabled)
             val listener = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
+                    val ageMs = System.currentTimeMillis() - location.time
+                    if (ageMs !in 0..MAX_LOCATION_AGE_MS) return
                     state = state.copy(
                         location = OsmLatLng(location.latitude, location.longitude),
                         permissionGranted = true,
@@ -82,24 +86,28 @@ actual fun rememberPhoneLocation(enabled: Boolean): PhoneLocationState {
                 }
 
                 override fun onProviderDisabled(provider: String) {
-                    state = state.copy(error = "Activa la ubicación del teléfono.")
+                    if (providers.none(locationManager::isProviderEnabled)) {
+                        state = state.copy(error = "Activa la ubicación del teléfono.")
+                    }
                 }
             }
             try {
-                val provider = when {
-                    locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ->
-                        LocationManager.GPS_PROVIDER
-                    locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ->
-                        LocationManager.NETWORK_PROVIDER
-                    else -> null
-                }
-                if (provider == null) {
+                if (providers.isEmpty()) {
                     state = state.copy(
                         permissionGranted = true,
                         error = "Activa la ubicación del teléfono.",
                     )
                 } else {
-                    locationManager.requestLocationUpdates(provider, 2_000L, 0f, listener, Looper.getMainLooper())
+                    providers.forEach { provider ->
+                        locationManager.getLastKnownLocation(provider)?.let(listener::onLocationChanged)
+                        locationManager.requestLocationUpdates(
+                            provider,
+                            LOCATION_UPDATE_INTERVAL_MS,
+                            0f,
+                            listener,
+                            Looper.getMainLooper(),
+                        )
+                    }
                 }
             } catch (security: SecurityException) {
                 state = state.copy(
@@ -117,3 +125,6 @@ actual fun rememberPhoneLocation(enabled: Boolean): PhoneLocationState {
 
     return state.copy(permissionGranted = hasLocationPermission || state.permissionGranted)
 }
+
+private const val LOCATION_UPDATE_INTERVAL_MS = 2_000L
+private const val MAX_LOCATION_AGE_MS = 15_000L
