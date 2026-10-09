@@ -61,14 +61,17 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Cabecera: Boton Volver + Logo Texto (Wayki Nest)
-        Box(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
             WaykiBackButton(
                 onClick = onBackClick,
                 modifier = Modifier.align(Alignment.CenterStart)
             )
             Text(
-                text = "Wayki Nest",
-                style = AppTextStyles.waykiTitle,
+                text = "GoWayki",
+                style = AppTextStyles.waykiButtonSmall,
                 color = AppColors.onBackground,
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
@@ -84,13 +87,25 @@ fun LoginScreen(
         }
         
         val subtitleText = when (state.status) {
-            LoginStatus.BLOCKED -> "Por tu seguridad, el acceso est bloqueado\ntemporalmente."
-            else -> "Tu cdigo de 6 dgitos te conecta con tu ruta."
+            LoginStatus.BLOCKED -> "Por tu seguridad, el acceso está bloqueado\ntemporalmente."
+            else -> "Tu código de 6 dígitos te conecta con tu ruta."
         }
 
-        WaykiTitle(text = titleText)
-        Spacer(modifier = Modifier.height(AppSpacing.xs))
-        WaykiSubtitle(text = subtitleText)
+        // We wrap these in a Column to ensure they are centered visually
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            WaykiTitle(
+                text = titleText,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(AppSpacing.xs))
+            WaykiSubtitle(
+                text = subtitleText,
+                textAlign = TextAlign.Center
+            )
+        }
 
         Spacer(modifier = Modifier.height(AppSpacing.xl))
 
@@ -121,13 +136,13 @@ fun LoginScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "PIN incorrecto  Te quedan ${state.attemptsLeft} intentos",
+                            text = "PIN incorrecto • Te quedan ${state.attemptsLeft} intentos",
                             style = AppTextStyles.waykiLabelMedium,
                             color = AppColors.onBackground
                         )
                         Text(
-                            text = "Revisa tu cdigo antes de continuar.",
-                            style = AppTextStyles.waykiCaption,
+                            text = "Revisa tu código antes de continuar.",
+                            style = AppTextStyles.waykiMini,
                             color = AppColors.onSurfaceMuted
                         )
                     }
@@ -152,8 +167,8 @@ fun LoginScreen(
                             color = AppColors.onBackground
                         )
                         Text(
-                            text = "El teclado se habilitar automticamente.",
-                            style = AppTextStyles.waykiCaption,
+                            text = "El teclado se habilitará automáticamente.",
+                            style = AppTextStyles.waykiMini,
                             color = AppColors.onSurfaceMuted
                         )
                     }
@@ -167,8 +182,8 @@ fun LoginScreen(
                             color = AppColors.onBackground
                         )
                         Text(
-                            text = "Lnea 7  Unidad 08",
-                            style = AppTextStyles.waykiCaption,
+                            text = "Línea 7 • Unidad 08",
+                            style = AppTextStyles.waykiMini,
                             color = AppColors.onSurfaceMuted
                         )
                     }
@@ -183,22 +198,22 @@ fun LoginScreen(
             isEnabled = !isBlocked,
             onNumberClick = onNumberClick,
             onDeleteClick = onDeleteClick,
-            modifier = Modifier.padding(horizontal = AppSpacing.md)
+            modifier = Modifier.padding(horizontal = AppSpacing.xl)
         )
 
         Spacer(modifier = Modifier.height(AppSpacing.xl))
 
         // Link Olvidaste tu PIN
         WaykiLink(
-            text = "Olvidaste tu PIN?",
+            text = "¿Olvidaste tu PIN?",
             onClick = onForgotPinClick
         )
 
         Spacer(modifier = Modifier.height(AppSpacing.lg))
 
         // Banner de Seguridad / Soporte (Fondo oscuro)
-        val bottomBannerBg = if (isBlocked) AppColors.onBackground else AppColors.onBackground
-        val bottomBannerText = if (isBlocked) "Demasiados intentos fallidos. Si necesitas ayuda, contacta a soporte." else "Acceso seguro para acompaarte en cada recorrido."
+        val bottomBannerBg = AppColors.onBackground
+        val bottomBannerText = if (isBlocked) "Demasiados intentos fallidos. Si necesitas ayuda, contacta a soporte." else "Acceso seguro para acompañarte en cada recorrido."
         
         Box(
             modifier = Modifier
@@ -210,7 +225,7 @@ fun LoginScreen(
         ) {
             Text(
                 text = bottomBannerText,
-                style = AppTextStyles.waykiCaption,
+                style = AppTextStyles.waykiMini,
                 color = AppColors.cream,
                 textAlign = TextAlign.Center
             )

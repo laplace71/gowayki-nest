@@ -9,11 +9,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Backspace
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -101,8 +105,8 @@ private fun NumpadButton(
 ) {
     Box(
         modifier = modifier
-            .aspectRatio(1.8f) // Ajuste para que se vean rectangulares redondeados segun Figma
-            .clip(RoundedCornerShape(24.dp))
+            .height(64.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
             .background(backgroundColor)
             .clickable(enabled = isEnabled, onClick = onClick),
         contentAlignment = Alignment.Center
@@ -110,7 +114,7 @@ private fun NumpadButton(
         Text(
             text = text,
             color = textColor,
-            style = AppTextStyles.waykiTitle // Usando una tipografia grande
+            style = AppTextStyles.waykiNumpadDigit
         )
     }
 }
@@ -125,17 +129,43 @@ private fun NumpadDeleteButton(
 ) {
     Box(
         modifier = modifier
-            .aspectRatio(1.8f)
-            .clip(RoundedCornerShape(24.dp))
+            .height(64.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
             .background(backgroundColor)
             .clickable(enabled = isEnabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.Backspace,
-            contentDescription = "Borrar",
-            tint = iconColor,
-            modifier = Modifier.size(24.dp)
-        )
+        Canvas(modifier = Modifier.size(32.dp)) {
+            val w = size.width
+            val h = size.height
+            val path = Path().apply {
+                moveTo(w * 0.15f, h * 0.5f)
+                lineTo(w * 0.4f, h * 0.25f)
+                lineTo(w * 0.9f, h * 0.25f)
+                lineTo(w * 0.9f, h * 0.75f)
+                lineTo(w * 0.4f, h * 0.75f)
+                close()
+            }
+            drawPath(
+                path = path, 
+                color = iconColor, 
+                style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round)
+            )
+            // La 'X' del centro
+            drawLine(
+                color = iconColor,
+                start = Offset(w * 0.5f, h * 0.4f),
+                end = Offset(w * 0.75f, h * 0.6f),
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = iconColor,
+                start = Offset(w * 0.75f, h * 0.4f),
+                end = Offset(w * 0.5f, h * 0.6f),
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+        }
     }
 }

@@ -110,6 +110,15 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
     fun register(name: String, dni: String, phone: String) =
         exec { repo.register(name, dni, phone) }
 
+    fun sendRecoveryCode(dni: String) {
+        state = AuthUiState(isLoading = true)
+        viewModelScope.launch {
+            delay(1500) // Simulate network call
+            state = AuthUiState(isLoading = false, error = null)
+            // TODO: Navigate to OTP verification screen or handle success
+        }
+    }
+
     fun savePin(phone: String, pin: String) =
         exec { repo.savePin(phone, pin) }
 

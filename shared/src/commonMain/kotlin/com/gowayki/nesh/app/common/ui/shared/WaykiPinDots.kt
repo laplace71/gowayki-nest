@@ -33,36 +33,31 @@ fun WaykiPinDots(
         for (i in 0 until maxLength) {
             val isFilled = i < pinLength
 
-            // Lgica de colores basada en el Figma
             val dotColor = when {
-                isBlocked -> if (isFilled) AppColors.onSurfaceMuted else Color.Transparent
-                isError -> if (isFilled) AppColors.error else Color.Transparent
-                else -> if (isFilled) AppColors.onBackground else Color.Transparent
+                isError -> AppColors.error
+                isBlocked -> AppColors.onSurfaceMuted
+                else -> AppColors.onBackground
             }
 
             val borderColor = when {
-                isBlocked -> AppColors.surfaceVariant
                 isError -> AppColors.error
-                isFilled -> Color.Transparent
                 else -> AppColors.surfaceVariant
             }
-
-            val bgColor = when {
-                isFilled -> dotColor
-                isBlocked -> AppColors.background
+            
+            val boxBgColor = when {
                 isError -> AppColors.error.copy(alpha = 0.1f)
-                else -> AppColors.surfaceVariant.copy(alpha = 0.3f)
+                else -> AppColors.surfaceVariant.copy(alpha = 0.2f)
             }
 
             Box(
                 modifier = Modifier
-                    .size(AppSpacing.pinBoxScreen ?: 48.dp) // Asumiendo que pinBoxScreen es un Dp, sino 48dp
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(bgColor)
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(boxBgColor)
                     .border(
                         width = 1.dp,
                         color = borderColor,
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(8.dp)
                     ),
                 contentAlignment = Alignment.Center
             ) {

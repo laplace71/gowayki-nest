@@ -37,9 +37,9 @@ fun WaykiNav(
                 state = loginState,
                 onNumberClick = { vm.onNumberClick(it) },
                 onDeleteClick = { vm.onDeleteClick() },
-                onForgotPinClick = { /* TODO: Pantalla de Recuperacin de PIN */ },
+                onForgotPinClick = { nav.navigate(Routes.RECOVER_ACCESS) },
                 onBackClick = { nav.popBackStack() },
-                onSupportClick = { /* TODO: Soporte tcnico */ }
+                onSupportClick = { /* TODO: Soporte técnico */ }
             )
             
             // Cuando el mock de login es exitoso, el User se llena en el state principal
@@ -47,7 +47,7 @@ fun WaykiNav(
                 if (state.user != null) {
                     vm.consumeUser()
                     // Si te logueas con exito, te vas de frente al mapa/reportes
-                    nav.navigate(Routes.REPORTS) { popUpTo(Routes.WELCOME) { inclusive = false } }
+                    nav.navigate(Routes.HOME) { popUpTo(Routes.WELCOME) { inclusive = false } }
                 }
             }
         }
@@ -64,9 +64,24 @@ fun WaykiNav(
             LaunchedEffect(state.user) {
                 if (state.user != null) {
                     vm.consumeUser()
-                    nav.navigate(Routes.REPORTS) { popUpTo(Routes.WELCOME) { inclusive = false } }
+                    nav.navigate(Routes.HOME) { popUpTo(Routes.WELCOME) { inclusive = false } }
                 }
             }
+        }
+        
+        composable(Routes.RECOVER_ACCESS) {
+            com.gowayki.nesh.app.features.sign_in.presentation.screens.RecoverAccessScreen(
+                isLoading = state.isLoading,
+                onSendCodeClick = { dni -> 
+                    // TODO: call view model to send code and then navigate to verification
+                    // For now, we simulate a small delay or just go to PIN as a dummy step?
+                    // According to user: "que el chofer lo ponga, y de ahi que recien se envie el sms"
+                    // Let's add sendRecoveryCode in ViewModel later, for now just call it
+                    vm.sendRecoveryCode(dni) 
+                },
+                onBack = { nav.popBackStack() },
+                onSupportClick = { /* TODO: Soporte técnico */ }
+            )
         }
         
         composable(Routes.PIN) {
@@ -79,7 +94,7 @@ fun WaykiNav(
             LaunchedEffect(state.user) {
                 if (state.user != null) {
                     vm.consumeUser()
-                    nav.navigate(Routes.REPORTS) { popUpTo(Routes.WELCOME) { inclusive = false } }
+                    nav.navigate(Routes.HOME) { popUpTo(Routes.WELCOME) { inclusive = false } }
                 }
             }
         }
@@ -94,6 +109,20 @@ fun WaykiNav(
                 onLogoutClick = { 
                     nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } } 
                 },
+            )
+        }
+        composable(Routes.HOME) {
+            com.gowayki.nesh.app.features.home.presentation.screens.HomeScreen(
+                onMenuClick = { /* TODO: abrir menu */ },
+                onNotificationsClick = { /* TODO: notificaciones */ },
+                onBack = { nav.popBackStack() },
+                onSosClick = { nav.navigate(Routes.SOS) }
+            )
+        }
+        
+        composable(Routes.SOS) {
+            com.gowayki.nesh.app.features.sos.presentation.screens.SosScreen(
+                onBack = { nav.popBackStack() }
             )
         }
     }
