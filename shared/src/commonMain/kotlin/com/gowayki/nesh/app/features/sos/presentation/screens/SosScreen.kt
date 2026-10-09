@@ -1,7 +1,6 @@
 package com.gowayki.nesh.app.features.sos.presentation.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.Arrangement
@@ -163,7 +162,7 @@ fun SosScreen(
                         )
                         Text(
                             text = if (AppConfig.SOS_API_BASE_URL.isBlank()) {
-                                "Modo de prueba"
+                                "Servidor sin configurar"
                             } else if (ui.isConnected) {
                                 "En línea"
                             } else {
@@ -216,24 +215,8 @@ fun SosScreen(
 
                 if (AppConfig.SOS_API_BASE_URL.isBlank()) {
                     InfoCard(
-                        text = "Prueba local: la alerta usa coordenadas de muestra de Lima y no representa una emergencia real.",
+                        text = "Servidor SOS sin configurar. Configura SOS_API_BASE_URL y conecta el ESP32 para recibir alertas.",
                     )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(AppColors.cream)
-                            .border(1.dp, AppColors.primary, RoundedCornerShape(16.dp))
-                            .clickable { vm.simulateAlert() }
-                            .padding(15.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            "Simular alerta SOS",
-                            style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = AppColors.ink,
-                        )
-                    }
                 } else if (ui.alerts.isEmpty() && !ui.isLoading && ui.error == null) {
                     InfoCard(text = "No hay alertas SOS activas.")
                 }

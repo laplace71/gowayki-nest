@@ -5,7 +5,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.gowayki.nesh.app.features.reports.domain.model.LimaPlaza
 import com.gowayki.nesh.app.features.reports.domain.model.OsmLatLng
 import com.gowayki.nesh.app.features.sos.data.SosAlertsRepository
 import com.gowayki.nesh.app.features.sos.domain.model.SosAlert
@@ -13,7 +12,6 @@ import com.gowayki.nesh.core.config.AppConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 
 data class SosAlertsUiState(
     val alerts: List<SosAlert> = emptyList(),
@@ -55,21 +53,6 @@ class SosAlertsViewModel : ViewModel() {
         } else {
             ui = ui.copy(isLoading = false)
         }
-    }
-
-    fun simulateAlert() {
-        if (repository != null) return
-        val eventId = "test-${Random.nextLong().toString(16)}"
-        val alert = SosAlert(
-            id = eventId,
-            eventId = eventId,
-            deviceId = "SIMULADOR-LOCAL",
-            latitude = LimaPlaza.lat,
-            longitude = LimaPlaza.lon,
-            occurredAt = "SIMULATED",
-            simulated = true,
-        )
-        ui = ui.copy(alerts = ui.alerts + alert)
     }
 
     fun closeAlert(alert: SosAlert) {

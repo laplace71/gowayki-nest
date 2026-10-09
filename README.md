@@ -48,6 +48,8 @@ este proyecto no tenía un historial SOS persistente.
    $mobileToken = [Convert]::ToBase64String($mobileBytes)
    $env:SOS_DEVICE_TOKENS = "ESP32-AQP-017=$deviceToken"
    $env:SOS_MOBILE_LOCATION_TOKEN = $mobileToken
+   # Para probar con el switch físico y coordenadas ficticias del firmware:
+   $env:SOS_ALLOW_SIMULATED = "true"
    Write-Output "Token de dispositivo (copiar a secrets.h): $deviceToken"
    Write-Output "Token móvil (pegar en la pantalla SOS): $mobileToken"
    .\gradlew.bat :sos-server:run
@@ -65,8 +67,10 @@ este proyecto no tenía un historial SOS persistente.
    ESP32 envía su ID y el servidor añade la última lectura GPS fresca de ese dispositivo.
    Si no hay ubicación fresca, el servidor devuelve `409` y no crea una emergencia real;
    la placa conserva ese evento para reintentar.
-   Para probar únicamente las coordenadas ficticias del firmware, se puede iniciar el
-   servidor con `$env:SOS_ALLOW_SIMULATED = "true"`; no lo habilites en uso real.
+   Con `SOS_ALLOW_SIMULATED=true`, el backend acepta las coordenadas ficticias del
+   firmware cuando no ha llegado un GPS móvil fresco. No se genera ninguna alerta desde
+   un botón virtual de la pantalla: el evento debe llegar por HTTP desde el ESP32.
+   Desactiva ese flag para uso real; sin GPS móvil reciente, la alerta se rechaza.
 
 ### Cargar el firmware de prueba ESP32
 
