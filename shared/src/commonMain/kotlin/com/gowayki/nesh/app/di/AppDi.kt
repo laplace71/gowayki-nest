@@ -23,7 +23,6 @@ object AppDi {
      */
     fun start() {
         if (started) return
-        SupabaseDi.install()
         AuthDi.install()
         started = true
     }

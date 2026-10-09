@@ -1,101 +1,219 @@
 package com.gowayki.nesh.app.features.sign_in.presentation.screens
 
-// Inicio de sesión — solo con tu PIN.
-
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
-import com.gowayki.nesh.app.common.ui.shared.WaykiBackground
-import com.gowayki.nesh.app.common.ui.shared.WaykiErrorText
 import com.gowayki.nesh.app.common.ui.shared.WaykiLink
-import com.gowayki.nesh.app.common.ui.shared.WaykiLoadingOverlay
-import com.gowayki.nesh.app.common.ui.shared.WaykiPinInput
-import com.gowayki.nesh.app.common.ui.shared.WaykiPrimaryButton
-import com.gowayki.nesh.app.common.ui.shared.WaykiSwitchAuth
+import com.gowayki.nesh.app.common.ui.shared.WaykiNumpad
+import com.gowayki.nesh.app.common.ui.shared.WaykiPinDots
+import com.gowayki.nesh.app.common.ui.shared.WaykiSubtitle
 import com.gowayki.nesh.app.common.ui.shared.WaykiTitle
+import com.gowayki.nesh.core.theme.src.AppTextStyles
+import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
+
+enum class LoginStatus {
+    NORMAL, ERROR, BLOCKED
+}
+
+data class LoginUiState(
+    val pin: String = "",
+    val status: LoginStatus = LoginStatus.NORMAL,
+    val attemptsLeft: Int = 3,
+    val blockTimerSeconds: Int = 0
+)
 
 @Composable
 fun LoginScreen(
-    onLoginClick: (pin: String) -> Unit = {},
-    onRegisterClick: () -> Unit = {},
-    onForgotClick: () -> Unit = {},
-    onBack: () -> Unit = {},
-    isLoading: Boolean = false,
-    error: String? = null,
+    state: LoginUiState,
+    onNumberClick: (Int) -> Unit,
+    onDeleteClick: () -> Unit,
+    onForgotPinClick: () -> Unit,
+    onBackClick: () -> Unit,
+    onSupportClick: () -> Unit
 ) {
-    var pin by remember { mutableStateOf("") }
+    val isBlocked = state.status == LoginStatus.BLOCKED
+    val isError = state.status == LoginStatus.ERROR
 
-    WaykiBackground(withRoads = true) {
-        // Arriba: flecha + título en 2 líneas.
-        Column(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth()
-                .statusBarsPadding()
-                .padding(
-                    start = AppSpacing.pageHorizontal,
-                    end = AppSpacing.pageHorizontal,
-                    top = AppSpacing.sm,
-                ),
-        ) {
-            WaykiBackButton(onClick = onBack)
-            Spacer(Modifier.height(AppSpacing.topSection))
-            WaykiTitle("Bienvenido\nde nuevo")
-        }
-
-        // Centro: PIN, ENTRAR y olvidé mi PIN.
-        Column(
-            Modifier.align(Alignment.Center).fillMaxWidth()
-                .padding(
-                    start = AppSpacing.pageHorizontal,
-                    end = AppSpacing.pageHorizontal,
-                    top = AppSpacing.authContentTop,
-                    bottom = AppSpacing.contentBottomMargin,
-                )
-                .verticalScroll(rememberScrollState()),
-        ) {
-            WaykiPinInput(length = 6, boxSize = AppSpacing.pinBoxScreen, revealLast = false, onComplete = { pin = it })
-            Spacer(Modifier.height(AppSpacing.lg))
-            WaykiErrorText(error)
-            Spacer(Modifier.height(AppSpacing.xs))
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                WaykiPrimaryButton(
-                    text = "ENTRAR",
-                    onClick = { if (pin.length == 6) onLoginClick(pin) },
-                    showArrow = false,
-                    fullWidth = false,
-                )
-            }
-        }
-
-        // Abajo: olvidé mi PIN + cambio a registro.
-        Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(bottom = AppSpacing.md),
-        ) {
-            WaykiLink(text = "¿Olvidaste tu PIN de ingreso?", onClick = onForgotClick)
-            WaykiSwitchAuth(
-                prefix = "¿No tienes cuenta?",
-                link = "Regístrate",
-                onClick = onRegisterClick,
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(AppColors.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = AppSpacing.pageHorizontal, vertical = AppSpacing.sm),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Cabecera: Boton Volver + Logo Texto (Wayki Nest)
+        Box(modifier = Modifier.fillMaxWidth()) {
+            WaykiBackButton(
+                onClick = onBackClick,
+                modifier = Modifier.align(Alignment.CenterStart)
+            )
+            Text(
+                text = "Wayki Nest",
+                style = AppTextStyles.waykiTitle,
+                color = AppColors.onBackground,
+                modifier = Modifier.align(Alignment.CenterEnd)
             )
         }
 
-        WaykiLoadingOverlay(isLoading)
+        Spacer(modifier = Modifier.height(AppSpacing.xxl))
+
+        // Titulo y Subtitulo Dinamico
+        val titleText = when (state.status) {
+            LoginStatus.NORMAL -> "Ingresa tu PIN"
+            LoginStatus.ERROR -> "Probemos otra vez"
+            LoginStatus.BLOCKED -> "Una pausa segura"
+        }
+        
+        val subtitleText = when (state.status) {
+            LoginStatus.BLOCKED -> "Por tu seguridad, el acceso est bloqueado\ntemporalmente."
+            else -> "Tu cdigo de 6 dgitos te conecta con tu ruta."
+        }
+
+        WaykiTitle(text = titleText)
+        Spacer(modifier = Modifier.height(AppSpacing.xs))
+        WaykiSubtitle(text = subtitleText)
+
+        Spacer(modifier = Modifier.height(AppSpacing.xl))
+
+        // Dots Visualizer
+        WaykiPinDots(
+            pinLength = state.pin.length,
+            isError = isError,
+            isBlocked = isBlocked
+        )
+
+        Spacer(modifier = Modifier.height(AppSpacing.lg))
+
+        // Banner Dinamico (Centro)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp), // Espacio reservado para evitar saltos de UI
+            contentAlignment = Alignment.Center
+        ) {
+            when (state.status) {
+                LoginStatus.ERROR -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(AppColors.error.copy(alpha = 0.15f))
+                            .padding(vertical = AppSpacing.sm),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "PIN incorrecto  Te quedan ${state.attemptsLeft} intentos",
+                            style = AppTextStyles.waykiLabelMedium,
+                            color = AppColors.onBackground
+                        )
+                        Text(
+                            text = "Revisa tu cdigo antes de continuar.",
+                            style = AppTextStyles.waykiCaption,
+                            color = AppColors.onSurfaceMuted
+                        )
+                    }
+                }
+                LoginStatus.BLOCKED -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(AppColors.surfaceVariant.copy(alpha = 0.5f))
+                            .padding(vertical = AppSpacing.sm),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Format seconds to mm:ss
+                        val minutes = state.blockTimerSeconds / 60
+                        val seconds = state.blockTimerSeconds % 60
+                        val timeString = "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
+                        
+                        Text(
+                            text = "Vuelve a intentarlo en $timeString",
+                            style = AppTextStyles.waykiLabelMedium,
+                            color = AppColors.onBackground
+                        )
+                        Text(
+                            text = "El teclado se habilitar automticamente.",
+                            style = AppTextStyles.waykiCaption,
+                            color = AppColors.onSurfaceMuted
+                        )
+                    }
+                }
+                LoginStatus.NORMAL -> {
+                    // Texto normal si es necesario, o vacio
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "Tu PIN es personal. No lo compartas.",
+                            style = AppTextStyles.waykiLabelMedium,
+                            color = AppColors.onBackground
+                        )
+                        Text(
+                            text = "Lnea 7  Unidad 08",
+                            style = AppTextStyles.waykiCaption,
+                            color = AppColors.onSurfaceMuted
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Teclado Numerico Custom
+        WaykiNumpad(
+            isEnabled = !isBlocked,
+            onNumberClick = onNumberClick,
+            onDeleteClick = onDeleteClick,
+            modifier = Modifier.padding(horizontal = AppSpacing.md)
+        )
+
+        Spacer(modifier = Modifier.height(AppSpacing.xl))
+
+        // Link Olvidaste tu PIN
+        WaykiLink(
+            text = "Olvidaste tu PIN?",
+            onClick = onForgotPinClick
+        )
+
+        Spacer(modifier = Modifier.height(AppSpacing.lg))
+
+        // Banner de Seguridad / Soporte (Fondo oscuro)
+        val bottomBannerBg = if (isBlocked) AppColors.onBackground else AppColors.onBackground
+        val bottomBannerText = if (isBlocked) "Demasiados intentos fallidos. Si necesitas ayuda, contacta a soporte." else "Acceso seguro para acompaarte en cada recorrido."
+        
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(bottomBannerBg)
+                .padding(AppSpacing.md),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = bottomBannerText,
+                style = AppTextStyles.waykiCaption,
+                color = AppColors.cream,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
