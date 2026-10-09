@@ -66,6 +66,7 @@ fun SosScreen(
     val ui = vm.ui
     var shareMobileLocation by remember { mutableStateOf(false) }
     var mobileLocationToken by remember { mutableStateOf("") }
+    var mobileLocationInputError by remember { mutableStateOf<String?>(null) }
     val phoneLocation = rememberPhoneLocation(
         enabled = shareMobileLocation && AppConfig.SOS_API_BASE_URL.isNotBlank(),
     )
@@ -190,9 +191,17 @@ fun SosScreen(
                         permissionGranted = phoneLocation.permissionGranted,
                         location = phoneLocation.location,
                         locationShared = ui.locationShared,
-                        error = phoneLocation.error ?: ui.locationError,
-                        onTokenChange = { mobileLocationToken = it },
+                        error = phoneLocation.error ?: ui.locationError ?: mobileLocationInputError,
+                        onTokenChange = {
+                            mobileLocationToken = it
+                            mobileLocationInputError = null
+                        },
                         onToggle = {
+                            if (!shareMobileLocation && mobileLocationToken.length < 32) {
+                                mobileLocationInputError = "Ingresa el token SOS_MOBILE_LOCATION_TOKEN completo (mínimo 32 caracteres)."
+                                return@PhoneLocationCard
+                            }
+                            mobileLocationInputError = null
                             val wasSharing = shareMobileLocation
                             shareMobileLocation = !wasSharing
                             if (wasSharing) mobileLocationToken = ""
@@ -415,7 +424,7 @@ private fun PhoneLocationCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(if (enabled) SosRed.copy(alpha = 0.12f) else AppColors.primary, RoundedCornerShape(12.dp))
-                .clickable(enabled = enabled || token.length >= 32, onClick = onToggle)
+                .clickable(onClick = onToggle)
                 .padding(11.dp),
             contentAlignment = Alignment.Center,
         ) {
