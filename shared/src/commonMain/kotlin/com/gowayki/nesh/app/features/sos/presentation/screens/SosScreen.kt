@@ -3,6 +3,7 @@ package com.gowayki.nesh.app.features.sos.presentation.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,9 +23,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +47,7 @@ import com.gowayki.nesh.app.features.reports.presentation.components.OsmMap
 import com.gowayki.nesh.app.features.reports.presentation.components.OsmMapState
 import com.gowayki.nesh.app.features.reports.presentation.components.OsmMarker
 import com.gowayki.nesh.app.features.sos.domain.model.SosAlert
+import com.gowayki.nesh.app.features.sos.data.rememberPhoneLocation
 import com.gowayki.nesh.app.features.sos.presentation.StateFlow.SosAlertsViewModel
 import com.gowayki.nesh.core.config.AppConfig
 import com.gowayki.nesh.core.theme.src.AppTextStyles
@@ -59,6 +65,11 @@ fun SosScreen(
     mapVm: ReportsViewModel = viewModel { ReportsViewModel() },
 ) {
     val ui = vm.ui
+    var shareMobileLocation by remember { mutableStateOf(false) }
+    var mobileLocationToken by remember { mutableStateOf("") }
+    val phoneLocation = rememberPhoneLocation(
+        enabled = shareMobileLocation && AppConfig.SOS_API_BASE_URL.isNotBlank(),
+    )
     val map = remember { OsmMapState(center = LimaPlaza, zoom = 15) }
     val markers = remember(ui.alerts) {
         ui.alerts.filter { it.status == "ACTIVE" }
@@ -68,9 +79,33 @@ fun SosScreen(
         ui.alerts.filter { it.status == "ACTIVE" }
             .map { OsmGeoCircle(it.id, it.position, ALERT_RADIUS_METERS, showCenterMarker = true) }
     }
+    val activeAlertIds = remember(ui.alerts) {
+        ui.alerts.filter { it.status == "ACTIVE" }.map { it.id }
+    }
 
-    LaunchedEffect(ui.alerts) {
+    LaunchedEffect(activeAlertIds) {
         ui.alerts.firstOrNull { it.status == "ACTIVE" }?.let { map.flyTo(it.position) }
+    }
+    LaunchedEffect(
+        shareMobileLocation,
+        mobileLocationToken,
+        phoneLocation.location,
+        phoneLocation.capturedAtEpochMs,
+        phoneLocation.accuracyMeters,
+    ) {
+        val location = phoneLocation.location ?: return@LaunchedEffect
+        val capturedAt = phoneLocation.capturedAtEpochMs ?: return@LaunchedEffect
+        val accuracy = phoneLocation.accuracyMeters ?: return@LaunchedEffect
+        if (!shareMobileLocation || mobileLocationToken.length < 32 || accuracy > MAX_PHONE_ACCURACY_METERS) {
+            return@LaunchedEffect
+        }
+        vm.publishPhoneLocation(
+            token = mobileLocationToken,
+            deviceId = SOS_DEVICE_ID,
+            location = location,
+            capturedAtEpochMs = capturedAt,
+            accuracyMeters = accuracy,
+        )
     }
 
     Box(Modifier.fillMaxSize().background(AppColors.cream)) {
@@ -149,6 +184,21 @@ fun SosScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                if (AppConfig.SOS_API_BASE_URL.isNotBlank()) {
+                    PhoneLocationCard(
+                        enabled = shareMobileLocation,
+                        token = mobileLocationToken,
+                        permissionGranted = phoneLocation.permissionGranted,
+                        location = phoneLocation.location,
+                        error = phoneLocation.error,
+                        onTokenChange = { mobileLocationToken = it },
+                        onToggle = {
+                            val wasSharing = shareMobileLocation
+                            shareMobileLocation = !wasSharing
+                            if (wasSharing) mobileLocationToken = ""
+                        },
+                    )
+                }
                 ui.error?.let { error ->
                     InfoCard(text = "No se actualizan las alertas: $error")
                 }
@@ -313,4 +363,78 @@ private fun InfoCard(text: String, loading: Boolean = false) {
     }
 }
 
+@Composable
+private fun PhoneLocationCard(
+    enabled: Boolean,
+    token: String,
+    permissionGranted: Boolean,
+    location: com.gowayki.nesh.app.features.reports.domain.model.OsmLatLng?,
+    error: String?,
+    onTokenChange: (String) -> Unit,
+    onToggle: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AppColors.cream.copy(alpha = 0.98f), RoundedCornerShape(18.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "GPS de este teléfono → $SOS_DEVICE_ID",
+            style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
+            color = AppColors.ink,
+        )
+        Text(
+            when {
+                !enabled -> "Comparte la ubicación solo mientras esta pantalla permanezca abierta."
+                error != null -> error
+                !permissionGranted -> "Esperando permiso de ubicación…"
+                location == null -> "Esperando una lectura GPS reciente…"
+                else -> "GPS activo · ${location.lat}, ${location.lon}"
+            },
+            style = AppTextStyles.waykiMini,
+            color = if (error != null) SosRed else AppColors.slate,
+        )
+        if (!enabled) {
+            BasicTextField(
+                value = token,
+                onValueChange = onTokenChange,
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                textStyle = AppTextStyles.waykiMini.copy(color = AppColors.ink),
+                decorationBox = { innerTextField ->
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Color.White, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 11.dp, vertical = 10.dp),
+                    ) {
+                        if (token.isEmpty()) {
+                            Text("Token SOS_MOBILE_LOCATION_TOKEN", style = AppTextStyles.waykiMini, color = AppColors.slate)
+                        }
+                        innerTextField()
+                    }
+                },
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(if (enabled) SosRed.copy(alpha = 0.12f) else AppColors.primary, RoundedCornerShape(12.dp))
+                .clickable(enabled = enabled || token.length >= 32, onClick = onToggle)
+                .padding(11.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                if (enabled) "Dejar de compartir GPS" else "Compartir GPS mientras la app esté abierta",
+                style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                color = if (enabled) SosRed else AppColors.ink,
+            )
+        }
+    }
+}
+
 private const val ALERT_RADIUS_METERS = 250.0
+private const val MAX_PHONE_ACCURACY_METERS = 100f
+private const val SOS_DEVICE_ID = "ESP32-AQP-017"

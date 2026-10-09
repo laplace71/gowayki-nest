@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gowayki.nesh.app.features.reports.domain.model.LimaPlaza
+import com.gowayki.nesh.app.features.reports.domain.model.OsmLatLng
 import com.gowayki.nesh.app.features.sos.data.SosAlertsRepository
 import com.gowayki.nesh.app.features.sos.domain.model.SosAlert
 import com.gowayki.nesh.core.config.AppConfig
@@ -85,6 +86,24 @@ class SosAlertsViewModel : ViewModel() {
             } catch (error: Exception) {
                 ui = ui.copy(error = error.message ?: "No se pudo cerrar la alerta.")
             }
+        }
+    }
+
+    suspend fun publishPhoneLocation(
+        token: String,
+        deviceId: String,
+        location: OsmLatLng,
+        capturedAtEpochMs: Long,
+        accuracyMeters: Float,
+    ) {
+        val service = repository ?: return
+        try {
+            service.publishPhoneLocation(token, deviceId, location, capturedAtEpochMs, accuracyMeters)
+            ui = ui.copy(error = null)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            ui = ui.copy(error = error.message ?: "No se pudo compartir la ubicación del teléfono.")
         }
     }
 

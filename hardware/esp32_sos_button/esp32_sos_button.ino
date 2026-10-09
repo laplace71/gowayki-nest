@@ -134,7 +134,8 @@ void sendPendingAlert() {
   } else if (responseCode == 429) {
     Serial.println("Alerta repetida suprimida por el servidor (debounce).");
     clearPendingAlert();
-  } else if (responseCode >= 400 && responseCode < 500 && responseCode != 408) {
+  } else if (responseCode >= 400 && responseCode < 500 &&
+             responseCode != 408 && responseCode != 409) {
     Serial.printf("El servidor rechazó la alerta (HTTP %d); se descarta el evento.\n", responseCode);
     clearPendingAlert();
   } else {
