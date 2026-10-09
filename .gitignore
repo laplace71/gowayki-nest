@@ -2,6 +2,7 @@
 .kotlin
 .gradle
 **/build/
+sos-server/bin/
 xcuserdata
 !src/**/build/
 local.properties
