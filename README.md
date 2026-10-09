@@ -4,9 +4,9 @@
 
 La pantalla SOS reutiliza el mapa OSM de la app. Consulta el servicio cada 3 segundos,
 muestra solo alertas `ACTIVE` y cierra la zona del mapa al cerrar una alerta. Cada aura
-se proyecta como un radio geográfico de 250 m (no píxeles); la ubicación de prueba se
-marca explícitamente como ficticia. El mapa necesita Internet para descargar los tiles
-de OpenStreetMap.
+se proyecta como un radio geográfico de 250 m (no píxeles). En el flujo del botón físico,
+la posición se obtiene del GPS del teléfono, no de coordenadas de prueba. El mapa necesita
+Internet para descargar los tiles de OpenStreetMap.
 
 El repositorio no contenía backend ni firmware ESP32. Se añadió `:sos-server`, un
 servicio de desarrollo en Kotlin/JVM que expone:
@@ -36,35 +36,45 @@ este proyecto no tenía un historial SOS persistente.
    `SOS_API_BASE_URL` con `http://<IPv4-de-esta-PC>:8080`. Obtén la IPv4 con `ipconfig`.
    Usa la IPv4 real de la PC, no `localhost`, para que el teléfono y el ESP32 puedan
    alcanzar el servidor. No pongas tokens en `.env` de la app.
-2. En PowerShell, crea dos tokens aleatorios de al menos 32 caracteres: uno para la
-   placa y otro para el GPS móvil. No compartas ni subas los tokens:
+2. Para iniciar el backend oculto en segundo plano al iniciar sesión en Windows,
+   ejecuta una vez desde PowerShell en la raíz del repositorio:
 
    ```powershell
-   $deviceBytes = New-Object byte[] 32
-   [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($deviceBytes)
-   $deviceToken = [Convert]::ToBase64String($deviceBytes)
-   $mobileBytes = New-Object byte[] 32
-   [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($mobileBytes)
-   $mobileToken = [Convert]::ToBase64String($mobileBytes)
-   $env:SOS_DEVICE_TOKENS = "ESP32-AQP-017=$deviceToken"
-   $env:SOS_MOBILE_LOCATION_TOKEN = $mobileToken
-   # Copia cada token directamente desde esta consola a su destino local.
-   .\gradlew.bat :sos-server:run
+   .\scripts\wayki-sos-backend.ps1 -Action Install
    ```
 
-   Para varios dispositivos, asigna a `SOS_DEVICE_TOKENS` pares
-   `DEVICE_ID=token` separados por comas. El servidor falla al iniciar si no se
-   configuran.
+   El script lee el ID y el token de dispositivo del `secrets.h` local, solicita el
+   token móvil (el mismo que se pondrá en la app), compila el backend y registra una
+   tarea de inicio de sesión. Las credenciales quedan cifradas con DPAPI para el usuario
+   actual, fuera del repositorio. No hace falta mantener
+   `.\gradlew.bat :sos-server:run` abierto.
+
+   Para administrarlo:
+
+   ```powershell
+   .\scripts\wayki-sos-backend.ps1 -Action Status
+   .\scripts\wayki-sos-backend.ps1 -Action Start
+   .\scripts\wayki-sos-backend.ps1 -Action Stop
+   .\scripts\wayki-sos-backend.ps1 -Action Uninstall
+   ```
+
+   `Uninstall` quita la tarea y las credenciales protegidas. Si el puerto 8080 está
+   ocupado por otro proceso, el script lo informa y no lo detiene.
 3. Conecta el teléfono/ESP32 a la misma red Wi-Fi y ejecuta
    `.\gradlew.bat :androidApp:assembleDebug`. El tráfico HTTP local está permitido solo
    en el build `debug`; el build `release` exige HTTPS.
-4. Abre la pantalla SOS, escribe el valor local de `$mobileToken` en el campo del token
-   móvil y pulsa **Compartir GPS mientras la app esté abierta**. Android solicitará
+4. Abre la pantalla SOS, escribe el mismo token móvil ingresado durante `Install` en el
+   campo del token y pulsa **Compartir GPS mientras la app esté abierta**. Android solicitará
    permiso; permite ubicación precisa y deja abierta la pantalla. Al pulsar GPIO14, la
    ESP32 envía su ID y el servidor usa exclusivamente la última lectura GPS fresca del
    teléfono para crear la alerta. Si no hay ubicación fresca, el servidor devuelve `409`
    y no crea una emergencia; la placa conserva ese evento para reintentar. No se aceptan
    coordenadas simuladas ni se genera una alerta desde un botón virtual.
+
+Los logs quedan en `%LOCALAPPDATA%\Waykiu\SosBackend\server.out.log` y
+`server.err.log`. Windows Firewall puede requerir permitir TCP 8080 solo en el perfil
+Privado para que el móvil y la placa alcancen el servidor; no abras el puerto a redes
+públicas.
 
 ### Cargar el firmware de prueba ESP32
 
