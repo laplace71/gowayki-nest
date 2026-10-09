@@ -11,6 +11,7 @@ constexpr double TEST_LATITUDE = -12.0464;
 constexpr double TEST_LONGITUDE = -77.0422;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 40;
 constexpr uint32_t RETRY_INTERVAL_MS = 5000;
+constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;
 
 Preferences preferences;
 String pendingEventId;
@@ -22,6 +23,8 @@ uint32_t lastButtonChangeMs = 0;
 uint32_t lastSendAttemptMs = 0;
 uint32_t lastWifiAttemptMs = 0;
 uint32_t nextEventSequence = 0;
+bool wifiConnecting = false;
+bool wifiWasConnected = false;
 
 String utcTimestamp() {
   const time_t now = time(nullptr);
@@ -94,12 +97,42 @@ void readButton() {
 }
 
 void reconnectWifi() {
-  if (WiFi.status() == WL_CONNECTED || millis() - lastWifiAttemptMs < RETRY_INTERVAL_MS) {
+  const uint32_t now = millis();
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!wifiWasConnected) {
+      Serial.printf("Wi-Fi conectado; canal=%u; IPv4=%s\n", WiFi.channel(),
+                    WiFi.localIP().toString().c_str());
+    }
+    wifiConnecting = false;
+    wifiWasConnected = true;
     return;
   }
-  lastWifiAttemptMs = millis();
-  Serial.println("Wi-Fi desconectado; reintentando conexión.");
+
+  if (wifiWasConnected) {
+    Serial.println("Wi-Fi desconectado; se iniciará una nueva conexión.");
+    wifiWasConnected = false;
+    wifiConnecting = false;
+    lastWifiAttemptMs = now - RETRY_INTERVAL_MS;
+  }
+
+  if (wifiConnecting) {
+    if (now - lastWifiAttemptMs < WIFI_CONNECT_TIMEOUT_MS) {
+      return;
+    }
+    Serial.println("Wi-Fi no conectó en 20 s; se reiniciará el intento.");
+    WiFi.disconnect(false, false);
+    wifiConnecting = false;
+    lastWifiAttemptMs = now;
+    return;
+  }
+
+  if (now - lastWifiAttemptMs < RETRY_INTERVAL_MS) {
+    return;
+  }
+  Serial.println("Intentando Wi-Fi; la ESP32 requiere una red de 2.4 GHz.");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  lastWifiAttemptMs = now;
+  wifiConnecting = true;
 }
 
 void sendPendingAlert() {
@@ -112,7 +145,7 @@ void sendPendingAlert() {
   HTTPClient http;
   http.setTimeout(5000);
   if (!http.begin(SOS_API_URL)) {
-    Serial.println("No se pudo abrir la URL SOS; se conservará el evento para reintentar.");
+    Serial.println("No se pudo abrir la URL SOS; revisa la IPv4 del servidor.");
     return;
   }
 
@@ -156,9 +189,10 @@ void setup() {
   }
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  lastWifiAttemptMs = millis() - RETRY_INTERVAL_MS;
   configTime(0, 0, "pool.ntp.org", "time.google.com");
-  Serial.println("ESP32 SOS listo en TEST_MODE; GPIO14 se activa al conectarlo a GND.");
+  Serial.println("ESP32 SOS lista; TEST_MODE usa coordenadas ficticias solo si el móvil no aporta GPS.");
+  Serial.println("Botón físico: GPIO14 a GND. Conecta la placa a Wi-Fi 2.4 GHz.");
 }
 
 void loop() {

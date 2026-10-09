@@ -88,7 +88,13 @@ este proyecto no tenía un historial SOS persistente.
    servidor lo prioriza y el mapa identifica que la posición vino del teléfono.
    Reintentos conservan el ID; la placa filtra rebotes durante 40 ms.
    La ESP32 DevKitC V4 requiere Wi-Fi de 2.4 GHz; si el router separa las bandas,
-   configura el SSID/clave de 2.4 GHz.
+   configura el SSID/clave de 2.4 GHz. La red de la placa y la PC servidor deben
+   tener conectividad entre sí; una PC conectada a 5 GHz puede compartir la LAN con
+   la ESP32 en 2.4 GHz si el router permite esa comunicación.
+4. Espera el mensaje `Wi-Fi conectado`; el monitor indica el canal y la IPv4 recibida
+   por la placa. Si muestra reintentos cada 20 segundos, revisa SSID/clave, la banda
+   de 2.4 GHz y que la URL `SOS_API_URL` apunte a la IPv4 actual de la PC. Al pulsar,
+   comprueba el mensaje de alerta aceptada o el código HTTP de rechazo.
 
 Ejemplo de cuerpo que el ESP32 debe enviar (la fecha debe ser UTC ISO-8601 y el
 `eventId` debe mantenerse igual en todos los reintentos de esa pulsación):
