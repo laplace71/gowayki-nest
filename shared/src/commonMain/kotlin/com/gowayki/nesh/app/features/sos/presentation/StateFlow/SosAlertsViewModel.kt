@@ -18,6 +18,8 @@ data class SosAlertsUiState(
     val isConnected: Boolean = false,
     val isLoading: Boolean = true,
     val error: String? = null,
+    val locationShared: Boolean = false,
+    val locationError: String? = null,
 )
 
 class SosAlertsViewModel : ViewModel() {
@@ -82,11 +84,14 @@ class SosAlertsViewModel : ViewModel() {
         val service = repository ?: return
         try {
             service.publishPhoneLocation(token, deviceId, location, capturedAtEpochMs, accuracyMeters)
-            ui = ui.copy(error = null)
+            ui = ui.copy(locationShared = true, locationError = null)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            ui = ui.copy(error = error.message ?: "No se pudo compartir la ubicación del teléfono.")
+            ui = ui.copy(
+                locationShared = false,
+                locationError = error.message ?: "No se pudo compartir la ubicación del teléfono.",
+            )
         }
     }
 

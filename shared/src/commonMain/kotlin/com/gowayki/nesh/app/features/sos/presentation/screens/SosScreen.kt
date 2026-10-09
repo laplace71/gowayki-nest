@@ -189,7 +189,8 @@ fun SosScreen(
                         token = mobileLocationToken,
                         permissionGranted = phoneLocation.permissionGranted,
                         location = phoneLocation.location,
-                        error = phoneLocation.error,
+                        locationShared = ui.locationShared,
+                        error = phoneLocation.error ?: ui.locationError,
                         onTokenChange = { mobileLocationToken = it },
                         onToggle = {
                             val wasSharing = shareMobileLocation
@@ -352,6 +353,7 @@ private fun PhoneLocationCard(
     token: String,
     permissionGranted: Boolean,
     location: com.gowayki.nesh.app.features.reports.domain.model.OsmLatLng?,
+    locationShared: Boolean,
     error: String?,
     onTokenChange: (String) -> Unit,
     onToggle: () -> Unit,
@@ -370,11 +372,12 @@ private fun PhoneLocationCard(
         )
         Text(
             when {
-                !enabled -> "Comparte la ubicación solo mientras esta pantalla permanezca abierta."
+                !enabled -> "Ingresa el token móvil y pulsa «Compartir GPS». Solo se comparte mientras esta pantalla permanezca abierta."
                 error != null -> error
                 !permissionGranted -> "Esperando permiso de ubicación…"
                 location == null -> "Esperando una lectura GPS reciente…"
-                else -> "GPS activo · ${location.lat}, ${location.lon}"
+                !locationShared -> "GPS encontrado; enviando ubicación al servidor SOS…"
+                else -> "GPS compartido con el servidor · ${location.lat}, ${location.lon}"
             },
             style = AppTextStyles.waykiMini,
             color = if (error != null) SosRed else AppColors.slate,
@@ -400,6 +403,13 @@ private fun PhoneLocationCard(
                     }
                 },
             )
+            if (token.length < 32) {
+                Text(
+                    "El token SOS debe tener al menos 32 caracteres.",
+                    style = AppTextStyles.waykiMini,
+                    color = AppColors.slate,
+                )
+            }
         }
         Box(
             modifier = Modifier

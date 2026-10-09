@@ -180,6 +180,12 @@ void sendPendingAlert() {
 void setup() {
   Serial.begin(115200);
   pinMode(SOS_BUTTON_PIN, INPUT_PULLUP);
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+      Serial.printf("Wi-Fi desconectado; motivo del router=%u.\n",
+                    info.wifi_sta_disconnected.reason);
+    }
+  });
   preferences.begin("wayki-sos", false);
   nextEventSequence = preferences.getUInt("sequence", 0);
   pendingAlert = preferences.getBool("pending", false);
