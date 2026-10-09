@@ -6,6 +6,13 @@
 	<true/>
 	<key>CFBundleDisplayName</key>
 	<string>Gowayki Nesh</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Waykiu se conecta al servidor SOS en la red Wi-Fi local.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

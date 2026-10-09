@@ -24,6 +24,8 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsBytes
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -76,6 +78,8 @@ class ReportsViewModel : ViewModel() {
     // Cada tile 256x256x4 = 256 KB: tope 128 = ~32 MB máx.
 
     val tiles = mutableStateMapOf<String, ImageBitmap?>()
+    var tileLoadError by mutableStateOf(false)
+        private set
     private val tileOrder = ArrayDeque<String>()
     private val tilePermits = Semaphore(6)
     private var client: HttpClient? = null
@@ -92,13 +96,26 @@ class ReportsViewModel : ViewModel() {
                 // Descarga+decode fuera del hilo principal para no trabar el mapa.
                 launch(Dispatchers.Default) {
                     tilePermits.withPermit {
-                        runCatching {
-                            val bytes = osmClient()
-                                .get("https://tile.openstreetmap.org/$z/$wx/$ty.png") {
-                                    header("User-Agent", "WaykiNest/1.0 (contacto@wayki.pe)")
-                                }.bodyAsBytes()
-                            decodeTile(bytes)?.let { tilePut(key, it) }
+                        repeat(MAX_TILE_ATTEMPTS) { attempt ->
+                            try {
+                                val bytes = osmClient()
+                                    .get("https://tile.openstreetmap.org/$z/$wx/$ty.png") {
+                                        header("User-Agent", "WaykiNest/1.0 (contacto@wayki.pe)")
+                                    }.bodyAsBytes()
+                                val bitmap = decodeTile(bytes)
+                                    ?: error("OpenStreetMap devolvió un mosaico ilegible.")
+                                tilePut(key, bitmap)
+                                tileLoadError = false
+                                return@withPermit
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                if (attempt + 1 < MAX_TILE_ATTEMPTS) {
+                                    delay(TILE_RETRY_DELAY_MS * (attempt + 1))
+                                }
+                            }
                         }
+                        tileLoadError = true
                     }
                 }
             }
@@ -124,6 +141,11 @@ class ReportsViewModel : ViewModel() {
 
     private fun decodeTile(bytes: ByteArray): ImageBitmap? =
         runCatching { bytes.decodeToImageBitmap() }.getOrNull()
+
+    private companion object {
+        const val MAX_TILE_ATTEMPTS = 3
+        const val TILE_RETRY_DELAY_MS = 700L
+    }
 
     override fun onCleared() {
         client?.close()

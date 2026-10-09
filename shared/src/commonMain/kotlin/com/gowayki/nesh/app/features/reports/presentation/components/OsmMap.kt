@@ -47,6 +47,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
@@ -75,6 +76,12 @@ import kotlin.math.tan
 
 // El marcador lo arma la pantalla a partir del modelo de dominio.
 data class OsmMarker(val id: String, val pos: OsmLatLng, val type: OsmMarkerType)
+data class OsmGeoCircle(
+    val id: String,
+    val center: OsmLatLng,
+    val radiusMeters: Double,
+    val showCenterMarker: Boolean = false,
+)
 
 // ---------- Estado ----------
 
@@ -189,6 +196,7 @@ fun OsmMap(
     state: OsmMapState,
     tiles: Map<String, ImageBitmap?>,
     markers: List<OsmMarker>,
+    geoCircles: List<OsmGeoCircle> = emptyList(),
     selectedId: String?,
     route: List<OsmLatLng> = emptyList(),
     grayScale: Boolean = true,
@@ -398,6 +406,51 @@ fun OsmMap(
                         contentScale = ContentScale.FillBounds,
                         colorFilter = if (grayScale) gray else null,
                     )
+                }
+
+                // Los radios se expresan en metros y se proyectan según la
+                // latitud y el zoom para conservar su tamaño geográfico real.
+                if (geoCircles.isNotEmpty()) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        geoCircles.forEach { circle ->
+                            val centerX = (lonToWorldX(circle.center.lon, z) - left).dp.toPx()
+                            val centerY = (latToWorldY(circle.center.lat, z) - top).dp.toPx()
+                            val metersPerDp = kotlin.math.cos(circle.center.lat * PI / 180.0) *
+                                (2.0 * PI * 6_378_137.0) / (256.0 * 2.0.pow(z))
+                            if (metersPerDp <= 0.0) return@forEach
+                            val radiusPx = (circle.radiusMeters / metersPerDp).dp.toPx()
+                            if (centerX + radiusPx < 0f || centerY + radiusPx < 0f ||
+                                centerX - radiusPx > size.width || centerY - radiusPx > size.height
+                            ) return@forEach
+                            val center = Offset(centerX, centerY)
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colorStops = arrayOf(
+                                        0f to androidx.compose.ui.graphics.Color(0x99C62835),
+                                        0.35f to androidx.compose.ui.graphics.Color(0x66C62835),
+                                        0.72f to androidx.compose.ui.graphics.Color(0x22C62835),
+                                        1f to androidx.compose.ui.graphics.Color.Transparent,
+                                    ),
+                                    center = center,
+                                    radius = radiusPx,
+                                ),
+                                radius = radiusPx,
+                                center = center,
+                            )
+                            if (circle.showCenterMarker) {
+                                drawCircle(
+                                    color = androidx.compose.ui.graphics.Color.White,
+                                    radius = 9.dp.toPx(),
+                                    center = center,
+                                )
+                                drawCircle(
+                                    color = androidx.compose.ui.graphics.Color(0xFFC64049),
+                                    radius = 5.dp.toPx(),
+                                    center = center,
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // --- Ruta punteada animada entre reportes ---

@@ -103,7 +103,7 @@ fun WaykiNav(
             ReportsScreen(
                 onBack = { nav.popBackStack() },
                 onHomeClick = { /* TODO: home conductor */ },
-                onSosClick = { /* TODO: SOS */ },
+                onSosClick = { nav.navigate(Routes.SOS) },
                 onMapClick = { /* ya ests en reportes */ },
                 onSettingsClick = { /* TODO: ajustes */ },
                 onLogoutClick = { 

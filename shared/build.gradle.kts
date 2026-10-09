@@ -59,6 +59,8 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.kotlinx.json)
             implementation(libs.compose.icons.feather)
             implementation(libs.compose.icons.fontawesome)
             implementation(project.dependencies.platform(libs.supabase.bom))
@@ -107,6 +109,7 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
         val supabaseUrl = envMap.getValue("SUPABASE_URL").trim()
         val supabaseAnonKey = envMap.getValue("SUPABASE_ANON_KEY").trim()
         val googleWebClientId = envMap.getValue("GOOGLE_WEB_CLIENT_ID").trim()
+        val sosApiBaseUrl = envMap["SOS_API_BASE_URL"].orEmpty().trim()
 
         val content = """
             |package com.gowayki.nesh.core.config
@@ -125,6 +128,9 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
             |
             |    // Google OAuth Web Client ID (ComposeAuth / Credential Manager)
             |    const val GOOGLE_WEB_CLIENT_ID: String = "$googleWebClientId"
+            |
+            |    // URL no secreta del servidor SOS, accesible desde la red local.
+            |    const val SOS_API_BASE_URL: String = "$sosApiBaseUrl"
             |
             |    // Deep link OAuth (Auth scheme/host)
             |    const val AUTH_SCHEME: String = "com.gowayki.nesh"

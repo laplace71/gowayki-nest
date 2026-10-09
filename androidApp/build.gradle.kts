@@ -32,6 +32,7 @@ android {
         versionName = "1.0"
         manifestPlaceholders["supabaseAuthScheme"] = "com.gowayki.nesh"
         manifestPlaceholders["supabaseAuthHost"] = "login-callback"
+        manifestPlaceholders["usesCleartextTraffic"] = "false"
     }
     packaging {
         resources {
@@ -39,6 +40,9 @@ android {
         }
     }
     buildTypes {
+        debug {
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
