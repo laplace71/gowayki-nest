@@ -212,7 +212,10 @@ fun SosScreen(
                     InfoCard(text = "No se actualizan las alertas: $error")
                 }
                 if (mapVm.tileLoadError) {
-                    InfoCard(text = "No se pudo cargar el mapa de OpenStreetMap. Comprueba la conexión e inténtalo de nuevo.")
+                    InfoCard(
+                        text = "No se pudo cargar parte del mapa. Comprueba la conexión.",
+                        onRetry = map::retryTiles,
+                    )
                 }
 
                 if (ui.isLoading) {
@@ -329,7 +332,11 @@ private fun SosAlertCard(alert: SosAlert, onClose: () -> Unit) {
 }
 
 @Composable
-private fun InfoCard(text: String, loading: Boolean = false) {
+private fun InfoCard(
+    text: String,
+    loading: Boolean = false,
+    onRetry: (() -> Unit)? = null,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -352,7 +359,20 @@ private fun InfoCard(text: String, loading: Boolean = false) {
                 modifier = Modifier.size(14.dp),
             )
         }
-        Text(text, style = AppTextStyles.waykiMini, color = AppColors.ink)
+        Text(
+            text,
+            style = AppTextStyles.waykiMini,
+            color = AppColors.ink,
+            modifier = Modifier.weight(1f),
+        )
+        if (onRetry != null) {
+            Text(
+                "Reintentar",
+                style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                color = SosRed,
+                modifier = Modifier.clickable(onClick = onRetry),
+            )
+        }
     }
 }
 

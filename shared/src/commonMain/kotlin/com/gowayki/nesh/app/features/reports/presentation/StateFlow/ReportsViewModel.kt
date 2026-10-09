@@ -29,6 +29,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import kotlin.math.pow
 
@@ -87,10 +88,21 @@ class ReportsViewModel : ViewModel() {
     fun ensureTiles(z: Int, x0: Int, y0: Int, x1: Int, y1: Int) {
         val n = 2.0.pow(z).toInt()
         viewModelScope.launch {
-            for (tx in x0..x1) for (ty in y0..y1) {
-                val wx = ((tx % n) + n) % n
-                if (ty < 0 || ty >= n) continue
-                val key = "$z/$wx/$ty"
+            tileLoadError = false
+            val centerX = (x0 + x1) / 2.0
+            val centerY = (y0 + y1) / 2.0
+            val requestedTiles = buildList {
+                for (tx in x0..x1) for (ty in y0..y1) {
+                    val wx = ((tx % n) + n) % n
+                    if (ty in 0 until n) add(Triple("$z/$wx/$ty", tx, ty))
+                }
+            }.sortedBy { (_, tx, ty) ->
+                val dx = tx - centerX
+                val dy = ty - centerY
+                dx * dx + dy * dy
+            }
+
+            for ((key, tx, ty) in requestedTiles) {
                 if (tiles.containsKey(key)) continue
                 tilePut(key, null)
                 // Descarga+decode fuera del hilo principal para no trabar el mapa.
@@ -99,13 +111,14 @@ class ReportsViewModel : ViewModel() {
                         repeat(MAX_TILE_ATTEMPTS) { attempt ->
                             try {
                                 val bytes = osmClient()
-                                    .get("https://tile.openstreetmap.org/$z/$wx/$ty.png") {
+                                    .get("https://tile.openstreetmap.org/$key.png") {
                                         header("User-Agent", "WaykiNest/1.0 (contacto@wayki.pe)")
                                     }.bodyAsBytes()
                                 val bitmap = decodeTile(bytes)
                                     ?: error("OpenStreetMap devolvió un mosaico ilegible.")
-                                tilePut(key, bitmap)
-                                tileLoadError = false
+                                withContext(Dispatchers.Main) {
+                                    tilePut(key, bitmap)
+                                }
                                 return@withPermit
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
@@ -115,7 +128,11 @@ class ReportsViewModel : ViewModel() {
                                 }
                             }
                         }
-                        tileLoadError = true
+                        withContext(Dispatchers.Main) {
+                            tiles.remove(key)
+                            tileOrder.remove(key)
+                            tileLoadError = true
+                        }
                     }
                 }
             }
@@ -133,9 +150,9 @@ class ReportsViewModel : ViewModel() {
 
     private fun osmClient(): HttpClient = client ?: HttpClient {
         install(HttpTimeout) {
-            requestTimeoutMillis = 15_000
-            connectTimeoutMillis = 8_000
-            socketTimeoutMillis = 15_000
+            requestTimeoutMillis = 9_000
+            connectTimeoutMillis = 3_500
+            socketTimeoutMillis = 7_000
         }
     }.also { client = it }
 
@@ -143,8 +160,8 @@ class ReportsViewModel : ViewModel() {
         runCatching { bytes.decodeToImageBitmap() }.getOrNull()
 
     private companion object {
-        const val MAX_TILE_ATTEMPTS = 3
-        const val TILE_RETRY_DELAY_MS = 700L
+        const val MAX_TILE_ATTEMPTS = 2
+        const val TILE_RETRY_DELAY_MS = 300L
     }
 
     override fun onCleared() {

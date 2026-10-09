@@ -8,6 +8,12 @@ se proyecta como un radio geográfico de 250 m (no píxeles). En el flujo del bo
 la posición se obtiene del GPS del teléfono, no de coordenadas de prueba. El mapa necesita
 Internet para descargar los tiles de OpenStreetMap.
 
+Los mosaicos empiezan a descargarse al calcular el primer encuadre, priorizando los más
+cercanos al centro del mapa; las descargas y la decodificación ocurren fuera del hilo de
+interfaz. Se conservan en memoria durante la vida de la pantalla, los errores no bloquean
+reintentos y la acción **Reintentar** vuelve a solicitar las zonas que faltaron. Sin
+conexión a Internet, OpenStreetMap no puede entregar calles nuevas.
+
 El repositorio no contenía backend ni firmware ESP32. Se añadió `:sos-server`, un
 servicio de desarrollo en Kotlin/JVM que expone:
 

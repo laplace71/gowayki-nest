@@ -101,6 +101,12 @@ class OsmMapState(center: OsmLatLng, zoom: Int) {
         private set
     var flyId by mutableStateOf(0)
         private set
+    var tilesRefreshId by mutableStateOf(0)
+        private set
+
+    fun retryTiles() {
+        tilesRefreshId++
+    }
 
     private fun resetVisual() {
         scale = 1f
@@ -252,17 +258,8 @@ fun OsmMap(
         val y1 = floor((top + hDp) / 256.0).toInt() + 1
         val n = 2.0.pow(z).toInt()
 
-        // Los tiles esperan a que asiente el primer frame + animación de
-        // entrada: así la llegada al dashboard no compite con todo a la vez.
-        var tilesGo by remember { mutableStateOf(false) }
-        LaunchedEffect(Unit) {
-            kotlinx.coroutines.delay(350)
-            tilesGo = true
-        }
-
-        // Carga delegada al ViewModel (él decide si descarga o usa caché).
-        LaunchedEffect(z, x0, y0, x1, y1, tilesGo) {
-            if (!tilesGo) return@LaunchedEffect
+        // Empieza la descarga en cuanto se conoce el viewport, sin retraso fijo.
+        LaunchedEffect(z, x0, y0, x1, y1, state.tilesRefreshId) {
             onNeedTiles(z, x0, y0, x1, y1)
         }
 
@@ -497,7 +494,7 @@ fun OsmMap(
             }
 
             // --- Cargando tiles (fuera de la capa con escala) ---
-            if (tilesGo && missing > 0) {
+            if (missing > 0) {
                 Box(
                     Modifier.align(Alignment.TopStart).padding(8.dp)
                         .background(AppColors.cream.copy(alpha = 0.92f), RoundedCornerShape(10.dp))
