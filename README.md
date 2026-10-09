@@ -11,8 +11,11 @@ de OpenStreetMap.
 El repositorio no contenía backend ni firmware ESP32. Se añadió `:sos-server`, un
 servicio de desarrollo en Kotlin/JVM que expone:
 
-* `POST /api/sos/alerts`: registra la alerta; requiere `Authorization: Bearer <token>`
-  individual del dispositivo.
+* `POST /api/sos/alerts`: registra una pulsación autenticada del dispositivo y la
+  vincula a la última posición móvil válida con el mismo `deviceId`.
+* `POST /api/sos/locations`: recibe la posición del teléfono con el secreto
+  `SOS_MOBILE_LOCATION_TOKEN`. Solo acepta la LAN, lecturas de hasta 15 segundos y
+  precisión de hasta 100 m.
 * `GET /api/sos/alerts?status=ACTIVE`: entrega las alertas activas solo a clientes de
   redes privadas.
 * `GET /api/sos/alerts?status=CLOSED`: consulta las alertas cerradas del proceso actual.
@@ -33,14 +36,20 @@ este proyecto no tenía un historial SOS persistente.
    `SOS_API_BASE_URL` con `http://<IPv4-de-esta-PC>:8080`. Obtén la IPv4 con `ipconfig`.
    Usa la IPv4 real de la PC, no `localhost`, para que el teléfono y el ESP32 puedan
    alcanzar el servidor. No pongas tokens en `.env` de la app.
-2. En PowerShell, crea un token aleatorio de al menos 32 caracteres por placa y arranca
-   el servicio. No compartas ni subas los tokens:
+2. En PowerShell, crea dos tokens aleatorios de al menos 32 caracteres: uno para la
+   placa y otro para el GPS móvil. No compartas ni subas los tokens:
 
    ```powershell
-   $bytes = New-Object byte[] 32
-   [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-   $token = [Convert]::ToBase64String($bytes)
-   $env:SOS_DEVICE_TOKENS = "ESP32-AQP-017=$token"
+   $deviceBytes = New-Object byte[] 32
+   [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($deviceBytes)
+   $deviceToken = [Convert]::ToBase64String($deviceBytes)
+   $mobileBytes = New-Object byte[] 32
+   [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($mobileBytes)
+   $mobileToken = [Convert]::ToBase64String($mobileBytes)
+   $env:SOS_DEVICE_TOKENS = "ESP32-AQP-017=$deviceToken"
+   $env:SOS_MOBILE_LOCATION_TOKEN = $mobileToken
+   Write-Output "Token de dispositivo (copiar a secrets.h): $deviceToken"
+   Write-Output "Token móvil (pegar en la pantalla SOS): $mobileToken"
    .\gradlew.bat :sos-server:run
    ```
 
@@ -50,24 +59,32 @@ este proyecto no tenía un historial SOS persistente.
 3. Conecta el teléfono/ESP32 a la misma red Wi-Fi y ejecuta
    `.\gradlew.bat :androidApp:assembleDebug`. El tráfico HTTP local está permitido solo
    en el build `debug`; el build `release` exige HTTPS.
-4. Abre la pantalla SOS. Si `SOS_API_BASE_URL` está vacío, el botón **Simular alerta
-   SOS** crea una alerta ficticia en las coordenadas de muestra existentes de Lima.
-   Si la URL está configurada, la pantalla consulta el backend y muestra errores de
-   conexión/reintenta en el siguiente ciclo.
+4. Abre la pantalla SOS, escribe el valor local de `$mobileToken` en el campo del token
+   móvil y pulsa **Compartir GPS mientras la app esté abierta**. Android solicitará
+   permiso; permite ubicación precisa y deja abierta la pantalla. Al pulsar GPIO14, la
+   ESP32 envía su ID y el servidor añade la última lectura GPS fresca de ese dispositivo.
+   Si no hay ubicación fresca, el servidor devuelve `409` y no crea una emergencia real;
+   la placa conserva ese evento para reintentar.
+   Para probar únicamente las coordenadas ficticias del firmware, se puede iniciar el
+   servidor con `$env:SOS_ALLOW_SIMULATED = "true"`; no lo habilites en uso real.
 
 ### Cargar el firmware de prueba ESP32
 
 1. Copia `hardware/esp32_sos_button/secrets.example.h` como
    `hardware/esp32_sos_button/secrets.h`; rellena localmente Wi-Fi, IPv4 de la PC,
-   identificador y el mismo token que configuraste en `SOS_DEVICE_TOKENS`.
+   identificador y el token de dispositivo de `SOS_DEVICE_TOKENS`. El archivo de
+   ejemplo contiene solo marcadores y `secrets.h` está excluido de Git.
 2. Instala el paquete de placas **esp32 by Espressif Systems** en Arduino IDE. Abre
    `hardware/esp32_sos_button/esp32_sos_button.ino`, selecciona **ESP32 Dev Module** y
    el puerto USB de la ESP32 DevKitC V4. El sketch usa `WiFi`, `HTTPClient` y
    `Preferences` incluidos en ese paquete; no necesita librerías Arduino adicionales.
-3. Carga el programa y abre Serial Monitor a 115200 baudios. El pulsador entre GPIO14
-   y GND genera una alerta únicamente después de sincronizar la hora UTC. La app la
-   etiqueta como simulada. Reintentos de red conservan el mismo ID; la placa también
-   filtra rebotes durante 40 ms.
+3. Carga el programa y abre Serial Monitor a 115200 baudios. El botón entre GPIO14 y
+   GND genera el evento después de sincronizar UTC. El sketch de prueba incluye
+   coordenadas de muestra marcadas como simuladas: si hay un GPS móvil fresco, el
+   servidor lo prioriza y el mapa identifica que la posición vino del teléfono.
+   Reintentos conservan el ID; la placa filtra rebotes durante 40 ms.
+   La ESP32 DevKitC V4 requiere Wi-Fi de 2.4 GHz; si el router separa las bandas,
+   configura el SSID/clave de 2.4 GHz.
 
 Ejemplo de cuerpo que el ESP32 debe enviar (la fecha debe ser UTC ISO-8601 y el
 `eventId` debe mantenerse igual en todos los reintentos de esa pulsación):
@@ -83,14 +100,10 @@ Ejemplo de cuerpo que el ESP32 debe enviar (la fecha debe ser UTC ISO-8601 y el
 }
 ```
 
-Ese ejemplo usa coordenadas de muestra ya definidas en la app; no es una emergencia ni
-la ubicación del hardware. El sketch de
-`hardware/esp32_sos_button/esp32_sos_button.ino` está limitado a modo de prueba, usa el
-botón GPIO 14 conectado entre el pin y GND, y siempre envía `simulated: true`. La placa
-informada es ESP32 DevKitC V4. No hay módulo GPS conectado ni otra fuente de ubicación,
-así que el sketch no reporta ubicaciones reales y el mapa identifica esas alertas como
-simuladas. Para ubicar emergencias reales falta agregar un GPS y seleccionar su modelo,
-cableado UART y velocidad antes de habilitar coordenadas reales.
+Ese ejemplo de coordenadas es ficticio. No hay GPS en la placa: la fuente de ubicación
+real de este flujo es el teléfono Android, mientras la pantalla SOS permanece abierta,
+el permiso está concedido, el móvil está conectado a la Wi-Fi local y comparte una
+lectura fresca. iOS todavía no tiene implementado el lector GPS nativo.
 
 ## Iconos (SVG → XML)
 
