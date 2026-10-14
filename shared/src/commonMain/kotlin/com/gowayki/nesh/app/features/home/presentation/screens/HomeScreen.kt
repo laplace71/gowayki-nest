@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackground
+import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
@@ -63,6 +64,7 @@ fun HomeScreen(
     onNotificationsClick: () -> Unit = {},
     onBack: () -> Unit = {},
     onSosClick: () -> Unit = {},
+    onCommunicationClick: () -> Unit = {},
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
@@ -82,6 +84,10 @@ fun HomeScreen(
                     onSosClick = {
                         coroutineScope.launch { drawerState.close() }
                         onSosClick()
+                    },
+                    onCommunicationClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onCommunicationClick()
                     }
                 )
             }
@@ -304,96 +310,13 @@ fun HomeScreen(
         // Bottom Navigation Bar anchored to the bottom
         WaykiBottomNav(
             selectedTab = 0, // "Inicio" is selected by default in Home
+            onTabSelected = { tab ->
+                if (tab == 1) onCommunicationClick()
+            },
             modifier = Modifier.align(Alignment.BottomCenter)
         )
     }
 }
-}
-
-@Composable
-fun WaykiBottomNav(
-    selectedTab: Int = 0,
-    onTabSelected: (Int) -> Unit = {},
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpacing.pageHorizontal, vertical = AppSpacing.pageHorizontal)
-            .shadow(24.dp, RoundedCornerShape(32.dp), spotColor = AppColors.ink.copy(alpha = 0.4f))
-            .background(
-                color = AppColors.slate.copy(alpha = 0.95f), 
-                shape = RoundedCornerShape(32.dp)
-            )
-            .padding(horizontal = 8.dp, vertical = 8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            BottomNavItem(
-                icon = FeatherIcons.Home,
-                label = "Inicio",
-                isSelected = selectedTab == 0,
-                onClick = { onTabSelected(0) }
-            )
-            BottomNavItem(
-                // Using Radio/Wifi equivalent from Feather
-                icon = FeatherIcons.Radio,
-                label = "Comunicacion",
-                isSelected = selectedTab == 1,
-                onClick = { onTabSelected(1) }
-            )
-            BottomNavItem(
-                // Using GitCommit or similar for the route icon
-                icon = FeatherIcons.GitCommit,
-                label = "Recorrido",
-                isSelected = selectedTab == 2,
-                onClick = { onTabSelected(2) }
-            )
-            BottomNavItem(
-                icon = FeatherIcons.Map,
-                label = "Mapa",
-                isSelected = selectedTab == 3,
-                onClick = { onTabSelected(3) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun BottomNavItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    val bgColor = if (isSelected) AppColors.mauve else androidx.compose.ui.graphics.Color.Transparent
-    val contentColor = if (isSelected) AppColors.ink else AppColors.cream
-
-    Box(
-        modifier = Modifier
-            .background(bgColor, RoundedCornerShape(24.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = contentColor,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = label,
-                style = AppTextStyles.labelSmall.copy(fontSize = 10.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal),
-                color = contentColor
-            )
-        }
-    }
 }
 
 @Composable
@@ -497,7 +420,14 @@ private fun BusCard(
 
 
 @Composable
-fun WaykiSidebarContent(onClose: () -> Unit, onSosClick: () -> Unit = {}) {
+fun WaykiSidebarContent(
+    onClose: () -> Unit,
+    onSosClick: () -> Unit = {},
+    onInicioClick: () -> Unit = {},
+    onCommunicationClick: () -> Unit = {},
+    onRecorridoClick: () -> Unit = {},
+    onMapaClick: () -> Unit = {}
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -563,25 +493,29 @@ fun WaykiSidebarContent(onClose: () -> Unit, onSosClick: () -> Unit = {}) {
             icon = FeatherIcons.Home, 
             title = "Inicio", 
             subtitle = "Tu ritmo y próximo control", 
-            isSelected = false
+            isSelected = false,
+            onClick = onInicioClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.Radio, 
             title = "Comunicación", 
             subtitle = "Canal de la Línea 7", 
-            isSelected = false
+            isSelected = false,
+            onClick = onCommunicationClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.GitCommit, 
             title = "Recorrido", 
             subtitle = "Tus recorridos y horarios", 
-            isSelected = false
+            isSelected = false,
+            onClick = onRecorridoClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.Map, 
             title = "Mapa", 
             subtitle = "Informacion de tus rutas", 
-            isSelected = true
+            isSelected = true,
+            onClick = onMapaClick
         )
         
         Spacer(modifier = Modifier.height(24.dp))
@@ -649,7 +583,8 @@ private fun DrawerMenuItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,
-    isSelected: Boolean
+    isSelected: Boolean,
+    onClick: () -> Unit = {}
 ) {
     val bgColor = if (isSelected) AppColors.ink else androidx.compose.ui.graphics.Color.Transparent
     val contentColor = if (isSelected) AppColors.cream else AppColors.ink
@@ -659,7 +594,7 @@ private fun DrawerMenuItem(
         modifier = Modifier
             .fillMaxWidth()
             .background(bgColor, RoundedCornerShape(16.dp))
-            .clickable { }
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

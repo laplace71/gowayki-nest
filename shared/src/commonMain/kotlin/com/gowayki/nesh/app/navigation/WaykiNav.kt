@@ -116,6 +116,20 @@ fun WaykiNav(
                 onMenuClick = { /* TODO: abrir menu */ },
                 onNotificationsClick = { /* TODO: notificaciones */ },
                 onBack = { nav.popBackStack() },
+                onSosClick = { nav.navigate(Routes.SOS) },
+                onCommunicationClick = { nav.navigate(Routes.COMMUNICATION) }
+            )
+        }
+        
+        composable(Routes.COMMUNICATION) {
+            com.gowayki.nesh.app.features.communication.presentation.screens.CommunicationScreen(
+                onTabSelected = { tab ->
+                    if (tab == 0) {
+                        nav.navigate(Routes.HOME) {
+                            popUpTo(Routes.HOME) { inclusive = true }
+                        }
+                    }
+                },
                 onSosClick = { nav.navigate(Routes.SOS) }
             )
         }
