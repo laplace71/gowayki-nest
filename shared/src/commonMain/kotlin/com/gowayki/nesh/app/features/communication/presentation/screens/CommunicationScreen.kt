@@ -71,7 +71,12 @@ fun CommunicationScreen(
     onNotificationsClick: () -> Unit = {},
     onTabSelected: (Int) -> Unit = {},
     onConversationClick: (String) -> Unit = {},
-    onSosClick: () -> Unit = {}
+    onSosClick: () -> Unit = {},
+    onInicioClick: () -> Unit = {},
+    onRecorridoClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
+    onSupportClick: () -> Unit = {},
+    onLogoutClick: () -> Unit = {}
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
@@ -172,6 +177,29 @@ fun CommunicationScreen(
                     onSosClick = {
                         coroutineScope.launch { drawerState.close() }
                         onSosClick()
+                    },
+                    onInicioClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onInicioClick()
+                    },
+                    onCommunicationClick = {
+                        coroutineScope.launch { drawerState.close() }
+                    },
+                    onRecorridoClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onRecorridoClick()
+                    },
+                    onSettingsClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onSettingsClick()
+                    },
+                    onSupportClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onSupportClick()
+                    },
+                    onLogoutClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onLogoutClick()
                     }
                 )
             }

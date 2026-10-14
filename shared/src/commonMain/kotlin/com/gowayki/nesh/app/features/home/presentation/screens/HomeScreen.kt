@@ -65,6 +65,10 @@ fun HomeScreen(
     onBack: () -> Unit = {},
     onSosClick: () -> Unit = {},
     onCommunicationClick: () -> Unit = {},
+    onRecorridoClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
+    onSupportClick: () -> Unit = {},
+    onLogoutClick: () -> Unit = {},
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
@@ -85,9 +89,28 @@ fun HomeScreen(
                         coroutineScope.launch { drawerState.close() }
                         onSosClick()
                     },
+                    onInicioClick = {
+                        coroutineScope.launch { drawerState.close() }
+                    },
                     onCommunicationClick = {
                         coroutineScope.launch { drawerState.close() }
                         onCommunicationClick()
+                    },
+                    onRecorridoClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onRecorridoClick()
+                    },
+                    onSettingsClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onSettingsClick()
+                    },
+                    onSupportClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onSupportClick()
+                    },
+                    onLogoutClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onLogoutClick()
                     }
                 )
             }
@@ -167,6 +190,7 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .shadow(16.dp, RoundedCornerShape(24.dp), spotColor = AppColors.ink.copy(alpha = 0.5f))
                     .background(AppColors.ink, RoundedCornerShape(24.dp))
+                    .clickable { onRecorridoClick() }
                     .padding(24.dp)
             ) {
                 Row(modifier = Modifier.height(IntrinsicSize.Min)) {
@@ -312,6 +336,7 @@ fun HomeScreen(
             selectedTab = 0, // "Inicio" is selected by default in Home
             onTabSelected = { tab ->
                 if (tab == 1) onCommunicationClick()
+                else if (tab == 2) onRecorridoClick()
             },
             modifier = Modifier.align(Alignment.BottomCenter)
         )
@@ -426,7 +451,10 @@ fun WaykiSidebarContent(
     onInicioClick: () -> Unit = {},
     onCommunicationClick: () -> Unit = {},
     onRecorridoClick: () -> Unit = {},
-    onMapaClick: () -> Unit = {}
+    onMapaClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
+    onSupportClick: () -> Unit = {},
+    onLogoutClick: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -526,9 +554,9 @@ fun WaykiSidebarContent(
         Spacer(modifier = Modifier.height(24.dp))
         
         // 6. Preferencias y ayuda
-        DrawerSimpleItem(icon = FeatherIcons.Sliders, title = "Configuración")
-        DrawerSimpleItem(icon = FeatherIcons.HelpCircle, title = "Soporte técnico")
-        DrawerSimpleItem(icon = FeatherIcons.LogOut, title = "Cerrar sesión")
+        DrawerSimpleItem(icon = FeatherIcons.Sliders, title = "Configuración", onClick = onSettingsClick)
+        DrawerSimpleItem(icon = FeatherIcons.HelpCircle, title = "Soporte técnico", onClick = onSupportClick)
+        DrawerSimpleItem(icon = FeatherIcons.LogOut, title = "Cerrar sesión", onClick = onLogoutClick)
         
         Spacer(modifier = Modifier.weight(1f))
         Spacer(modifier = Modifier.height(32.dp)) // ensure space if small screen
@@ -624,12 +652,13 @@ private fun DrawerMenuItem(
 @Composable
 private fun DrawerSimpleItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String
+    title: String,
+    onClick: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { }
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

@@ -117,7 +117,14 @@ fun WaykiNav(
                 onNotificationsClick = { /* TODO: notificaciones */ },
                 onBack = { nav.popBackStack() },
                 onSosClick = { nav.navigate(Routes.SOS) },
-                onCommunicationClick = { nav.navigate(Routes.COMMUNICATION) }
+                onCommunicationClick = { nav.navigate(Routes.COMMUNICATION) },
+                onRecorridoClick = { nav.navigate(Routes.ROUTE_DETAIL) },
+                onSettingsClick = { nav.navigate(Routes.SETTINGS) },
+                onLogoutClick = {
+                    nav.navigate(Routes.WELCOME) {
+                        popUpTo(Routes.WELCOME) { inclusive = true }
+                    }
+                }
             )
         }
         
@@ -128,9 +135,44 @@ fun WaykiNav(
                         nav.navigate(Routes.HOME) {
                             popUpTo(Routes.HOME) { inclusive = true }
                         }
+                    } else if (tab == 2) {
+                        nav.navigate(Routes.ROUTE_DETAIL)
                     }
                 },
-                onSosClick = { nav.navigate(Routes.SOS) }
+                onSosClick = { nav.navigate(Routes.SOS) },
+                onInicioClick = {
+                    nav.navigate(Routes.HOME) {
+                        popUpTo(Routes.HOME) { inclusive = true }
+                    }
+                },
+                onRecorridoClick = { nav.navigate(Routes.ROUTE_DETAIL) },
+                onSettingsClick = { nav.navigate(Routes.SETTINGS) },
+                onLogoutClick = {
+                    nav.navigate(Routes.WELCOME) {
+                        popUpTo(Routes.WELCOME) { inclusive = true }
+                    }
+                }
+            )
+        }
+        
+        composable(Routes.ROUTE_DETAIL) {
+            com.gowayki.nesh.app.features.route_detail.presentation.screens.RouteDetailScreen(
+                onBack = { nav.popBackStack() },
+                onTabSelected = { tab ->
+                    if (tab == 0) {
+                        nav.navigate(Routes.HOME) {
+                            popUpTo(Routes.HOME) { inclusive = true }
+                        }
+                    } else if (tab == 1) {
+                        nav.navigate(Routes.COMMUNICATION)
+                    }
+                }
+            )
+        }
+        
+        composable(Routes.SETTINGS) {
+            com.gowayki.nesh.app.features.settings.presentation.screens.SettingsScreen(
+                onBack = { nav.popBackStack() }
             )
         }
         

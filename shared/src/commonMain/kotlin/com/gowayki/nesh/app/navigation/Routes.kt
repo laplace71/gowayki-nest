@@ -12,4 +12,6 @@ object Routes {
     const val HOME = "home"
     const val SOS = "sos"
     const val COMMUNICATION = "communication"
+    const val ROUTE_DETAIL = "route_detail"
+    const val SETTINGS = "settings"
 }
