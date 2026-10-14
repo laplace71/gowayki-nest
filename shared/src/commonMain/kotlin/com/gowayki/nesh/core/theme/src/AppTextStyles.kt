@@ -1,4 +1,4 @@
-﻿package com.gowayki.nesh.core.theme.src
+package com.gowayki.nesh.core.theme.src
 
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
@@ -206,6 +206,20 @@ object AppTextStyles {
             fontSize = 38.sp, lineHeight = 46.sp,
         )
 
+    val waykiHeader
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiUnbounded, fontWeight = FontWeight.Bold,
+            fontSize = 25.sp, lineHeight = 35.sp,
+        )
+
+    val waykiNumpadDigit
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiUnbounded, fontWeight = FontWeight.Bold,
+            fontSize = 22.sp, lineHeight = 28.sp,
+        )
+
     val waykiHeroTitle
         @Composable
         get() = TextStyle(
@@ -274,5 +288,12 @@ object AppTextStyles {
         get() = TextStyle(
             fontFamily = waykiInter, fontWeight = FontWeight.Medium,
             fontSize = 12.sp,
+        )
+
+    val waykiBrand
+        @Composable
+        get() = TextStyle(
+            fontFamily = waykiUnbounded, fontWeight = FontWeight.Bold,
+            fontSize = 15.sp, lineHeight = 18.6.sp,
         )
 }

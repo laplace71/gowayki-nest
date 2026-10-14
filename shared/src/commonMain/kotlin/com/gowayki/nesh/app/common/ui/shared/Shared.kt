@@ -51,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
@@ -158,20 +159,24 @@ fun WaykiBackground(
 
 // ---------- Títulos ----------
 @Composable
-fun WaykiTitle(text: String, modifier: Modifier = Modifier) {
+fun WaykiTitle(text: String, modifier: Modifier = Modifier, textAlign: TextAlign? = null) {
     Text(
-        text, modifier,
+        text = text,
+        modifier = modifier,
         color = AppColors.onBackground,
-        style = AppTextStyles.waykiTitle,
+        style = AppTextStyles.waykiHeader,
+        textAlign = textAlign
     )
 }
 
 @Composable
-fun WaykiSubtitle(text: String, modifier: Modifier = Modifier) {
+fun WaykiSubtitle(text: String, modifier: Modifier = Modifier, textAlign: TextAlign? = null) {
     Text(
-        text, modifier,
+        text = text,
+        modifier = modifier,
         color = AppColors.onSurfaceMuted,
         style = AppTextStyles.waykiSubtitle,
+        textAlign = textAlign
     )
 }
 
@@ -251,7 +256,11 @@ fun WaykiBackButton(
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier.size(AppSpacing.backButtonSize).clickable(onClick = onClick),
+        modifier = modifier
+            .size(AppSpacing.backButtonSize)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(AppColors.surfaceVariant.copy(alpha = 0.5f))
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.size(AppSpacing.backArrowSize)) {

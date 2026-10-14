@@ -26,7 +26,7 @@ object AppColors {
     val slate = Color(0xFF7C7E9D)
 
     /** Pizarra oscura: textos y tarjeta hero. */
-    val ink   = Color(0xFF4C5372)
+    val ink   = Color(0xFF2D2B4E)
 
     // ── Roles semanticos (reutilizan solo los 5 colores) ─────────────────────
 
