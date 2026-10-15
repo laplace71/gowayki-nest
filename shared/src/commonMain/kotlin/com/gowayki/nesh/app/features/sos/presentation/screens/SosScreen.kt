@@ -2,7 +2,6 @@ package com.gowayki.nesh.app.features.sos.presentation.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +20,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -47,6 +45,7 @@ import com.gowayki.nesh.app.features.reports.presentation.components.OsmMapState
 import com.gowayki.nesh.app.features.reports.presentation.components.OsmMarker
 import com.gowayki.nesh.app.features.sos.domain.model.SosAlert
 import com.gowayki.nesh.app.features.sos.data.rememberPhoneLocation
+import com.gowayki.nesh.app.features.sos.data.rememberSosBleButton
 import com.gowayki.nesh.app.features.sos.presentation.StateFlow.SosAlertsViewModel
 import com.gowayki.nesh.core.config.AppConfig
 import com.gowayki.nesh.core.theme.src.AppTextStyles
@@ -65,10 +64,12 @@ fun SosScreen(
 ) {
     val ui = vm.ui
     var shareMobileLocation by remember { mutableStateOf(false) }
-    var mobileLocationToken by remember { mutableStateOf("") }
-    var mobileLocationInputError by remember { mutableStateOf<String?>(null) }
+    var bleButtonEnabled by remember { mutableStateOf(false) }
     val phoneLocation = rememberPhoneLocation(
         enabled = shareMobileLocation && AppConfig.SOS_API_BASE_URL.isNotBlank(),
+    )
+    val bleButton = rememberSosBleButton(
+        enabled = bleButtonEnabled && AppConfig.SOS_API_BASE_URL.isNotBlank(),
     )
     val map = remember { OsmMapState(center = LimaPlaza, zoom = 15) }
     val markers = remember(ui.alerts) {
@@ -88,7 +89,6 @@ fun SosScreen(
     }
     LaunchedEffect(
         shareMobileLocation,
-        mobileLocationToken,
         phoneLocation.location,
         phoneLocation.capturedAtEpochMs,
         phoneLocation.accuracyMeters,
@@ -96,11 +96,10 @@ fun SosScreen(
         val location = phoneLocation.location ?: return@LaunchedEffect
         val capturedAt = phoneLocation.capturedAtEpochMs ?: return@LaunchedEffect
         val accuracy = phoneLocation.accuracyMeters ?: return@LaunchedEffect
-        if (!shareMobileLocation || mobileLocationToken.length < 32 || accuracy > MAX_PHONE_ACCURACY_METERS) {
+        if (!shareMobileLocation || accuracy > MAX_PHONE_ACCURACY_METERS) {
             return@LaunchedEffect
         }
         vm.publishPhoneLocation(
-            token = mobileLocationToken,
             deviceId = SOS_DEVICE_ID,
             location = location,
             capturedAtEpochMs = capturedAt,
@@ -165,7 +164,7 @@ fun SosScreen(
                             text = if (AppConfig.SOS_API_BASE_URL.isBlank()) {
                                 "Servidor sin configurar"
                             } else if (ui.isConnected) {
-                                "En línea"
+                                "Servidor en línea"
                             } else {
                                 "Sin conexión"
                             },
@@ -185,27 +184,23 @@ fun SosScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (AppConfig.SOS_API_BASE_URL.isNotBlank()) {
+                    BleButtonCard(
+                        enabled = bleButtonEnabled,
+                        connected = bleButton.connected,
+                        connecting = bleButton.connecting,
+                        deviceName = bleButton.deviceName,
+                        supported = bleButton.supported,
+                        lastForwardedEventId = bleButton.lastForwardedEventId,
+                        error = bleButton.error,
+                        onToggle = { bleButtonEnabled = !bleButtonEnabled },
+                    )
                     PhoneLocationCard(
                         enabled = shareMobileLocation,
-                        token = mobileLocationToken,
                         permissionGranted = phoneLocation.permissionGranted,
                         location = phoneLocation.location,
                         locationShared = ui.locationShared,
-                        error = phoneLocation.error ?: ui.locationError ?: mobileLocationInputError,
-                        onTokenChange = {
-                            mobileLocationToken = it
-                            mobileLocationInputError = null
-                        },
-                        onToggle = {
-                            if (!shareMobileLocation && mobileLocationToken.length < 32) {
-                                mobileLocationInputError = "Ingresa el token SOS_MOBILE_LOCATION_TOKEN completo (mínimo 32 caracteres)."
-                                return@PhoneLocationCard
-                            }
-                            mobileLocationInputError = null
-                            val wasSharing = shareMobileLocation
-                            shareMobileLocation = !wasSharing
-                            if (wasSharing) mobileLocationToken = ""
-                        },
+                        error = phoneLocation.error ?: ui.locationError,
+                        onToggle = { shareMobileLocation = !shareMobileLocation },
                     )
                 }
                 ui.error?.let { error ->
@@ -379,12 +374,10 @@ private fun InfoCard(
 @Composable
 private fun PhoneLocationCard(
     enabled: Boolean,
-    token: String,
     permissionGranted: Boolean,
     location: com.gowayki.nesh.app.features.reports.domain.model.OsmLatLng?,
     locationShared: Boolean,
     error: String?,
-    onTokenChange: (String) -> Unit,
     onToggle: () -> Unit,
 ) {
     Column(
@@ -401,7 +394,7 @@ private fun PhoneLocationCard(
         )
         Text(
             when {
-                !enabled -> "Ingresa el token móvil y pulsa «Compartir GPS». Solo se comparte mientras esta pantalla permanezca abierta."
+                !enabled -> "Para que funcionen las alertas del botón físico, pulsa «Compartir GPS». «Servidor en línea» solo confirma la conexión; sin GPS reciente no se crea una alerta."
                 error != null -> error
                 !permissionGranted -> "Esperando permiso de ubicación…"
                 location == null -> "Esperando una lectura GPS reciente…"
@@ -411,35 +404,6 @@ private fun PhoneLocationCard(
             style = AppTextStyles.waykiMini,
             color = if (error != null) SosRed else AppColors.slate,
         )
-        if (!enabled) {
-            BasicTextField(
-                value = token,
-                onValueChange = onTokenChange,
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                textStyle = AppTextStyles.waykiMini.copy(color = AppColors.ink),
-                decorationBox = { innerTextField ->
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .background(Color.White, RoundedCornerShape(10.dp))
-                            .padding(horizontal = 11.dp, vertical = 10.dp),
-                    ) {
-                        if (token.isEmpty()) {
-                            Text("Token SOS_MOBILE_LOCATION_TOKEN", style = AppTextStyles.waykiMini, color = AppColors.slate)
-                        }
-                        innerTextField()
-                    }
-                },
-            )
-            if (token.length < 32) {
-                Text(
-                    "El token SOS debe tener al menos 32 caracteres.",
-                    style = AppTextStyles.waykiMini,
-                    color = AppColors.slate,
-                )
-            }
-        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -453,6 +417,61 @@ private fun PhoneLocationCard(
                 style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
                 color = if (enabled) SosRed else AppColors.ink,
             )
+        }
+    }
+}
+
+@Composable
+private fun BleButtonCard(
+    enabled: Boolean,
+    connected: Boolean,
+    connecting: Boolean,
+    deviceName: String?,
+    supported: Boolean,
+    lastForwardedEventId: String?,
+    error: String?,
+    onToggle: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AppColors.cream.copy(alpha = 0.98f), RoundedCornerShape(18.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "Botón físico $SOS_DEVICE_ID (Bluetooth)",
+            style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
+            color = AppColors.ink,
+        )
+        Text(
+            when {
+                !supported -> "La conexión Bluetooth con el botón está disponible solo en Android."
+                !enabled -> "Pulsa «Vincular botón» y mantén la placa cerca: al presionar el interruptor, el teléfono recibirá la alerta por Bluetooth y la reenviará al servidor."
+                error != null -> error
+                connected -> "Botón vinculado por Bluetooth · ${deviceName ?: SOS_DEVICE_ID}" +
+                    (lastForwardedEventId?.let { "\nÚltima alerta reenviada: $it" } ?: "")
+                connecting -> "Buscando el botón SOS por Bluetooth…"
+                else -> "Preparando el enlace Bluetooth…"
+            },
+            style = AppTextStyles.waykiMini,
+            color = if (error != null) SosRed else AppColors.slate,
+        )
+        if (supported) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(if (enabled) SosRed.copy(alpha = 0.12f) else AppColors.primary, RoundedCornerShape(12.dp))
+                    .clickable(onClick = onToggle)
+                    .padding(11.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    if (enabled) "Desvincular botón" else "Vincular botón por Bluetooth",
+                    style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                    color = if (enabled) SosRed else AppColors.ink,
+                )
+            }
         }
     }
 }

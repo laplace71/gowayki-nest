@@ -75,7 +75,6 @@ class SosAlertsViewModel : ViewModel() {
     }
 
     suspend fun publishPhoneLocation(
-        token: String,
         deviceId: String,
         location: OsmLatLng,
         capturedAtEpochMs: Long,
@@ -83,7 +82,7 @@ class SosAlertsViewModel : ViewModel() {
     ) {
         val service = repository ?: return
         try {
-            service.publishPhoneLocation(token, deviceId, location, capturedAtEpochMs, accuracyMeters)
+            service.publishPhoneLocation(deviceId, location, capturedAtEpochMs, accuracyMeters)
             ui = ui.copy(locationShared = true, locationError = null)
         } catch (cancelled: CancellationException) {
             throw cancelled

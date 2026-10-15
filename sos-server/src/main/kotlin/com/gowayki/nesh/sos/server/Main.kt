@@ -8,7 +8,6 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.net.InetSocketAddress
 import java.net.URI
-import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -85,13 +84,20 @@ private class AlertStore {
         if (previous != null && now - previous < BUTTON_DEBOUNCE_NANOS) {
             return CreateResult(alert = null, created = false, debounced = true)
         }
+        // La placa no tiene reloj (sin Wi-Fi/NTP): si envía el marcador vacío,
+        // el servidor estampa la hora actual.
+        val occurredAt = if (request.occurredAt.startsWith("1970-")) {
+            Instant.now().toString()
+        } else {
+            request.occurredAt
+        }
         val alert = SosAlert(
             id = UUID.randomUUID().toString(),
             eventId = request.eventId,
             deviceId = request.deviceId,
             latitude = phoneLocation.latitude,
             longitude = phoneLocation.longitude,
-            occurredAt = request.occurredAt,
+            occurredAt = occurredAt,
             simulated = false,
         )
         alerts.add(alert)
@@ -127,8 +133,6 @@ private val eventIdPattern = Regex("[A-Za-z0-9_-]{8,80}")
 private val deviceIdPattern = Regex("[A-Za-z0-9._-]{1,64}")
 
 fun main() {
-    val deviceTokens = loadDeviceTokens()
-    val mobileLocationToken = loadSecret("SOS_MOBILE_LOCATION_TOKEN")
     val port = (System.getenv("SOS_SERVER_PORT") ?: "8080").toIntOrNull()
         ?.takeIf { it in 1..65535 }
         ?: error("SOS_SERVER_PORT debe ser un puerto TCP válido.")
@@ -138,7 +142,7 @@ fun main() {
     val server = HttpServer.create(InetSocketAddress(bindAddress, port), 0)
     server.executor = Executors.newFixedThreadPool(4)
     val handler: (HttpExchange) -> Unit = { exchange ->
-        handleRequest(exchange, store, deviceTokens, mobileLocationToken)
+        handleRequest(exchange, store)
     }
     server.createContext("/api/sos/alerts", handler)
     server.createContext("/api/sos/locations", handler)
@@ -149,16 +153,14 @@ fun main() {
 private fun handleRequest(
     exchange: HttpExchange,
     store: AlertStore,
-    deviceTokens: Map<String, String>,
-    mobileLocationToken: String,
 ) {
     try {
         val path = URI.create(exchange.requestURI.toString()).path
         when {
             exchange.requestMethod == "POST" && path == "/api/sos/alerts" ->
-                receiveAlert(exchange, store, deviceTokens)
+                receiveAlert(exchange, store)
             exchange.requestMethod == "POST" && path == "/api/sos/locations" ->
-                receivePhoneLocation(exchange, store, mobileLocationToken)
+                receivePhoneLocation(exchange, store)
             exchange.requestMethod == "GET" && path == "/api/sos/alerts" ->
                 listAlerts(exchange, store)
             exchange.requestMethod == "DELETE" && path.startsWith("/api/sos/alerts/") ->
@@ -173,11 +175,13 @@ private fun handleRequest(
     }
 }
 
-private fun receiveAlert(
-    exchange: HttpExchange,
-    store: AlertStore,
-    deviceTokens: Map<String, String>,
-) {
+private fun receiveAlert(exchange: HttpExchange, store: AlertStore) {
+    // Las alertas llegan reenviadas por el teléfono (puente BLE→HTTP); se aceptan
+    // sin token de dispositivo, pero solo desde la red privada local.
+    if (!isPrivateNetwork(exchange.remoteAddress.address.hostAddress)) {
+        respond(exchange, 403, ApiError("Las alertas solo pueden crearse desde una red privada."))
+        return
+    }
     if (!isJson(exchange)) {
         respond(exchange, 415, ApiError("Se requiere Content-Type application/json."))
         return
@@ -191,11 +195,6 @@ private fun receiveAlert(
         json.decodeFromString<SosAlertRequest>(payload.decodeToString())
     } catch (_: SerializationException) {
         respond(exchange, 400, ApiError("JSON inválido o faltan campos obligatorios."))
-        return
-    }
-    val expectedToken = deviceTokens[request.deviceId]
-    if (expectedToken == null || !authorized(exchange, expectedToken)) {
-        respond(exchange, 401, ApiError("Autenticación de dispositivo inválida."))
         return
     }
     if (!validAlert(request)) {
@@ -215,13 +214,9 @@ private fun receiveAlert(
     respond(exchange, if (result.created) 201 else 200, requireNotNull(result.alert))
 }
 
-private fun receivePhoneLocation(exchange: HttpExchange, store: AlertStore, expectedToken: String) {
+private fun receivePhoneLocation(exchange: HttpExchange, store: AlertStore) {
     if (!isPrivateNetwork(exchange.remoteAddress.address.hostAddress)) {
         respond(exchange, 403, ApiError("El GPS móvil solo puede compartirse desde una red privada."))
-        return
-    }
-    if (!authorized(exchange, expectedToken)) {
-        respond(exchange, 401, ApiError("Token de ubicación móvil inválido."))
         return
     }
     if (!isJson(exchange)) {
@@ -297,38 +292,6 @@ private fun validPhoneLocation(request: PhoneLocationRequest): Boolean =
         request.longitude.isFinite() && request.longitude in -180.0..180.0 &&
         request.accuracyMeters.isFinite() &&
         request.accuracyMeters in 0f..MAX_LOCATION_ACCURACY_METERS
-
-private fun authorized(exchange: HttpExchange, expectedToken: String): Boolean {
-    val header = exchange.requestHeaders.getFirst("Authorization") ?: return false
-    val provided = header.removePrefix("Bearer ").takeIf { header.startsWith("Bearer ") } ?: return false
-    return MessageDigest.isEqual(provided.toByteArray(), expectedToken.toByteArray())
-}
-
-private fun loadDeviceTokens(): Map<String, String> {
-    val configured = System.getenv("SOS_DEVICE_TOKENS")
-        ?.takeIf(String::isNotBlank)
-        ?: error("Define SOS_DEVICE_TOKENS con pares DEVICE_ID=token separados por coma.")
-    val tokens = configured.split(',').associate { entry ->
-        val separator = entry.indexOf('=')
-        require(separator > 0 && separator < entry.lastIndex) {
-            "SOS_DEVICE_TOKENS debe usar el formato DEVICE_ID=token."
-        }
-        val deviceId = entry.substring(0, separator).trim()
-        val token = entry.substring(separator + 1).trim()
-        require(deviceIdPattern.matches(deviceId) && token.length >= 32) {
-            "Cada dispositivo debe tener un identificador válido y un token de al menos 32 caracteres."
-        }
-        deviceId to token
-    }
-    require(tokens.size == configured.split(',').size) {
-        "SOS_DEVICE_TOKENS no puede repetir identificadores de dispositivo."
-    }
-    return tokens
-}
-
-private fun loadSecret(name: String): String =
-    System.getenv(name)?.takeIf { it.length >= 32 }
-        ?: error("Define $name con al menos 32 caracteres aleatorios antes de iniciar el servidor.")
 
 private fun isJson(exchange: HttpExchange): Boolean =
     exchange.requestHeaders.getFirst("Content-Type")

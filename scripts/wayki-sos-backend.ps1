@@ -15,17 +15,6 @@ $stdoutPath = Join-Path $stateRoot 'server.out.log'
 $stderrPath = Join-Path $stateRoot 'server.err.log'
 $taskPrincipal = "$env:USERDOMAIN\$env:USERNAME"
 
-function Get-SecureValue([string]$EncryptedValue) {
-    $secureValue = ConvertTo-SecureString $EncryptedValue
-    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureValue)
-    try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
-    }
-    finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
-    }
-}
-
 function Get-BackendProcess {
     if (-not (Test-Path $pidPath)) {
         return $null
@@ -66,12 +55,9 @@ function Start-Backend([switch]$WaitForExit) {
         throw 'Falta la distribución del backend. Ejecuta la acción Install para compilarla.'
     }
     if (-not (Test-Path $configPath)) {
-        throw 'Falta la configuración local protegida. Ejecuta la acción Install para configurarla.'
+        throw 'Falta la configuración local. Ejecuta la acción Install para configurarla.'
     }
 
-    $config = Get-Content $configPath -Raw | ConvertFrom-Json
-    $env:SOS_DEVICE_TOKENS = "$($config.deviceId)=$(Get-SecureValue $config.encryptedDeviceToken)"
-    $env:SOS_MOBILE_LOCATION_TOKEN = Get-SecureValue $config.encryptedMobileToken
     $env:SOS_SERVER_PORT = '8080'
     $env:SOS_SERVER_BIND = '0.0.0.0'
 
@@ -126,32 +112,13 @@ switch ($Action) {
         }
         $secrets = Get-Content $secretsPath -Raw
         $deviceIdMatch = [regex]::Match($secrets, '#define\s+SOS_DEVICE_ID\s+"([^"]+)"')
-        $deviceTokenMatch = [regex]::Match($secrets, '#define\s+SOS_DEVICE_TOKEN\s+"([^"]+)"')
-        if (-not $deviceIdMatch.Success -or -not $deviceTokenMatch.Success -or
-            $deviceTokenMatch.Groups[1].Value.Length -lt 32 -or
-            $deviceTokenMatch.Groups[1].Value -like 'REEMPLAZAR*') {
-            throw 'Revisa SOS_DEVICE_ID y SOS_DEVICE_TOKEN en hardware\esp32_sos_button\secrets.h.'
+        if (-not $deviceIdMatch.Success) {
+            throw 'Revisa SOS_DEVICE_ID en hardware\esp32_sos_button\secrets.h.'
         }
-
-        $mobileToken = Read-Host 'Pega el mismo token móvil que usarás en la pantalla SOS' -AsSecureString
-        $mobilePointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($mobileToken)
-        try {
-            $mobilePlain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($mobilePointer)
-            if ($mobilePlain.Length -lt 32) {
-                throw 'El token móvil debe tener al menos 32 caracteres.'
-            }
-            $encryptedMobile = ConvertFrom-SecureString (ConvertTo-SecureString $mobilePlain -AsPlainText -Force)
-        }
-        finally {
-            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($mobilePointer)
-        }
-        $encryptedDevice = ConvertFrom-SecureString (ConvertTo-SecureString $deviceTokenMatch.Groups[1].Value -AsPlainText -Force)
 
         New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
         [pscustomobject]@{
             deviceId = $deviceIdMatch.Groups[1].Value
-            encryptedDeviceToken = $encryptedDevice
-            encryptedMobileToken = $encryptedMobile
         } | ConvertTo-Json | Set-Content -Path $configPath
 
         Push-Location $projectRoot
@@ -176,7 +143,7 @@ switch ($Action) {
             -Principal $principal -Settings $settings -Description 'Inicia el backend SOS local de Waykiu al iniciar sesión.' `
             -Force | Out-Null
         Start-Backend
-        Write-Output "Inicio automático configurado para el usuario actual. Token protegido localmente en $stateRoot."
+        Write-Output "Inicio automático configurado para el usuario actual. Configuración local en $stateRoot."
     }
     'Start' {
         Start-Backend
@@ -207,6 +174,6 @@ switch ($Action) {
         Stop-Backend
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
         Remove-Item $configPath -Force -ErrorAction SilentlyContinue
-        Write-Output 'Inicio automático eliminado y credenciales locales protegidas borradas.'
+        Write-Output 'Inicio automático eliminado y configuración local borrada.'
     }
 }

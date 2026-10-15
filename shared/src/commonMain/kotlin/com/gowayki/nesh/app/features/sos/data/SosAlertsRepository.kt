@@ -9,7 +9,6 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
-import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -34,14 +33,12 @@ class SosAlertsRepository(private val baseUrl: String) {
         client.get("$baseUrl/api/sos/alerts?status=ACTIVE").body()
 
     suspend fun publishPhoneLocation(
-        token: String,
         deviceId: String,
         location: OsmLatLng,
         capturedAtEpochMs: Long,
         accuracyMeters: Float,
     ) {
         val response = client.post("$baseUrl/api/sos/locations") {
-            header("Authorization", "Bearer $token")
             contentType(ContentType.Application.Json)
             setBody(
                 PhoneLocationUpdate(
