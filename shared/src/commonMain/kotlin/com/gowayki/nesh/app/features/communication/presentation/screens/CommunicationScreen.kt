@@ -256,7 +256,7 @@ fun CommunicationScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Estado de conectados
                 Row(
