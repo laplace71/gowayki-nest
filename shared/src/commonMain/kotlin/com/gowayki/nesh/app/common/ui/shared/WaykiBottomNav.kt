@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,7 +42,8 @@ fun WaykiBottomNav(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpacing.pageHorizontal, vertical = AppSpacing.pageHorizontal)
+            .navigationBarsPadding()
+            .padding(horizontal = AppSpacing.pageHorizontal, vertical = AppSpacing.md)
             .shadow(24.dp, RoundedCornerShape(32.dp), spotColor = AppColors.ink.copy(alpha = 0.4f))
             .background(
                 color = AppColors.slate.copy(alpha = 0.95f),
