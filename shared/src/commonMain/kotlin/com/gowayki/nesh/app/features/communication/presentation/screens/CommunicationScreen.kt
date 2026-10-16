@@ -351,8 +351,8 @@ fun CommunicationScreen(
                 // Lista de conversaciones
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
-                    contentPadding = PaddingValues(top = 8.dp, bottom = 120.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 120.dp)
                 ) {
                     items(filteredConversations, key = { it.id }) { item ->
                         ConversationCard(
