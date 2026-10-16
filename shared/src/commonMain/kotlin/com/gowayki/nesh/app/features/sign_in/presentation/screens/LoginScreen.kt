@@ -191,6 +191,7 @@ fun LoginScreen(
                             style = AppTextStyles.waykiLabelMedium,
                             color = AppColors.onBackground
                         )
+                        Spacer(modifier = Modifier.height(AppSpacing.xs))
                         Text(
                             text = "Línea 7 • Unidad 08",
                             style = AppTextStyles.waykiMini,
