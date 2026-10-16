@@ -396,7 +396,7 @@ private fun ConversationCard(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Top
+            verticalAlignment = Alignment.CenterVertically
         ) {
             // Avatar
             val avatarBg = if (item.avatarBgDark) AppColors.ink else AppColors.mauve
