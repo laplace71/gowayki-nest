@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -214,7 +215,12 @@ fun CommunicationScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .statusBarsPadding()
-                    .padding(horizontal = AppSpacing.pageHorizontal, vertical = AppSpacing.sm)
+                    .padding(
+                        start = AppSpacing.pageHorizontal,
+                        end = AppSpacing.pageHorizontal,
+                        top = 16.dp,
+                        bottom = AppSpacing.sm
+                    )
             ) {
                 // Encabezado
                 Row(
@@ -250,7 +256,7 @@ fun CommunicationScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Estado de conectados
                 Row(
@@ -345,16 +351,14 @@ fun CommunicationScreen(
                 // Lista de conversaciones
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 120.dp)
                 ) {
                     items(filteredConversations, key = { it.id }) { item ->
                         ConversationCard(
                             item = item,
                             onClick = { onConversationClick(item.id) }
                         )
-                    }
-                    item {
-                        Spacer(modifier = Modifier.height(120.dp)) // Espacio para el bottom nav
                     }
                 }
             }
@@ -392,7 +396,7 @@ private fun ConversationCard(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Top
+            verticalAlignment = Alignment.CenterVertically
         ) {
             // Avatar
             val avatarBg = if (item.avatarBgDark) AppColors.ink else AppColors.mauve
