@@ -3,5 +3,5 @@
 package com.gowayki.nesh.app.features.sos.presentation.components
 
 object MapboxToken {
-    const val PUBLIC_TOKEN = "YOUR_MAPBOX_PUBLIC_TOKEN"
+    const val PUBLIC_TOKEN = "pk.eyJ1IjoiamVhbnBpZXJlIiwiYSI6ImNtdjk0MGllazA2Mm4yenB0NWZuMHoxNzQifQ.Kvo1YUUmbIfMUuIXGNbOYA"
 }
