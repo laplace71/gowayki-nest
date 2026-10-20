@@ -3,11 +3,18 @@ package com.gowayki.nesh.app.features.route_detail.presentation.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,11 +37,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
 import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
+import com.gowayki.nesh.app.features.home.presentation.screens.WaykiSidebarContent
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.Bell
+import compose.icons.feathericons.Menu
 import compose.icons.feathericons.GitCommit
 import compose.icons.feathericons.Minus
 import compose.icons.feathericons.TrendingDown
@@ -59,8 +68,18 @@ data class ControlPointData(
 fun RouteDetailScreen(
     onBack: () -> Unit = {},
     onNotificationsClick: () -> Unit = {},
-    onTabSelected: (Int) -> Unit = {}
+    onTabSelected: (Int) -> Unit = {},
+    onSosClick: () -> Unit = {},
+    onInicioClick: () -> Unit = {},
+    onCommunicationClick: () -> Unit = {},
+    onRecorridoClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
+    onSupportClick: () -> Unit = {},
+    onLogoutClick: () -> Unit = {}
 ) {
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val coroutineScope = rememberCoroutineScope()
+
     val controlPoints = listOf(
         ControlPointData(
             name = "Pte. Grau / Av. Ejército",
@@ -112,6 +131,48 @@ fun RouteDetailScreen(
         )
     )
 
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
+                drawerContainerColor = AppColors.cream,
+                modifier = Modifier.width(328.dp).fillMaxHeight()
+            ) {
+                WaykiSidebarContent(
+                    onClose = { coroutineScope.launch { drawerState.close() } },
+                    onSosClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onSosClick()
+                    },
+                    onInicioClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onInicioClick()
+                    },
+                    onCommunicationClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onCommunicationClick()
+                    },
+                    onRecorridoClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onRecorridoClick()
+                    },
+                    onSettingsClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onSettingsClick()
+                    },
+                    onSupportClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onSupportClick()
+                    },
+                    onLogoutClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onLogoutClick()
+                    }
+                )
+            }
+        }
+    ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -142,14 +203,28 @@ fun RouteDetailScreen(
                     )
                 }
 
-                Icon(
-                    imageVector = FeatherIcons.Bell,
-                    contentDescription = "Notificaciones",
-                    tint = AppColors.ink,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clickable { onNotificationsClick() }
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Menu hamburguesa -> abre el sidebar
+                    Icon(
+                        imageVector = FeatherIcons.Menu,
+                        contentDescription = "Menu",
+                        tint = AppColors.ink,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clickable { coroutineScope.launch { drawerState.open() } }
+                    )
+                    Icon(
+                        imageVector = FeatherIcons.Bell,
+                        contentDescription = "Notificaciones",
+                        tint = AppColors.ink,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clickable { onNotificationsClick() }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -335,6 +410,7 @@ fun RouteDetailScreen(
             onTabSelected = onTabSelected,
             modifier = Modifier.align(Alignment.BottomCenter)
         )
+    }
     }
 }
 

@@ -2,6 +2,7 @@ package com.gowayki.nesh.app.features.settings.presentation.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -315,11 +317,17 @@ private fun SettingSwitchItem(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(Color(0xFFF2EDF2))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(color = AppColors.ink.copy(alpha = 0.08f)),
+                onClick = { onCheckedChange(!checked) }
+            )
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Row(
@@ -360,6 +368,7 @@ private fun SettingSwitchItem(
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
+                interactionSource = interactionSource,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = AppColors.cream,
                     checkedTrackColor = AppColors.ink,
@@ -379,12 +388,17 @@ private fun SettingActionItem(
     value: String?,
     onClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(Color(0xFFF2EDF2))
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(color = AppColors.ink.copy(alpha = 0.08f)),
+                onClick = onClick
+            )
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Row(

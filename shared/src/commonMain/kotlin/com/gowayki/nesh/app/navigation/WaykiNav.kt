@@ -1,13 +1,29 @@
 package com.gowayki.nesh.app.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.savedstate.read
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.gowayki.nesh.app.di.AppDi
+import com.gowayki.nesh.app.di.ChatDi
+import com.gowayki.nesh.app.features.communication.domain.repository.ChatRepository
+import com.gowayki.nesh.app.features.communication.presentation.chat.ChatScreen
+import com.gowayki.nesh.app.features.communication.presentation.chat.ConversationsViewModel
+import com.gowayki.nesh.app.features.communication.presentation.chat.NewGroupViewModel
+import com.gowayki.nesh.app.features.communication.presentation.chat.NewGroupScreen
 import com.gowayki.nesh.app.features.reports.presentation.screens.ReportsScreen
 import com.gowayki.nesh.app.features.sign_in.presentation.StateFlow.AuthViewModel
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.LoginScreen
@@ -24,7 +40,34 @@ fun WaykiNav(
     val state = vm.state
     val loginState = vm.loginState
 
-    NavHost(navController = nav, startDestination = Routes.WELCOME) {
+    NavHost(
+        navController = nav,
+        startDestination = Routes.WELCOME,
+        enterTransition = {
+            slideIntoContainer(
+                AnimatedContentTransitionScope.SlideDirection.Left,
+                animationSpec = tween(200)
+            ) + fadeIn(animationSpec = tween(200))
+        },
+        exitTransition = {
+            slideOutOfContainer(
+                AnimatedContentTransitionScope.SlideDirection.Left,
+                animationSpec = tween(200)
+            ) + fadeOut(animationSpec = tween(200))
+        },
+        popEnterTransition = {
+            slideIntoContainer(
+                AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = tween(200)
+            ) + fadeIn(animationSpec = tween(200))
+        },
+        popExitTransition = {
+            slideOutOfContainer(
+                AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = tween(200)
+            ) + fadeOut(animationSpec = tween(200))
+        }
+    ) {
         composable(Routes.WELCOME) {
             WelcomeScreen(
                 onEnterClick = { nav.navigate(Routes.LOGIN) },
@@ -130,6 +173,13 @@ fun WaykiNav(
         
         composable(Routes.COMMUNICATION) {
             com.gowayki.nesh.app.features.communication.presentation.screens.CommunicationScreen(
+                onConversationClick = { conversationId ->
+                    AppDi.get<ConversationsViewModel>().open(conversationId)
+                    nav.navigate(Routes.chat(conversationId))
+                },
+                onNewGroupClick = { nav.navigate(Routes.NEW_GROUP) },
+                onClearChat = { id -> AppDi.get<ConversationsViewModel>().clearChat(id) },
+                onDeleteChat = { id -> AppDi.get<ConversationsViewModel>().deleteConversation(id) },
                 onTabSelected = { tab ->
                     if (tab == 0) {
                         nav.navigate(Routes.HOME) {
@@ -158,6 +208,17 @@ fun WaykiNav(
         composable(Routes.ROUTE_DETAIL) {
             com.gowayki.nesh.app.features.route_detail.presentation.screens.RouteDetailScreen(
                 onBack = { nav.popBackStack() },
+                onSosClick = { nav.navigate(Routes.SOS) },
+                onInicioClick = {
+                    nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } }
+                },
+                onCommunicationClick = { nav.navigate(Routes.COMMUNICATION) },
+                // Ya estamos en Recorrido: no hace falta navegar.
+                onRecorridoClick = {},
+                onSettingsClick = { nav.navigate(Routes.SETTINGS) },
+                onLogoutClick = {
+                    nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
+                },
                 onTabSelected = { tab ->
                     if (tab == 0) {
                         nav.navigate(Routes.HOME) {
@@ -170,6 +231,56 @@ fun WaykiNav(
             )
         }
         
+        composable(
+            // El destino se declara con el placeholder: "chat/{conversationId}".
+            // Usar Routes.CHAT ("chat") aquí revienta con IllegalArgumentException.
+            Routes.CHAT_PATTERN,
+            arguments = listOf(navArgument("conversationId") { type = NavType.StringType })
+        ) { entry ->
+            val conversationId = entry.arguments?.read { getString("conversationId") }.orEmpty()
+            val chatVm = remember(conversationId) { ChatDi.chatViewModel(conversationId) }
+
+            // La conversación puede ser nueva (recién creada), así que la
+            // buscamos viva en el repositorio en vez de leer un argumento fijo.
+            val conversations by remember { AppDi.get<ChatRepository>().conversations() }
+                .collectAsState(initial = emptyList())
+            val conversation = conversations.firstOrNull { it.id == conversationId }
+
+            ChatScreen(
+                title = conversation?.title ?: "Conversación",
+                isGroup = conversation?.isGroup ?: false,
+                memberCount = conversation?.members?.size ?: 0,
+                messages = chatVm.messages,
+                draft = chatVm.draft,
+                sending = chatVm.sending,
+                onDraftChange = chatVm::onDraftChange,
+                onSend = chatVm::send,
+                onVoiceNote = { chatVm.sendVoiceNote(18) },
+                onBack = { nav.popBackStack() }
+            )
+        }
+
+        composable(Routes.NEW_GROUP) {
+            val groupVm = viewModel { AppDi.get<NewGroupViewModel>() }
+            NewGroupScreen(
+                name = groupVm.name,
+                colleagues = groupVm.colleagues,
+                selected = groupVm.selected,
+                creating = groupVm.creating,
+                onNameChange = groupVm::onNameChange,
+                onToggle = groupVm::toggle,
+                onCreate = {
+                    groupVm.create { newId ->
+                        // Abre el grupo recién creado y limpia el formulario.
+                        nav.navigate(Routes.chat(newId)) {
+                            popUpTo(Routes.NEW_GROUP) { inclusive = true }
+                        }
+                    }
+                },
+                onBack = { nav.popBackStack() }
+            )
+        }
+
         composable(Routes.SETTINGS) {
             com.gowayki.nesh.app.features.settings.presentation.screens.SettingsScreen(
                 onBack = { nav.popBackStack() }

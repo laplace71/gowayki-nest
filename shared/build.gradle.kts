@@ -45,6 +45,9 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.compose.uiTooling)
             implementation(libs.ktor.client.android)
+            // Mapbox SOS (heatmap nativo + pins). Solo Android; iOS usa fallback OSM.
+            implementation(libs.mapbox.android)
+            implementation(libs.mapbox.compose)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)

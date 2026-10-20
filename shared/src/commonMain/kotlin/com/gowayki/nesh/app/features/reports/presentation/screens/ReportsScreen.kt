@@ -77,6 +77,8 @@ import com.gowayki.nesh.app.features.reports.domain.model.ReportItem
 import com.gowayki.nesh.app.features.reports.presentation.StateFlow.ReportsViewModel
 import com.gowayki.nesh.app.features.reports.presentation.components.OsmMap
 import com.gowayki.nesh.app.features.reports.presentation.components.OsmMarker
+import com.gowayki.nesh.app.features.sos.presentation.StateFlow.SosViewModel
+import com.gowayki.nesh.app.features.sos.presentation.components.SosPanel
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppRadius
@@ -113,6 +115,8 @@ fun ReportsScreen(
     onSettingsClick: () -> Unit = {},
     onLogoutClick: () -> Unit = {},
     vm: ReportsViewModel = viewModel { ReportsViewModel() },
+    // SOS botón físico ESP32 por BLE: añadido sin tocar el resto (default = funciona solo).
+    sosVm: SosViewModel = viewModel { SosViewModel(onSosPoint = { lat, lon -> vm.addSosEmergency(lat, lon) }) },
 ) {
     val ui = vm.ui
     val reports = ui.reports
@@ -156,6 +160,18 @@ fun ReportsScreen(
                 ReportsTopBar(onBack = onBack, onMenu = { menuOpen = true })
             }
             Spacer(Modifier.height(AppSpacing.md))
+
+            // SOS: panel BLE + GPS real. Solo visible en tab Alerta (1). No toca mapa/historial.
+            AnimatedVisibility(
+                visible = tab == 1,
+                enter = fadeIn(tween(350)) + expandVertically(spring(dampingRatio = 0.8f, stiffness = 320f)),
+                exit = fadeOut(tween(200)) + shrinkVertically(tween(250)),
+            ) {
+                Column {
+                    SosPanel(vm = sosVm)
+                    Spacer(Modifier.height(AppSpacing.md))
+                }
+            }
 
             AnimatedVisibility(
                 visible = entered,
@@ -228,6 +244,14 @@ fun ReportsScreen(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.md),
             ) {
                 val visible = if (expanded) reports else reports.filter { it.id == selectedId }
+                if (reports.isEmpty()) {
+                    Text(
+                        "Sin reportes: marca tu primer punto con el botón SOS.",
+                        color = AppColors.onSurfaceMuted,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
                 visible.forEachIndexed { i, r ->
                     AnimatedVisibility(
                         visible = entered,
@@ -662,5 +686,6 @@ private fun DrawerRow(icon: ImageVector, label: String, onClick: () -> Unit) {
 private fun ReportsScreenPreview() {
     // En preview no hay ViewModelStore: VM plano con remember.
     val vm = remember { ReportsViewModel() }
-    ReportsScreen(vm = vm)
+    val sosVm = remember { SosViewModel(onSosPoint = { lat, lon -> vm.addSosEmergency(lat, lon) }) }
+    ReportsScreen(vm = vm, sosVm = sosVm)
 }

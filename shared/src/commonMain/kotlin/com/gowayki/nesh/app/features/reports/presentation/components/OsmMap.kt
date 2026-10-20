@@ -191,6 +191,9 @@ fun OsmMap(
     markers: List<OsmMarker>,
     selectedId: String?,
     route: List<OsmLatLng> = emptyList(),
+    // Puntos de calor (SOS): degradado rojo→transparente, sin líneas.
+    heatPoints: List<OsmLatLng> = emptyList(),
+    heatRadiusDp: Float = 64f,
     grayScale: Boolean = true,
     onNeedTiles: (z: Int, x0: Int, y0: Int, x1: Int, y1: Int) -> Unit = { _, _, _, _, _ -> },
     onMarkerClick: (OsmMarker) -> Unit = {},
@@ -401,8 +404,7 @@ fun OsmMap(
                 }
 
                 // --- Ruta punteada animada entre reportes ---
-                if (route.size >= 2) {
-                    val phase by rememberInfiniteTransition(label = "route").animateFloat(
+                if (route.size >= 2) {                    val phase by rememberInfiniteTransition(label = "route").animateFloat(
                         initialValue = 0f, targetValue = 24f,
                         animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart),
                         label = "ph",
@@ -424,6 +426,26 @@ fun OsmMap(
                             ),
                             alpha = 0.75f,
                         )
+                    }
+                }
+
+                // --- Calor SOS: degradado por punto, sin líneas ---
+                if (heatPoints.isNotEmpty()) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        val rPx = heatRadiusDp.dp.toPx()
+                        heatPoints.forEach { p ->
+                            val x = (lonToWorldX(p.lon, z) - left).dp.toPx()
+                            val y = (latToWorldY(p.lat, z) - top).dp.toPx()
+                            drawCircle(
+                                brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                                    0.0f to androidx.compose.ui.graphics.Color(0xFFC64049).copy(alpha = 0.55f),
+                                    0.55f to androidx.compose.ui.graphics.Color(0xFFFF8A3D).copy(alpha = 0.28f),
+                                    1.0f to androidx.compose.ui.graphics.Color(0xFFFF8A3D).copy(alpha = 0.0f),
+                                ),
+                                radius = rPx,
+                                center = Offset(x, y),
+                            )
+                        }
                     }
                 }
 
