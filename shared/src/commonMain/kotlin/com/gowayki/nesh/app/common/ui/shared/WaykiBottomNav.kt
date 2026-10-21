@@ -1,7 +1,11 @@
 package com.gowayki.nesh.app.common.ui.shared
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +17,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -47,7 +54,9 @@ fun WaykiBottomNav(
             .padding(horizontal = AppSpacing.pageHorizontal, vertical = AppSpacing.md)
             .shadow(24.dp, RoundedCornerShape(32.dp), spotColor = AppColors.ink.copy(alpha = 0.4f))
             .background(
-                color = AppColors.slate.copy(alpha = 0.95f),
+                // Opaca: si no, el contenido que scrollea se ve por detrás
+                // y la barra se ve sucia visualmente.
+                color = AppColors.slate,
                 shape = RoundedCornerShape(32.dp)
             )
             .padding(horizontal = 8.dp, vertical = 8.dp)
@@ -97,13 +106,36 @@ private fun BottomNavItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bgColor = if (isSelected) AppColors.mauve else Color.Transparent
-    val contentColor = if (isSelected) AppColors.ink else AppColors.cream
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    // Animated colors for smooth transition
+    val bgColor by animateColorAsState(
+        targetValue = when {
+            isSelected -> AppColors.mauve
+            isPressed -> AppColors.mauve.copy(alpha = 0.3f)
+            else -> Color.Transparent
+        },
+        animationSpec = tween(200),
+        label = "navBg"
+    )
+    val contentColor by animateColorAsState(
+        targetValue = when {
+            isSelected -> AppColors.ink
+            else -> AppColors.cream.copy(alpha = 0.8f) // better contrast
+        },
+        animationSpec = tween(200),
+        label = "navContent"
+    )
 
     Box(
         modifier = modifier
             .background(bgColor, RoundedCornerShape(24.dp))
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
+                onClick = onClick
+            )
             .padding(horizontal = AppSpacing.xs, vertical = AppSpacing.sm),
         contentAlignment = Alignment.Center
     ) {

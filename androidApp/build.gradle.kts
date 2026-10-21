@@ -15,6 +15,8 @@ dependencies {
     implementation(project(":shared"))
 
     implementation(libs.androidx.activity.compose)
+    // SOS BLE+GPS: permisos runtime (ActivityCompat). Sin esto no compila MainActivity.
+    implementation(libs.androidx.core.ktx)
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)

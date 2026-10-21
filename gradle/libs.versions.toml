@@ -20,6 +20,8 @@ kotlinx-serialization = "1.9.0"
 ktor = "3.2.3"
 supabase = "3.8.0"
 composeIcons = "1.1.1"
+mapbox = "11.32.1"
+mapbox-compose = "11.32.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -51,6 +53,8 @@ supabase-compose-auth = { module = "io.github.jan-tennert.supabase:compose-auth"
 supabase-postgrest = { module = "io.github.jan-tennert.supabase:postgrest-kt" }
 compose-icons-feather = { module = "br.com.devsrsouza.compose.icons:feather", version.ref = "composeIcons" }
 compose-icons-fontawesome = { module = "br.com.devsrsouza.compose.icons:font-awesome", version.ref = "composeIcons" }
+mapbox-android = { module = "com.mapbox.maps:android-ndk27", version.ref = "mapbox" }
+mapbox-compose = { module = "com.mapbox.extension:maps-compose-ndk27", version.ref = "mapbox-compose" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

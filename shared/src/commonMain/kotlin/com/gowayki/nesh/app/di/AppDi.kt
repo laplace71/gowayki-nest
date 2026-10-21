@@ -24,6 +24,7 @@ object AppDi {
     fun start() {
         if (started) return
         AuthDi.install()
+        ChatDi.install()
         started = true
     }
 

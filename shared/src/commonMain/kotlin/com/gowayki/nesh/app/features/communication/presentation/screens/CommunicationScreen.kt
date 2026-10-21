@@ -1,8 +1,13 @@
 package com.gowayki.nesh.app.features.communication.presentation.screens
 
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DrawerValue
@@ -28,7 +34,10 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.ripple
+import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,11 +46,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.BasicTextField
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.gowayki.nesh.app.di.AppDi
+import com.gowayki.nesh.app.common.ui.shared.WaykiAvatar
+import com.gowayki.nesh.app.common.ui.shared.WaykiConfirmDialog
 import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
+import com.gowayki.nesh.app.common.ui.shared.WaykiSkeleton
+import com.gowayki.nesh.app.features.communication.domain.model.Conversation
+import com.gowayki.nesh.app.features.communication.presentation.chat.ConversationAction
+import com.gowayki.nesh.app.features.communication.presentation.chat.ConversationMenuSheet
+import com.gowayki.nesh.app.features.communication.presentation.chat.ConversationsViewModel
 import com.gowayki.nesh.app.features.home.presentation.screens.WaykiSidebarContent
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
@@ -50,21 +70,11 @@ import compose.icons.FeatherIcons
 import compose.icons.feathericons.ArrowDown
 import compose.icons.feathericons.Bell
 import compose.icons.feathericons.Menu
+import compose.icons.feathericons.MessageCircle
+import compose.icons.feathericons.Plus
 import compose.icons.feathericons.Search
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-data class ConversationItemModel(
-    val id: String,
-    val isGroup: Boolean,
-    val avatarText: String,
-    val avatarBgDark: Boolean,
-    val title: String,
-    val time: String,
-    val unreadCount: Int,
-    val audioDuration: String,
-    val audioPreview: String,
-    val isHighlighted: Boolean // true: mauve bg, false: cream bg with mauve border
-)
 
 @Composable
 fun CommunicationScreen(
@@ -72,6 +82,9 @@ fun CommunicationScreen(
     onNotificationsClick: () -> Unit = {},
     onTabSelected: (Int) -> Unit = {},
     onConversationClick: (String) -> Unit = {},
+    onNewGroupClick: () -> Unit = {},
+    onClearChat: (String) -> Unit = {},
+    onDeleteChat: (String) -> Unit = {},
     onSosClick: () -> Unit = {},
     onInicioClick: () -> Unit = {},
     onRecorridoClick: () -> Unit = {},
@@ -81,87 +94,17 @@ fun CommunicationScreen(
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
-    var selectedCategory by remember { mutableStateOf(0) } // 0: Todos, 1: Grupos, 2: Privados
-    var searchQuery by remember { mutableStateOf("") }
 
-    val conversations = remember {
-        listOf(
-            ConversationItemModel(
-                id = "1",
-                isGroup = true,
-                avatarText = "L7",
-                avatarBgDark = true,
-                title = "GRUPO · Línea 7 · Central",
-                time = "08:39",
-                unreadCount = 3,
-                audioDuration = "00:18",
-                audioPreview = "“Tránsito fluido en Av. Dolores. Mantengan la distancia entre unidades.”",
-                isHighlighted = true
-            ),
-            ConversationItemModel(
-                id = "2",
-                isGroup = false,
-                avatarText = "UO8",
-                avatarBgDark = false,
-                title = "Privado · Unidad 08 · Carlos",
-                time = "08:36",
-                unreadCount = 1,
-                audioDuration = "00:12",
-                audioPreview = "“Confirmo paso por Plaza de Armas.”",
-                isHighlighted = false
-            ),
-            ConversationItemModel(
-                id = "3",
-                isGroup = false,
-                avatarText = "LO3",
-                avatarBgDark = false,
-                title = "Privado · Unidad 03 · Marco",
-                time = "08:31",
-                unreadCount = 2,
-                audioDuration = "00:09",
-                audioPreview = "“Llegando a Mercado San Camilo.”",
-                isHighlighted = false
-            ),
-            ConversationItemModel(
-                id = "4",
-                isGroup = true,
-                avatarText = "OP",
-                avatarBgDark = false,
-                title = "GRUPO · Operativos · Línea 7",
-                time = "08:24",
-                unreadCount = 4,
-                audioDuration = "00:21",
-                audioPreview = "“Hay operativo por la av...”",
-                isHighlighted = true
-            ),
-            ConversationItemModel(
-                id = "5",
-                isGroup = false,
-                avatarText = "PR",
-                avatarBgDark = false,
-                title = "Privado · Jefe de línea",
-                time = "08:18",
-                unreadCount = 1,
-                audioDuration = "00:07",
-                audioPreview = "“Revisa el cumplimiento de la unidad 08.”",
-                isHighlighted = false
-            )
-        )
-    }
+    // Menú contextual: conversación sobre la que se está actuando.
+    var menuFor by remember { mutableStateOf<Conversation?>(null) }
+    var confirmDelete by remember { mutableStateOf<Conversation?>(null) }
 
-    val filteredConversations = remember(selectedCategory, searchQuery) {
-        conversations.filter { item ->
-            val matchesCategory = when (selectedCategory) {
-                1 -> item.isGroup
-                2 -> !item.isGroup
-                else -> true
-            }
-            val matchesSearch = searchQuery.isBlank() ||
-                item.title.contains(searchQuery, ignoreCase = true) ||
-                item.audioPreview.contains(searchQuery, ignoreCase = true)
-            matchesCategory && matchesSearch
-        }
-    }
+    // Estado desde el ViewModel (repositorio fake por ahora).
+    val vm = viewModel { AppDi.get<ConversationsViewModel>() }
+    val selectedCategory = vm.category
+    val searchQuery = vm.query
+    val filteredConversations = vm.visible
+    val isLoading = vm.loading
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -234,9 +177,28 @@ fun CommunicationScreen(
                         color = AppColors.ink
                     )
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Botón "nuevo grupo"
+                        val newGroupSource = remember { MutableInteractionSource() }
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .background(AppColors.ink, CircleShape)
+                                .clickable(
+                                    interactionSource = newGroupSource,
+                                    indication = ripple(color = AppColors.cream.copy(alpha = 0.2f))
+                                ) { onNewGroupClick() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = FeatherIcons.Plus,
+                                contentDescription = "Nuevo grupo",
+                                tint = AppColors.cream,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                         Icon(
                             imageVector = FeatherIcons.Menu,
                             contentDescription = "Menu",
@@ -281,11 +243,12 @@ fun CommunicationScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Barra de Buscar
+                // Barra de Buscar (funcional)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(40.dp)
+                        .clip(RoundedCornerShape(20.dp))
                         .background(AppColors.mauve, RoundedCornerShape(20.dp))
                         .padding(horizontal = 16.dp),
                     contentAlignment = Alignment.CenterStart
@@ -301,14 +264,32 @@ fun CommunicationScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "Buscar",
-                            style = AppTextStyles.waykiMini.copy(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Normal
-                            ),
-                            color = AppColors.slate
-                        )
+                        Box(modifier = Modifier.weight(1f)) {
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = vm::onQueryChange,
+                                singleLine = true,
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    fontSize = 13.sp,
+                                    color = AppColors.ink
+                                ),
+                                cursorBrush = androidx.compose.ui.graphics.SolidColor(AppColors.ink),
+                                modifier = Modifier.fillMaxWidth(),
+                                decorationBox = { inner ->
+                                    if (searchQuery.isEmpty()) {
+                                        Text(
+                                            text = "Buscar",
+                                            style = AppTextStyles.waykiMini.copy(
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Normal
+                                            ),
+                                            color = AppColors.slate
+                                        )
+                                    }
+                                    inner()
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -330,7 +311,7 @@ fun CommunicationScreen(
                                 .height(40.dp)
                                 .clip(RoundedCornerShape(20.dp))
                                 .background(bgColor)
-                                .clickable { selectedCategory = index }
+                                .clickable { vm.onCategoryChange(index) }
                                 .padding(horizontal = 20.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -349,16 +330,59 @@ fun CommunicationScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Lista de conversaciones
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 120.dp)
-                ) {
-                    items(filteredConversations, key = { it.id }) { item ->
-                        ConversationCard(
-                            item = item,
-                            onClick = { onConversationClick(item.id) }
-                        )
+                if (isLoading) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 120.dp)
+                    ) {
+                        items(3) {
+                            WaykiSkeleton(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(90.dp),
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                        }
+                    }
+                } else if (filteredConversations.isEmpty()) {
+                    // Estado vacío
+                    Box(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = "No hay conversaciones",
+                                style = AppTextStyles.waykiLabelMedium,
+                                color = AppColors.slate
+                            )
+                            Text(
+                                text = "Cuando recibas mensajes, aparecerán aquí.",
+                                style = AppTextStyles.waykiMini,
+                                color = AppColors.slate,
+                                modifier = Modifier.padding(horizontal = 32.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 120.dp)
+                    ) {
+                        itemsIndexed(filteredConversations, key = { _, it -> it.id }) { index, item ->
+                            ConversationCard(
+                                item = item,
+                                index = index,
+                                onLongClick = { menuFor = item },
+                                onClick = { onConversationClick(item.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -371,15 +395,73 @@ fun CommunicationScreen(
             )
         }
     }
+
+    // ── Menú contextual (mantener presionada una conversación) ──────────
+    menuFor?.let { conversation ->
+        ConversationMenuSheet(
+            conversation = conversation,
+            onDismiss = { menuFor = null },
+            onAction = { action ->
+                when (action) {
+                    ConversationAction.CLEAR -> {
+                        onClearChat(conversation.id)
+                        menuFor = null
+                    }
+                    ConversationAction.DELETE_GROUP,
+                    ConversationAction.DELETE_CHAT -> {
+                        // Pide confirmación antes de borrar.
+                        menuFor = null
+                        confirmDelete = conversation
+                    }
+                }
+            }
+        )
+    }
+
+    // ── Confirmación al eliminar ────────────────────────────────────────
+    confirmDelete?.let { conversation ->
+        WaykiConfirmDialog(
+            title = if (conversation.isGroup) "Eliminar grupo" else "Eliminar chat",
+            message = if (conversation.isGroup) {
+                "Se eliminará \"${conversation.title}\" para todos los conductores."
+            } else {
+                "Se eliminará la conversación con \"${conversation.title}\" de tu lista."
+            },
+            confirmLabel = "Eliminar",
+            onConfirm = {
+                onDeleteChat(conversation.id)
+                confirmDelete = null
+            },
+            onDismiss = { confirmDelete = null }
+        )
+    }
 }
 
 @Composable
 private fun ConversationCard(
-    item: ConversationItemModel,
-    onClick: () -> Unit
+    item: Conversation,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
+    /** Índice en la lista: escalona la entrada de cada tarjeta. */
+    index: Int = 0
 ) {
-    val cardBg = if (item.isHighlighted) AppColors.mauve else AppColors.cream
-    val cardBorder = if (item.isHighlighted) {
+    // Entrada escalonada: cada tarjeta aparece un poco después que la anterior.
+    val appear = remember(index) {
+        Animatable(0f)
+    }
+    LaunchedEffect(index) {
+        // 60 ms de retraso por tarjeta: se ve "en cascada", no de golpe.
+        delay(index * 60L)
+        appear.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(320, easing = LinearOutSlowInEasing)
+        )
+    }
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val highlighted = item.unreadCount > 0
+    val cardBg = if (highlighted) AppColors.mauve else AppColors.cream
+    val cardBorder = if (highlighted) {
         Modifier
     } else {
         Modifier.border(1.dp, AppColors.mauve, RoundedCornerShape(24.dp))
@@ -388,41 +470,36 @@ private fun ConversationCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                alpha = appear.value
+                translationY = 24.dp.toPx() * (1f - appear.value)
+            }
             .clip(RoundedCornerShape(24.dp))
             .then(cardBorder)
             .background(cardBg, RoundedCornerShape(24.dp))
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = ripple(color = AppColors.primary.copy(alpha = 0.12f)),
+                onLongClick = onLongClick,
+                onClick = onClick
+            )
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Avatar
-            val avatarBg = if (item.avatarBgDark) AppColors.ink else AppColors.mauve
-            val avatarTextColor = if (item.avatarBgDark) AppColors.cream else AppColors.ink
-
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(avatarBg, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = item.avatarText,
-                    style = AppTextStyles.waykiButtonSmall.copy(
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = avatarTextColor
-                )
-            }
+            WaykiAvatar(
+                text = item.avatarText,
+                size = 48.dp,
+                dark = item.avatarDark,
+                online = item.members.firstOrNull { it.userId != "me" }?.isOnline
+            )
 
             Spacer(modifier = Modifier.width(14.dp))
 
-            // Contenido central y derecho
             Column(modifier = Modifier.weight(1f)) {
-                // Cabecera: Nombre + Hora + Contador
+                // Cabecera: nombre + hora + contador
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -446,7 +523,7 @@ private fun ConversationCard(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = item.time,
+                            text = formatListTime(item.lastMessageAtMillis),
                             style = AppTextStyles.waykiMini.copy(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Normal
@@ -476,7 +553,7 @@ private fun ConversationCard(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Mensaje con icono de audio
+                // Vista previa del último mensaje
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.Top
@@ -488,8 +565,8 @@ private fun ConversationCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = FeatherIcons.ArrowDown,
-                            contentDescription = "Audio",
+                            imageVector = FeatherIcons.MessageCircle,
+                            contentDescription = null,
                             tint = AppColors.cream,
                             modifier = Modifier.size(10.dp)
                         )
@@ -498,16 +575,25 @@ private fun ConversationCard(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Text(
-                        text = "Audio · ${item.audioDuration} · ${item.audioPreview}",
+                        text = item.preview,
                         style = AppTextStyles.waykiMini.copy(
                             fontSize = 12.5.sp,
                             lineHeight = 17.sp,
                             fontWeight = FontWeight.Normal
                         ),
-                        color = AppColors.ink
+                        color = AppColors.ink,
+                        maxLines = 2
                     )
                 }
             }
         }
     }
+}
+
+/** Hora del listado: "08:39". */
+private fun formatListTime(millis: Long): String {
+    val totalMinutes = (millis / 60000) % (24 * 60)
+    val hour = (totalMinutes / 60).toInt()
+    val minute = (totalMinutes % 60).toInt()
+    return "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
 }

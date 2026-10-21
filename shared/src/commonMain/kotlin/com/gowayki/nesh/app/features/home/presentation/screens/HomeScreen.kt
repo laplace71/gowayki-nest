@@ -1,10 +1,14 @@
 package com.gowayki.nesh.app.features.home.presentation.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -21,20 +25,24 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackground
 import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
+import com.gowayki.nesh.app.common.ui.shared.WaykiSkeleton
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
-import androidx.compose.foundation.clickable
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.ArrowLeft
 import compose.icons.feathericons.ArrowRight
@@ -72,6 +80,13 @@ fun HomeScreen(
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
+    var isLoading by remember { mutableStateOf(true) }
+
+    // Simulate initial data load
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(800) // Brief skeleton flash
+        isLoading = false
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -117,252 +132,368 @@ fun HomeScreen(
         }
     ) {
         WaykiBackground(withRoads = true, roadsAnimated = false) {
-            
-            // Massive dark blob behind the top section (Rectangle 4)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.68f) // Approx 597 out of 874
-                    .background(
-                        color = AppColors.slate, 
-                        shape = RoundedCornerShape(bottomStart = 80.dp, bottomEnd = 80.dp)
-                    )
-            )
-            
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .statusBarsPadding()
-                    .padding(horizontal = AppSpacing.pageHorizontal, vertical = AppSpacing.sm)
                     .verticalScroll(rememberScrollState())
             ) {
-                // Top Bar
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                // ── Header: fondo oscuro que se desplaza con el scroll ──
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            color = AppColors.slate,
+                            shape = RoundedCornerShape(bottomStart = 56.dp, bottomEnd = 56.dp)
+                        )
+                        .statusBarsPadding()
+                        .padding(horizontal = AppSpacing.pageHorizontal)
+                        .padding(top = AppSpacing.sm, bottom = 32.dp)
                 ) {
-                    WaykiBackButton(onClick = onBack)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .size(AppSpacing.buttonSecondaryHeight)
-                                .background(AppColors.cream, CircleShape)
-                                .clickable { coroutineScope.launch { drawerState.open() } },
-                            contentAlignment = Alignment.Center
+                    Column {
+                        // Barra superior
+                        // Sin boton de retroceso: la navegacion (incluido
+                        // "cerrar sesion") vive en el menu lateral.
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = FeatherIcons.Menu,
-                                contentDescription = "Menu",
-                                tint = AppColors.ink,
-                                modifier = Modifier.size(20.dp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.sm)) {
+                                TopCircleButton(
+                                    icon = FeatherIcons.Menu,
+                                    description = "Menu",
+                                    onClick = { coroutineScope.launch { drawerState.open() } }
+                                )
+                                TopCircleButton(
+                                    icon = FeatherIcons.Bell,
+                                    description = "Notificaciones",
+                                    onClick = onNotificationsClick
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(28.dp))
+
+                        // Saludo
+                        Text(
+                            text = "Bienvenido de vuelta",
+                            style = AppTextStyles.waykiHeader,
+                            color = AppColors.cream
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Carlos Mendoza",
+                                style = AppTextStyles.waykiLabelMedium,
+                                color = AppColors.cream.copy(alpha = 0.85f)
+                            )
+                            Spacer(modifier = Modifier.width(AppSpacing.sm))
+                            Text(
+                                text = "•",
+                                style = AppTextStyles.waykiLabelMedium,
+                                color = AppColors.cream.copy(alpha = 0.5f)
+                            )
+                            Spacer(modifier = Modifier.width(AppSpacing.sm))
+                            Text(
+                                text = "Línea 7",
+                                style = AppTextStyles.waykiLabelMedium,
+                                color = AppColors.cream.copy(alpha = 0.85f)
                             )
                         }
-                    Box(
-                        modifier = Modifier
-                            .size(AppSpacing.buttonSecondaryHeight)
-                            .background(AppColors.cream, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = FeatherIcons.Bell,
-                            contentDescription = "Notifications",
-                            tint = AppColors.ink,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(28.dp))
 
-            Text(
-                text = "Bienvenido, ...",
-                style = AppTextStyles.waykiTitle,
-                color = AppColors.cream // Now white because it's on the slate background
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Main Card (Recorrido del dia)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shadow(16.dp, RoundedCornerShape(24.dp), spotColor = AppColors.ink.copy(alpha = 0.5f))
-                    .background(AppColors.ink, RoundedCornerShape(24.dp))
-                    .clickable { onRecorridoClick() }
-                    .padding(24.dp)
-            ) {
-                Row(modifier = Modifier.height(IntrinsicSize.Min)) {
-                    // Thick vertical white line (Line 17)
-                    Box(
-                        modifier = Modifier
-                            .width(4.dp)
-                            .fillMaxHeight()
-                            .background(AppColors.cream, RoundedCornerShape(2.dp))
-                    )
-                    
-                    Spacer(modifier = Modifier.width(16.dp))
-                    
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "tu recorrido del dia",
-                            style = AppTextStyles.waykiLabelMedium,
-                            color = AppColors.cream
-                        )
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                text = "5",
-                                style = AppTextStyles.displayLarge.copy(fontWeight = FontWeight.Bold, color = AppColors.cream),
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "min",
-                                style = AppTextStyles.waykiTitle.copy(color = AppColors.cream),
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                        }
-                        
-                        Text(
-                            text = "adelante de Unidad 08",
-                            style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = AppColors.cream
-                        )
-                        
-                        Spacer(modifier = Modifier.height(4.dp))
-                        
-                        Text(
-                            text = "Dato Gowayki Pulse • actualizado hace 45 s",
-                            style = AppTextStyles.waykiMini,
-                            color = AppColors.slate
-                        )
-                        
-                        Spacer(modifier = Modifier.height(24.dp))
-                        
-                        // Divider line
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(AppColors.slate.copy(alpha = 0.3f))
-                        )
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        Text(
-                            text = "PRÓXIMO PUNTO DE CONTROL",
-                            style = AppTextStyles.waykiMini,
-                            color = AppColors.cream
-                        )
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
+                        // Etiqueta de sección, sobre el fondo oscuro
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Av. Dolores / Cercado",
-                                    style = AppTextStyles.waykiButtonLarge,
-                                    color = AppColors.cream
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Programado: 08:47",
-                                    style = AppTextStyles.waykiMini,
-                                    color = AppColors.slate
-                                )
-                            }
-                            
-                            Spacer(modifier = Modifier.width(8.dp))
-                            
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "6",
-                                    style = AppTextStyles.waykiHeader,
-                                    color = AppColors.cream
-                                )
-                                Text(
-                                    text = "min",
-                                    style = AppTextStyles.waykiMini,
-                                    color = AppColors.cream
-                                )
-                            }
+                            Text(
+                                text = "Tu recorrido del día",
+                                style = AppTextStyles.waykiLabelMedium,
+                                color = AppColors.cream
+                            )
+                            LiveBadge()
                         }
-                        
-                        Spacer(modifier = Modifier.height(24.dp))
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            PillStat(top = "84%", bottom = "Cumplimiento")
-                            PillStat(top = "6", bottom = "Puntos hoy")
-                            PillStat(top = "L12", bottom = "Línea activa")
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Tarjeta principal
+                        if (isLoading) {
+                            WaykiSkeleton(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(300.dp),
+                                color = AppColors.cream.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(28.dp)
+                            )
+                        } else {
+                            RouteCard(
+                                onClick = onRecorridoClick,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
                 }
+
+                // ── Contenido sobre fondo claro ─────────────────────────────
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = AppSpacing.pageHorizontal)
+                        .padding(top = 28.dp)
+                ) {
+                    // Etiqueta de sección: combis
+                    Text(
+                        text = "Combis en tu línea",
+                        style = AppTextStyles.waykiLabelMedium,
+                        color = AppColors.ink
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Tarjetas de combis
+                    if (isLoading) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            WaykiSkeleton(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(78.dp),
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                            WaykiSkeleton(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(78.dp),
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            BusCard(
+                                title = "combi de atrás",
+                                line = "línea 7",
+                                time = "5m",
+                                icon = FeatherIcons.ArrowLeft
+                            )
+                            BusCard(
+                                title = "combi de adelante",
+                                line = "línea 11",
+                                time = "8m",
+                                icon = FeatherIcons.ArrowRight
+                            )
+                        }
+                    }
+
+                    // Espacio para la barra inferior flotante
+                    Spacer(modifier = Modifier.height(140.dp))
+                }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Floating Buses
-            BusCard(
-                title = "combi de atras",
-                line = "linea 7",
-                time = "margen de tiempo 5m",
-                icon = FeatherIcons.ArrowLeft
+            // Barra de navegación inferior, anclada al fondo
+            WaykiBottomNav(
+                selectedTab = 0, // "Inicio" es la pestaña activa
+                onTabSelected = { tab ->
+                    if (tab == 1) onCommunicationClick()
+                    else if (tab == 2) onRecorridoClick()
+                },
+                modifier = Modifier.align(Alignment.BottomCenter)
             )
-            
-            Spacer(modifier = Modifier.height(20.dp))
-            
-            BusCard(
-                title = "combi de adelante",
-                line = "linea 11",
-                time = "margen de tiempo 8m",
-                icon = FeatherIcons.ArrowRight
-            )
-            
-            Spacer(modifier = Modifier.height(140.dp)) // space for bottom nav
         }
-        
-        // Bottom Navigation Bar anchored to the bottom
-        WaykiBottomNav(
-            selectedTab = 0, // "Inicio" is selected by default in Home
-            onTabSelected = { tab ->
-                if (tab == 1) onCommunicationClick()
-                else if (tab == 2) onRecorridoClick()
-            },
-            modifier = Modifier.align(Alignment.BottomCenter)
+    }
+}
+
+// ---------- Botón circular de la barra superior (menú, campana) ----------
+@Composable
+private fun TopCircleButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        modifier = modifier
+            .size(AppSpacing.buttonSecondaryHeight)
+            .background(AppColors.cream, CircleShape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(color = AppColors.ink.copy(alpha = 0.15f)),
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = description,
+            tint = AppColors.ink,
+            modifier = Modifier.size(20.dp)
         )
     }
 }
+
+// ---------- Badge "EN VIVO" ----------
+@Composable
+private fun LiveBadge(modifier: Modifier = Modifier) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .background(AppColors.ink, RoundedCornerShape(20.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .background(AppColors.cream, CircleShape)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = "EN VIVO",
+            style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
+            color = AppColors.cream
+        )
+    }
+}
+
+// ---------- Tarjeta del recorrido del día ----------
+@Composable
+private fun RouteCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        modifier = modifier
+            .shadow(24.dp, RoundedCornerShape(28.dp), spotColor = AppColors.ink.copy(alpha = 0.5f))
+            .background(AppColors.ink, RoundedCornerShape(28.dp))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(color = AppColors.cream.copy(alpha = 0.15f)),
+                onClick = onClick
+            )
+            .padding(24.dp)
+    ) {
+        Column {
+            // Tiempo adelante
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = "5",
+                    style = AppTextStyles.displayLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = AppColors.cream
+                    )
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "min",
+                    style = AppTextStyles.waykiTitle.copy(color = AppColors.cream),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "adelante de Unidad 08",
+                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = AppColors.cream
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = "Dato Gowayki Pulse • actualizado hace 45 s",
+                style = AppTextStyles.waykiMini,
+                color = AppColors.slate
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Separador
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(AppColors.slate.copy(alpha = 0.3f))
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Próximo punto de control
+            Text(
+                text = "PRÓXIMO PUNTO DE CONTROL",
+                style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                color = AppColors.cream
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Av. Dolores / Cercado",
+                        style = AppTextStyles.waykiButtonLarge,
+                        color = AppColors.cream
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Programado: 08:47",
+                        style = AppTextStyles.waykiMini,
+                        color = AppColors.slate
+                    )
+                }
+                Spacer(modifier = Modifier.width(AppSpacing.sm))
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "6",
+                        style = AppTextStyles.waykiHeader,
+                        color = AppColors.cream
+                    )
+                    Text(
+                        text = "min",
+                        style = AppTextStyles.waykiMini,
+                        color = AppColors.cream
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Estadísticas
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                PillStat(top = "84%", bottom = "Cumplimiento", modifier = Modifier.weight(1f))
+                PillStat(top = "6", bottom = "Puntos hoy", modifier = Modifier.weight(1f))
+                PillStat(top = "L12", bottom = "Línea activa", modifier = Modifier.weight(1f))
+            }
+        }
+    }
 }
 
 @Composable
-private fun PillStat(top: String, bottom: String) {
+private fun PillStat(top: String, bottom: String, modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier
-            .background(AppColors.mauve, RoundedCornerShape(12.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+        modifier = modifier
+            .background(AppColors.mauve.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 8.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = top,
-                style = AppTextStyles.waykiButtonLarge,
-                color = AppColors.ink
+                style = AppTextStyles.waykiButtonLarge.copy(fontSize = 16.sp),
+                color = AppColors.cream
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = bottom,
-                style = AppTextStyles.labelSmall.copy(fontSize = 10.sp),
-                color = AppColors.ink
+                style = AppTextStyles.labelSmall.copy(fontSize = 9.sp),
+                color = AppColors.cream.copy(alpha = 0.7f)
             )
         }
     }
@@ -375,69 +506,64 @@ private fun BusCard(
     time: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(12.dp, RoundedCornerShape(24.dp), spotColor = AppColors.slate.copy(alpha = 0.4f), ambientColor = AppColors.slate.copy(alpha = 0.1f))
-            .background(AppColors.mauve, RoundedCornerShape(24.dp))
-            .padding(horizontal = 24.dp, vertical = 20.dp)
+            .shadow(8.dp, RoundedCornerShape(20.dp), spotColor = AppColors.slate.copy(alpha = 0.3f))
+            .background(AppColors.mauve, RoundedCornerShape(20.dp))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(color = AppColors.ink.copy(alpha = 0.1f)),
+                onClick = {}
+            )
+            .padding(horizontal = 18.dp, vertical = 14.dp)
     ) {
-        Column {
-            // Top row: Title and Arrow
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Bus emoji as compact circle
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(AppColors.ink, CircleShape),
+                contentAlignment = Alignment.Center
             ) {
+                Text("🚌", fontSize = 20.sp)
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            // Title and line info
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp),
+                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
                     color = AppColors.ink
                 )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = line,
+                    style = AppTextStyles.waykiMini,
+                    color = AppColors.slate
+                )
+            }
+
+            // Time and arrow
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = time,
+                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                    color = AppColors.ink
+                )
+                Spacer(modifier = Modifier.height(2.dp))
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = AppColors.ink,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(18.dp)
                 )
-            }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Bottom row: Image and Stats
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Bottom
-            ) {
-                // Bus image placeholder (large and rounded)
-                Box(
-                    modifier = Modifier
-                        .width(96.dp)
-                        .height(64.dp)
-                        .shadow(4.dp, RoundedCornerShape(12.dp))
-                        .background(AppColors.slate.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                        .padding(4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("🚌", fontSize = 32.sp)
-                }
-                
-                Spacer(modifier = Modifier.weight(1f))
-                
-                // Line and Time
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = line,
-                        style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = AppColors.ink
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = time,
-                        style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
-                        color = AppColors.ink
-                    )
-                }
             }
         }
     }
@@ -475,11 +601,16 @@ fun WaykiSidebarContent(
                 style = AppTextStyles.waykiHeader, 
                 color = AppColors.ink
             )
+            val closeInteractionSource = remember { MutableInteractionSource() }
             Box(
                 modifier = Modifier
                     .size(40.dp)
                     .background(AppColors.mauve, CircleShape)
-                    .clickable(onClick = onClose),
+                    .clickable(
+                        interactionSource = closeInteractionSource,
+                        indication = ripple(color = AppColors.ink.copy(alpha = 0.2f)),
+                        onClick = onClose
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -562,11 +693,16 @@ fun WaykiSidebarContent(
         Spacer(modifier = Modifier.height(32.dp)) // ensure space if small screen
         
         // 7. SOS
+        val sosInteractionSource = remember { MutableInteractionSource() }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(AppColors.ink, RoundedCornerShape(16.dp))
-                .clickable { onSosClick() }
+                .clickable(
+                    interactionSource = sosInteractionSource,
+                    indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
+                    onClick = onSosClick
+                )
                 .padding(horizontal = 20.dp, vertical = 24.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -614,7 +750,17 @@ private fun DrawerMenuItem(
     isSelected: Boolean,
     onClick: () -> Unit = {}
 ) {
-    val bgColor = if (isSelected) AppColors.ink else androidx.compose.ui.graphics.Color.Transparent
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val bgColor by animateColorAsState(
+        targetValue = when {
+            isSelected -> AppColors.ink
+            isPressed -> AppColors.mauve.copy(alpha = 0.4f)
+            else -> androidx.compose.ui.graphics.Color.Transparent
+        },
+        animationSpec = tween(150),
+        label = "drawerItemBg"
+    )
     val contentColor = if (isSelected) AppColors.cream else AppColors.ink
     val subtitleColor = if (isSelected) AppColors.cream.copy(alpha = 0.7f) else AppColors.slate
 
@@ -622,7 +768,11 @@ private fun DrawerMenuItem(
         modifier = Modifier
             .fillMaxWidth()
             .background(bgColor, RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(color = AppColors.primary.copy(alpha = 0.15f)),
+                onClick = onClick
+            )
             .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -655,10 +805,16 @@ private fun DrawerSimpleItem(
     title: String,
     onClick: () -> Unit = {}
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(color = AppColors.primary.copy(alpha = 0.15f)),
+                onClick = onClick
+            )
             .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

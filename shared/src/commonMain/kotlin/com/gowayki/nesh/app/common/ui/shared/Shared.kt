@@ -7,6 +7,7 @@ package com.gowayki.nesh.app.common.ui.shared
 // viene de los tokens de core/theme (AppColors, AppSpacing, AppRadius,
 // AppTextStyles).
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -14,6 +15,10 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.material3.ripple
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,6 +36,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -79,6 +85,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import com.gowayki.nesh.app.common.modules.auth.AuthCopy
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
@@ -180,6 +188,35 @@ fun WaykiSubtitle(text: String, modifier: Modifier = Modifier, textAlign: TextAl
     )
 }
 
+// ---------- Modificador interactivo: ripple + estado pressed ----------
+/**
+ * Aplica ripple y feedback de presión a cualquier elemento clickeable.
+ * Uso: Modifier.clickable { ... }.then(WaykiInteractive())
+ */
+@Composable
+fun Modifier.WaykiInteractive(
+    enabled: Boolean = true,
+    rippleColor: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.12f)
+): Modifier {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    return this
+        .clickable(
+            interactionSource = interactionSource,
+            indication = ripple(color = rippleColor),
+            enabled = enabled,
+            onClick = {}
+        )
+        .then(
+            if (isPressed && enabled) {
+                Modifier.background(androidx.compose.ui.graphics.Color.Transparent)
+            } else {
+                Modifier
+            }
+        )
+}
+
 // ---------- Botón primario (pastilla, igual que ENTRAR) ----------
 @Composable
 private fun ArrowIcon() {
@@ -199,9 +236,22 @@ fun WaykiPrimaryButton(
     modifier: Modifier = Modifier,
     showArrow: Boolean = true,
     fullWidth: Boolean = true,
+    enabled: Boolean = true,
+    isLoading: Boolean = false,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val buttonColor by animateColorAsState(
+        targetValue = when {
+            !enabled -> AppColors.primary.copy(alpha = 0.4f)
+            isPressed -> AppColors.primary.copy(alpha = 0.8f)
+            else -> AppColors.primary
+        },
+        label = "buttonColor"
+    )
+
     Button(
-        onClick = onClick,
+        onClick = { if (!isLoading && enabled) onClick() },
         modifier = modifier
             .then(if (fullWidth) Modifier.fillMaxWidth() else Modifier.width(AppSpacing.buttonFixedWidth))
             .height(if (fullWidth) AppSpacing.buttonPrimaryHeight else AppSpacing.buttonSecondaryHeight)
@@ -211,17 +261,29 @@ fun WaykiPrimaryButton(
                 spotColor = AppColors.onSurfaceMuted.copy(alpha = 0.27f),
             ),
         shape = AppRadius.pill,
+        enabled = enabled && !isLoading,
         colors = ButtonDefaults.buttonColors(
-            containerColor = AppColors.primary,
+            containerColor = buttonColor,
             contentColor = AppColors.onPrimary,
+            disabledContainerColor = AppColors.primary.copy(alpha = 0.4f),
+            disabledContentColor = AppColors.onPrimary.copy(alpha = 0.6f),
         ),
+        interactionSource = interactionSource,
     ) {
-        Text(
-            text,
-            style = if (fullWidth) AppTextStyles.waykiButtonLarge else AppTextStyles.waykiButtonSmall,
-        )
-        if (showArrow) {
-            Box(Modifier.padding(start = AppSpacing.md)) { ArrowIcon() }
+        if (isLoading) {
+            CircularProgressIndicator(
+                color = AppColors.onPrimary,
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.dp
+            )
+        } else {
+            Text(
+                text,
+                style = if (fullWidth) AppTextStyles.waykiButtonLarge else AppTextStyles.waykiButtonSmall,
+            )
+            if (showArrow) {
+                Box(Modifier.padding(start = AppSpacing.md)) { ArrowIcon() }
+            }
         }
     }
 }
@@ -233,18 +295,44 @@ fun WaykiPrimaryButton(
 fun WaykiGoogleCircle(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val bgColor by animateColorAsState(
+        targetValue = when {
+            !enabled -> AppColors.cream.copy(alpha = 0.5f)
+            isPressed -> AppColors.cream.copy(alpha = 0.7f)
+            else -> AppColors.cream
+        },
+        label = "googleBg"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = when {
+            !enabled -> AppColors.primary.copy(alpha = 0.2f)
+            isPressed -> AppColors.primary.copy(alpha = 0.9f)
+            else -> AppColors.primary.copy(alpha = 0.6f)
+        },
+        label = "googleBorder"
+    )
+
     Box(
-        modifier.size(AppSpacing.googleCircleSize)
-            .border(AppSpacing.borderThin, AppColors.primary.copy(alpha = 0.6f), CircleShape)
-            .background(AppColors.cream, CircleShape)
-            .clickable(onClick = onClick),
+        modifier
+            .size(AppSpacing.googleCircleSize)
+            .border(AppSpacing.borderThin, borderColor, CircleShape)
+            .background(bgColor, CircleShape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(color = AppColors.primary.copy(alpha = 0.2f)),
+                enabled = enabled,
+                onClick = onClick
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             "G",
             style = AppTextStyles.waykiGoogle,
-            color = AppColors.onBackground,
+            color = AppColors.onBackground.copy(alpha = if (enabled) 1f else 0.5f),
         )
     }
 }
@@ -254,13 +342,30 @@ fun WaykiGoogleCircle(
 fun WaykiBackButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val bgColor by animateColorAsState(
+        targetValue = when {
+            !enabled -> AppColors.surfaceVariant.copy(alpha = 0.2f)
+            isPressed -> AppColors.surfaceVariant.copy(alpha = 0.8f)
+            else -> AppColors.surfaceVariant.copy(alpha = 0.5f)
+        },
+        label = "backBg"
+    )
+
     Box(
         modifier = modifier
             .size(AppSpacing.backButtonSize)
             .clip(androidx.compose.foundation.shape.CircleShape)
-            .background(AppColors.surfaceVariant.copy(alpha = 0.5f))
-            .clickable(onClick = onClick),
+            .background(bgColor)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(color = AppColors.onBackground.copy(alpha = 0.15f)),
+                enabled = enabled,
+                onClick = onClick
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.size(AppSpacing.backArrowSize)) {
@@ -309,7 +414,11 @@ fun WaykiSwitchAuth(
             style = AppTextStyles.waykiMini,
             color = AppColors.onSurfaceMuted,
         )
-        TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = AppSpacing.xs)) {
+        TextButton(
+            onClick = onClick,
+            contentPadding = PaddingValues(horizontal = AppSpacing.xs),
+            interactionSource = remember { MutableInteractionSource() }
+        ) {
             Text(
                 link,
                 style = AppTextStyles.waykiLabelMedium,
@@ -325,11 +434,19 @@ fun WaykiLink(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
-    TextButton(onClick = onClick, modifier = modifier.fillMaxWidth()) {
+    val interactionSource = remember { MutableInteractionSource() }
+
+    TextButton(
+        onClick = { if (enabled) onClick() },
+        modifier = modifier.fillMaxWidth(),
+        enabled = enabled,
+        interactionSource = interactionSource,
+    ) {
         Text(
             text,
-            color = AppColors.onSurfaceMuted,
+            color = if (enabled) AppColors.onSurfaceMuted else AppColors.onSurfaceMuted.copy(alpha = 0.4f),
             style = AppTextStyles.waykiLabelMedium,
             textDecoration = TextDecoration.Underline,
         )
@@ -450,7 +567,7 @@ fun WaykiPinInput(
         modifier.fillMaxWidth()
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null,
+                indication = ripple(color = AppColors.primary.copy(alpha = 0.2f)),
                 onClick = { focusRequester.requestFocus() },
             ),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.sm, Alignment.CenterHorizontally),
@@ -463,11 +580,20 @@ fun WaykiPinInput(
                 revealLast && i == revealedIndex -> digit
                 else -> "●"
             }
+            val isActive = activeBox == i
+            val borderColor by animateColorAsState(
+                targetValue = when {
+                    isActive -> AppColors.onBackground
+                    fieldFocused -> AppColors.primary.copy(alpha = 0.8f)
+                    else -> AppColors.primary.copy(alpha = 0.4f)
+                },
+                label = "pinBorder$i"
+            )
             Box(
                 Modifier.size(boxSize)
                     .border(
                         AppSpacing.borderThin,
-                        if (activeBox == i) AppColors.onBackground else AppColors.primary.copy(alpha = 0.6f),
+                        borderColor,
                         AppRadius.pinBox,
                     )
                     .background(AppColors.cream, AppRadius.pinBox),
@@ -479,6 +605,101 @@ fun WaykiPinInput(
                     color = AppColors.onBackground,
                 )
             }
+        }
+    }
+}
+
+// ---------- Avatar circular con iniciales ----------
+// Usado en conversaciones, grupos y el chat. Reemplaza los avatares
+// duplicados que cada pantalla defini por su cuenta.
+@Composable
+fun WaykiAvatar(
+    text: String,
+    size: Dp = 48.dp,
+    dark: Boolean = false,
+    modifier: Modifier = Modifier,
+    online: Boolean? = null
+) {
+    val bg = if (dark) AppColors.ink else AppColors.mauve
+    val fg = if (dark) AppColors.cream else AppColors.ink
+
+    Box(modifier = modifier.size(size)) {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .background(bg, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                style = AppTextStyles.waykiButtonSmall.copy(
+                    fontSize = (size.value * 0.34f).sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = fg,
+                maxLines = 1
+            )
+        }
+
+        // Punto de "en línea" abajo a la derecha.
+        if (online == true) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(size * 0.28f)
+                    .background(AppColors.cream, CircleShape)
+                    .border(2.dp, AppColors.ink, CircleShape)
+                    .background(AppColors.mauve, CircleShape)
+            )
+        }
+    }
+}
+
+// ---------- Skeleton loading reutilizable ----------
+/**
+ * Bloque skeleton con animación de pulso suave para mostrar mientras cargan datos.
+ */
+@Composable
+fun WaykiSkeleton(
+    modifier: Modifier = Modifier,
+    color: androidx.compose.ui.graphics.Color = AppColors.surfaceVariant.copy(alpha = 0.6f),
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(12.dp),
+) {
+    // Shimmer: una banda de luz recorre el bloque de izquierda a derecha,
+    // como en WhatsApp/Skeleton Screens. Se ve "vivo" en vez de parpadear.
+    val progress = rememberInfiniteTransition(label = "skeleton").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1250, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "shimmerProgress"
+    )
+
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(color.copy(alpha = 0.45f))
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            // La banda cubre ~35% del ancho y se desplaza de -35% a 135%.
+            val bandWidth = size.width * 0.35f
+            val start = (size.width + bandWidth * 2) * progress.value - bandWidth
+            val gradient = androidx.compose.ui.graphics.Brush.linearGradient(
+                colors = listOf(
+                    androidx.compose.ui.graphics.Color.Transparent,
+                    androidx.compose.ui.graphics.Color.White.copy(alpha = 0.55f),
+                    androidx.compose.ui.graphics.Color.Transparent,
+                ),
+                start = androidx.compose.ui.geometry.Offset(start, 0f),
+                end = androidx.compose.ui.geometry.Offset(start + bandWidth, size.height),
+            )
+            drawRoundRect(
+                brush = gradient,
+                size = size,
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.minDimension * 0.1f),
+            )
         }
     }
 }
