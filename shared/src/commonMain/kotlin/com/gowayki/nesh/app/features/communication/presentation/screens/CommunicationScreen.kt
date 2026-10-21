@@ -43,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,10 +89,12 @@ fun CommunicationScreen(
     onSosClick: () -> Unit = {},
     onInicioClick: () -> Unit = {},
     onRecorridoClick: () -> Unit = {},
+    onMapaClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onSupportClick: () -> Unit = {},
     onLogoutClick: () -> Unit = {}
 ) {
+    BackHandler(true) { onInicioClick() }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
 
@@ -132,6 +135,10 @@ fun CommunicationScreen(
                     onRecorridoClick = {
                         coroutineScope.launch { drawerState.close() }
                         onRecorridoClick()
+                    },
+                    onMapaClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onMapaClick()
                     },
                     onSettingsClick = {
                         coroutineScope.launch { drawerState.close() }

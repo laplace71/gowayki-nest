@@ -73,6 +73,7 @@ fun RouteDetailScreen(
     onInicioClick: () -> Unit = {},
     onCommunicationClick: () -> Unit = {},
     onRecorridoClick: () -> Unit = {},
+    onMapaClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onSupportClick: () -> Unit = {},
     onLogoutClick: () -> Unit = {}
@@ -156,6 +157,10 @@ fun RouteDetailScreen(
                     onRecorridoClick = {
                         coroutineScope.launch { drawerState.close() }
                         onRecorridoClick()
+                    },
+                    onMapaClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onMapaClick()
                     },
                     onSettingsClick = {
                         coroutineScope.launch { drawerState.close() }

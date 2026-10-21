@@ -27,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,13 +36,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackground
 import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
+import com.gowayki.nesh.app.common.ui.shared.WaykiReveal
 import com.gowayki.nesh.app.common.ui.shared.WaykiSkeleton
+import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
+import com.gowayki.nesh.core.theme.src.core.AppRadius
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.ArrowLeft
@@ -65,6 +70,8 @@ import compose.icons.feathericons.HelpCircle
 import compose.icons.feathericons.LogOut
 import compose.icons.feathericons.AlertTriangle
 import compose.icons.feathericons.ChevronRight
+import compose.icons.fontawesomeicons.SolidGroup
+import compose.icons.fontawesomeicons.solid.Bus
 
 @Composable
 fun HomeScreen(
@@ -74,6 +81,7 @@ fun HomeScreen(
     onSosClick: () -> Unit = {},
     onCommunicationClick: () -> Unit = {},
     onRecorridoClick: () -> Unit = {},
+    onMapaClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onSupportClick: () -> Unit = {},
     onLogoutClick: () -> Unit = {},
@@ -81,6 +89,7 @@ fun HomeScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(true) }
+    val selectedRoute by SelectedRouteHolder.selected.collectAsState()
 
     // Simulate initial data load
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -92,7 +101,7 @@ fun HomeScreen(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(
-                drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
+                drawerShape = AppRadius.modal,
                 drawerContainerColor = AppColors.cream,
                 modifier = Modifier.width(328.dp).fillMaxHeight()
             ) {
@@ -131,25 +140,31 @@ fun HomeScreen(
             }
         }
     ) {
-        WaykiBackground(withRoads = true, roadsAnimated = false) {
+        WaykiBackground(withRoads = true, roadsAnimated = true) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
             ) {
                 // ── Header: fondo oscuro que se desplaza con el scroll ──
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            color = AppColors.slate,
-                            shape = RoundedCornerShape(bottomStart = 56.dp, bottomEnd = 56.dp)
-                        )
-                        .statusBarsPadding()
-                        .padding(horizontal = AppSpacing.pageHorizontal)
-                        .padding(top = AppSpacing.sm, bottom = 32.dp)
-                ) {
-                    Column {
+                WaykiReveal(delayMillis = 0) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                color = AppColors.ink,
+                                shape = RoundedCornerShape(
+                                    topStart = 0.dp,
+                                    topEnd = 0.dp,
+                                    bottomStart = 40.dp,
+                                    bottomEnd = 40.dp
+                                )
+                            )
+                            .statusBarsPadding()
+                            .padding(horizontal = AppSpacing.pageHorizontal)
+                            .padding(top = AppSpacing.sm, bottom = 32.dp)
+                    ) {
+                        Column {
                         // Barra superior
                         // Sin boton de retroceso: la navegacion (incluido
                         // "cerrar sesion") vive en el menu lateral.
@@ -176,7 +191,7 @@ fun HomeScreen(
 
                         // Saludo
                         Text(
-                            text = "Bienvenido de vuelta",
+                            text = "Sigamos",
                             style = AppTextStyles.waykiHeader,
                             color = AppColors.cream
                         )
@@ -187,18 +202,30 @@ fun HomeScreen(
                                 style = AppTextStyles.waykiLabelMedium,
                                 color = AppColors.cream.copy(alpha = 0.85f)
                             )
-                            Spacer(modifier = Modifier.width(AppSpacing.sm))
-                            Text(
-                                text = "•",
-                                style = AppTextStyles.waykiLabelMedium,
-                                color = AppColors.cream.copy(alpha = 0.5f)
-                            )
-                            Spacer(modifier = Modifier.width(AppSpacing.sm))
-                            Text(
-                                text = "Línea 7",
-                                style = AppTextStyles.waykiLabelMedium,
-                                color = AppColors.cream.copy(alpha = 0.85f)
-                            )
+                            selectedRoute?.let { route ->
+                                Spacer(Modifier.width(AppSpacing.sm))
+                                Text(
+                                    text = "•",
+                                    style = AppTextStyles.waykiLabelMedium,
+                                    color = AppColors.cream.copy(alpha = 0.5f)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Icon(
+                                    SolidGroup.Bus,
+                                    contentDescription = "Ruta de combi",
+                                    tint = AppColors.cream.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = route.name.substringBefore(" · "),
+                                    style = AppTextStyles.waykiLabelMedium,
+                                    color = AppColors.cream.copy(alpha = 0.85f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(28.dp))
@@ -226,7 +253,7 @@ fun HomeScreen(
                                     .fillMaxWidth()
                                     .height(300.dp),
                                 color = AppColors.cream.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(28.dp)
+                                shape = AppRadius.card
                             )
                         } else {
                             RouteCard(
@@ -236,14 +263,16 @@ fun HomeScreen(
                         }
                     }
                 }
+            }
 
                 // ── Contenido sobre fondo claro ─────────────────────────────
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = AppSpacing.pageHorizontal)
-                        .padding(top = 28.dp)
-                ) {
+                WaykiReveal(delayMillis = 80) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = AppSpacing.pageHorizontal)
+                            .padding(top = 28.dp)
+                    ) {
                     // Etiqueta de sección: combis
                     Text(
                         text = "Combis en tu línea",
@@ -260,35 +289,42 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(78.dp),
-                                shape = RoundedCornerShape(20.dp)
+                                shape = AppRadius.card
                             )
                             WaykiSkeleton(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(78.dp),
-                                shape = RoundedCornerShape(20.dp)
+                                shape = AppRadius.card
                             )
                         }
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            BusCard(
-                                title = "combi de atrás",
-                                line = "línea 7",
-                                time = "5m",
-                                icon = FeatherIcons.ArrowLeft
-                            )
-                            BusCard(
-                                title = "combi de adelante",
-                                line = "línea 11",
-                                time = "8m",
-                                icon = FeatherIcons.ArrowRight
-                            )
+                            WaykiReveal(delayMillis = 120) {
+                                BusCard(
+                                    title = "combi de atrás",
+                                    line = "línea 7",
+                                    time = "5m",
+                                    icon = FeatherIcons.ArrowLeft,
+                                    onClick = onRecorridoClick
+                                )
+                            }
+                            WaykiReveal(delayMillis = 180) {
+                                BusCard(
+                                    title = "combi de adelante",
+                                    line = "línea 11",
+                                    time = "8m",
+                                    icon = FeatherIcons.ArrowRight,
+                                    onClick = onRecorridoClick
+                                )
+                            }
                         }
                     }
 
                     // Espacio para la barra inferior flotante
                     Spacer(modifier = Modifier.height(140.dp))
                 }
+            }
             }
 
             // Barra de navegación inferior, anclada al fondo
@@ -297,6 +333,7 @@ fun HomeScreen(
                 onTabSelected = { tab ->
                     if (tab == 1) onCommunicationClick()
                     else if (tab == 2) onRecorridoClick()
+                    else if (tab == 3) onMapaClick()
                 },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
@@ -339,7 +376,7 @@ private fun LiveBadge(modifier: Modifier = Modifier) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
-            .background(AppColors.ink, RoundedCornerShape(20.dp))
+            .background(AppColors.ink, AppRadius.card)
             .padding(horizontal = 10.dp, vertical = 5.dp)
     ) {
         Box(
@@ -365,8 +402,8 @@ private fun RouteCard(
     val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
-            .shadow(24.dp, RoundedCornerShape(28.dp), spotColor = AppColors.ink.copy(alpha = 0.5f))
-            .background(AppColors.ink, RoundedCornerShape(28.dp))
+            .shadow(4.dp, AppRadius.card, spotColor = AppColors.ink.copy(alpha = 0.12f))
+            .background(AppColors.ink, AppRadius.card)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(color = AppColors.cream.copy(alpha = 0.15f)),
@@ -479,7 +516,7 @@ private fun RouteCard(
 private fun PillStat(top: String, bottom: String, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .background(AppColors.mauve.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+            .background(AppColors.mauve.copy(alpha = 0.25f), AppRadius.card)
             .padding(horizontal = 8.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -504,18 +541,19 @@ private fun BusCard(
     title: String,
     line: String,
     time: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit = {}
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(8.dp, RoundedCornerShape(20.dp), spotColor = AppColors.slate.copy(alpha = 0.3f))
-            .background(AppColors.mauve, RoundedCornerShape(20.dp))
+            .shadow(4.dp, AppRadius.card, spotColor = AppColors.ink.copy(alpha = 0.12f))
+            .background(AppColors.cream, AppRadius.card)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(color = AppColors.ink.copy(alpha = 0.1f)),
-                onClick = {}
+                onClick = onClick
             )
             .padding(horizontal = 18.dp, vertical = 14.dp)
     ) {

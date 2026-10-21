@@ -35,7 +35,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.gowayki.nesh.app.common.ui.shared.FloatingBlob
 import com.gowayki.nesh.app.common.ui.shared.WaykiLink
 import com.gowayki.nesh.app.common.ui.shared.WaykiPrimaryButton
 import com.gowayki.nesh.app.common.ui.shared.WaykiRoads
@@ -74,24 +73,14 @@ fun WelcomeScreen(
         label = "welcomeAppear"
     )
 
-    // Ocupa todo el marco del celular: sin marco fijo 402x874 ni padding exterior.
-    // El contenido hace scroll si la pantalla es más baja que el diseño.
+    // Ocupa todo el marco del celular de forma limpia y fluida (optimizado para Helio G99)
     Box(
         Modifier.fillMaxSize().background(AppColors.background).clipToBounds(),
     ) {
-        // Blobs decorativos animados (fondo, relativos a la pantalla real)
-        FloatingBlob((-80).dp, (-60).dp, 260.dp, 240.dp, AppColors.surfaceVariant.copy(alpha = 0.7f), durationMillis = 4200, travelX = 18.dp, travelY = 24.dp)
-        FloatingBlob(270.dp, (-40).dp, 180.dp, 170.dp, AppColors.slate.copy(alpha = 0.5f), durationMillis = 5200, delayMillis = 400, travelX = 22.dp, travelY = 18.dp)
-        FloatingBlob(140.dp, (-30).dp, 80.dp, 80.dp, AppColors.outline.copy(alpha = 0.85f), durationMillis = 3400, delayMillis = 200, travelX = 12.dp, travelY = 16.dp)
-        FloatingBlob((-30).dp, 600.dp, 110.dp, 100.dp, AppColors.primary.copy(alpha = 0.35f), durationMillis = 4800, delayMillis = 600, travelX = 16.dp, travelY = 26.dp)
-        FloatingBlob(300.dp, 180.dp, 64.dp, 64.dp, AppColors.primary.copy(alpha = 0.5f), durationMillis = 3800, delayMillis = 800, travelX = 14.dp, travelY = 18.dp)
-        FloatingBlob((-60).dp, 300.dp, 140.dp, 130.dp, AppColors.outline.copy(alpha = 0.4f), durationMillis = 5600, delayMillis = 300, travelX = 20.dp, travelY = 22.dp)
-        FloatingBlob(330.dp, 420.dp, 90.dp, 90.dp, AppColors.surfaceVariant.copy(alpha = 0.8f), durationMillis = 4400, delayMillis = 1000, travelX = 16.dp, travelY = 14.dp)
-        FloatingBlob(200.dp, 540.dp, 50.dp, 50.dp, AppColors.slate.copy(alpha = 0.45f), durationMillis = 3200, delayMillis = 500, travelX = 10.dp, travelY = 14.dp)
-        FloatingBlob((-50).dp, 720.dp, 70.dp, 70.dp, AppColors.primary.copy(alpha = 0.35f), durationMillis = 4600, delayMillis = 900, travelX = 14.dp, travelY = 18.dp)
+        // Rutas animadas optimizadas (hormigas + líneas punteadas)
+        WaykiRoads()
 
-        WaykiRoads()  // las 3 rutas viven en Shared (sección 2)
-
+        // Fondo limpio y moderno sin sobrecarga de blobs ni bucles infinitos
         // Contenido superior con scroll (hero + textos).
         // Se reserva padding inferior para no quedar bajo los botones anclados.
         Column(
@@ -120,12 +109,6 @@ fun WelcomeScreen(
                         alpha = appear
                     },
             ) {
-                FloatingBlob(60.dp, (-30).dp, 200.dp, 180.dp, AppColors.slate.copy(alpha = 0.3f), durationMillis = 5000, travelX = 12.dp, travelY = 14.dp)
-                FloatingBlob(300.dp, 100.dp, 160.dp, 150.dp, AppColors.primary.copy(alpha = 0.18f), durationMillis = 4400, delayMillis = 500, travelX = 10.dp, travelY = 16.dp)
-                FloatingBlob(100.dp, 220.dp, 120.dp, 110.dp, AppColors.primary.copy(alpha = 0.25f), durationMillis = 3800, delayMillis = 250, travelX = 12.dp, travelY = 12.dp)
-                FloatingBlob(270.dp, 241.dp, 140.dp, 130.dp, AppColors.primary.copy(alpha = 0.45f), durationMillis = 5400, delayMillis = 700, travelX = 10.dp, travelY = 14.dp)
-                FloatingBlob(20.dp, 130.dp, 60.dp, 60.dp, AppColors.cream.copy(alpha = 0.12f), durationMillis = 3600, delayMillis = 350, travelX = 8.dp, travelY = 10.dp)
-                FloatingBlob(230.dp, 30.dp, 44.dp, 44.dp, AppColors.primary.copy(alpha = 0.4f), durationMillis = 4200, delayMillis = 850, travelX = 8.dp, travelY = 12.dp)
                 Box(Modifier.align(Alignment.TopCenter).padding(top = AppSpacing.xxl)) { BusIcon() }
                 Text(
                     "Wayki Nest",
