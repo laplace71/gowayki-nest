@@ -40,6 +40,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -81,6 +82,7 @@ import compose.icons.fontawesomeicons.solid.ShuttleVan
 fun MapScreen(
     onBack: () -> Unit = {},
 ) {
+    BackHandler(true) { onBack() }
     val routeState = SelectedRouteHolder.selected.collectAsState()
     val route = routeState.value
 

@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowayki.nesh.app.common.ui.shared.WaykiAvatar
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
+import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import com.gowayki.nesh.app.common.ui.shared.WaykiPrimaryButton
 import com.gowayki.nesh.app.features.communication.domain.model.GroupMember
 import com.gowayki.nesh.core.theme.src.AppTextStyles
@@ -57,6 +58,7 @@ fun NewGroupScreen(
     onCreate: () -> Unit,
     onBack: () -> Unit
 ) {
+    BackHandler(true) { onBack() }
     Column(
         modifier = Modifier
             .fillMaxSize()

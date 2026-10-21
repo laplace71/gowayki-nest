@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
+import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import com.gowayki.nesh.app.common.ui.shared.WaykiAvatar
 import com.gowayki.nesh.app.features.communication.domain.model.Message
 import com.gowayki.nesh.app.features.communication.domain.model.MessageKind
@@ -75,6 +76,7 @@ fun ChatScreen(
     onBack: () -> Unit,
     onGroupInfo: () -> Unit = {},
 ) {
+    BackHandler(true) { onBack() }
     val listState = rememberLazyListState()
 
     // Baja al último mensaje cuando llega uno nuevo.

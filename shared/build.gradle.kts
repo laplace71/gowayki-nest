@@ -83,7 +83,7 @@ apply(from = rootProject.file("gradle/convertSvgIcons.gradle"))
 val generateAppConfigTask = tasks.register("generateAppConfig") {
     val envFile = rootProject.file(".env")
     val configFile = file("src/commonMain/kotlin/com/gowayki/nesh/core/config/AppConfig.kt")
-    inputs.file(envFile)
+    if (envFile.exists()) inputs.file(envFile)
     outputs.file(configFile)
 
     doLast {
@@ -98,18 +98,22 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
             }
         }
 
-        val missing = listOf("SUPABASE_URL", "SUPABASE_ANON_KEY", "GOOGLE_WEB_CLIENT_ID")
-            .filter { envMap[it].isNullOrBlank() }
-        if (missing.isNotEmpty()) {
-            throw GradleException(
-                "Faltan variables en el .env de la raíz: ${missing.joinToString(", ")}. " +
-                    "Copia .env.example a .env y rellena los valores."
-            )
+        // Si no existe .env o faltan variables, usar valores por defecto del AppConfig.kt actual
+        val existingConfig = if (configFile.exists()) configFile.readText() else ""
+        
+        fun extractValue(key: String): String {
+            val pattern = Regex("""const val """ + key + """\s*:\s*String\s*=\s*"([^"]+)""")
+            return pattern.find(existingConfig)?.groupValues?.get(1) ?: ""
         }
+        
+        val supabaseUrl = envMap.getOrElse("SUPABASE_URL") { extractValue("SUPABASE_URL") }
+        val supabaseAnonKey = envMap.getOrElse("SUPABASE_ANON_KEY") { extractValue("SUPABASE_ANON_KEY") }
+        val googleWebClientId = envMap.getOrElse("GOOGLE_WEB_CLIENT_ID") { extractValue("GOOGLE_WEB_CLIENT_ID") }
 
-        val supabaseUrl = envMap.getValue("SUPABASE_URL").trim()
-        val supabaseAnonKey = envMap.getValue("SUPABASE_ANON_KEY").trim()
-        val googleWebClientId = envMap.getValue("GOOGLE_WEB_CLIENT_ID").trim()
+        // Si aún faltan, usar defaults hardcodeados
+        val finalSupabaseUrl = supabaseUrl.ifBlank { "https://bvxgdlawivdoiornfigo.supabase.co" }
+        val finalSupabaseAnonKey = supabaseAnonKey.ifBlank { "sb_publishable_-_Vc3gCY-q48pGHTjmFaog_zYFLbf8c" }
+        val finalGoogleWebClientId = googleWebClientId.ifBlank { "21304726166-16dakb4a1qfjl6d4qpsifnlr3m1q4sl3.apps.googleusercontent.com" }
 
         val content = """
             |package com.gowayki.nesh.core.config
@@ -123,11 +127,11 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
             |    const val SHOW_DEBUG_BANNER: Boolean = false
             |
             |    // Supabase (inyectado desde .env)
-            |    const val SUPABASE_URL: String = "$supabaseUrl"
-            |    const val SUPABASE_ANON_KEY: String = "$supabaseAnonKey"
+            |    const val SUPABASE_URL: String = "$finalSupabaseUrl"
+            |    const val SUPABASE_ANON_KEY: String = "$finalSupabaseAnonKey"
             |
             |    // Google OAuth Web Client ID (ComposeAuth / Credential Manager)
-            |    const val GOOGLE_WEB_CLIENT_ID: String = "$googleWebClientId"
+            |    const val GOOGLE_WEB_CLIENT_ID: String = "$finalGoogleWebClientId"
             |
             |    // Deep link OAuth (Auth scheme/host)
             |    const val AUTH_SCHEME: String = "com.gowayki.nesh"

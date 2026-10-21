@@ -23,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +57,7 @@ import compose.icons.feathericons.MapPin
 @Composable
 fun SosScreen(
     onBack: () -> Unit = {},
+    onMapaClick: () -> Unit = {},
     // Mapa optimizado reutilizado de reportes (tiles + gestos) + BLE botón físico.
     // Defaults: la navegación existente (sidebar → SOS) sigue funcionando sin cambios.
     reportsVm: ReportsViewModel = viewModel { ReportsViewModel() },
@@ -66,6 +68,7 @@ fun SosScreen(
         )
     },
 ) {
+    BackHandler(true) { onBack() }
     val reports = reportsVm.ui.reports
     val markers = remember(reports) { reports.map { OsmMarker(it.id, it.pos, it.type) } }
     // Solo puntos SOS del botón (sin presets): calor + tarjetas.

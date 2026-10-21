@@ -15,6 +15,7 @@ object Routes {
     const val NEW_GROUP = "new_group"
     const val ROUTE_DETAIL = "route_detail"
     const val SETTINGS = "settings"
+    const val MAP = "map"
 
     /**
      * Ruta del chat. Lleva placeholder porque exige un argumento:
