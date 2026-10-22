@@ -162,6 +162,7 @@ fun WaykiNav(
                 onSosClick = { nav.navigate(Routes.SOS) },
                 onCommunicationClick = { nav.navigate(Routes.COMMUNICATION) },
                 onRecorridoClick = { nav.navigate(Routes.ROUTE_DETAIL) },
+                onMapaClick = { nav.navigate(Routes.MAP) },
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
                 onLogoutClick = {
                     nav.navigate(Routes.WELCOME) {
@@ -187,6 +188,8 @@ fun WaykiNav(
                         }
                     } else if (tab == 2) {
                         nav.navigate(Routes.ROUTE_DETAIL)
+                    } else if (tab == 3) {
+                        nav.navigate(Routes.MAP)
                     }
                 },
                 onSosClick = { nav.navigate(Routes.SOS) },
@@ -196,6 +199,7 @@ fun WaykiNav(
                     }
                 },
                 onRecorridoClick = { nav.navigate(Routes.ROUTE_DETAIL) },
+                onMapaClick = { nav.navigate(Routes.MAP) },
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
                 onLogoutClick = {
                     nav.navigate(Routes.WELCOME) {
@@ -216,6 +220,7 @@ fun WaykiNav(
                 // Ya estamos en Recorrido: no hace falta navegar.
                 onRecorridoClick = {},
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
+                onMapaClick = { nav.navigate(Routes.MAP) },
                 onLogoutClick = {
                     nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
                 },
@@ -226,6 +231,8 @@ fun WaykiNav(
                         }
                     } else if (tab == 1) {
                         nav.navigate(Routes.COMMUNICATION)
+                    } else if (tab == 3) {
+                        nav.navigate(Routes.MAP)
                     }
                 }
             )
@@ -235,7 +242,11 @@ fun WaykiNav(
             // El destino se declara con el placeholder: "chat/{conversationId}".
             // Usar Routes.CHAT ("chat") aquí revienta con IllegalArgumentException.
             Routes.CHAT_PATTERN,
-            arguments = listOf(navArgument("conversationId") { type = NavType.StringType })
+            arguments = listOf(navArgument("conversationId") { type = NavType.StringType }),
+            enterTransition = { fadeIn(animationSpec = tween(150)) },
+            exitTransition = { fadeOut(animationSpec = tween(150)) },
+            popEnterTransition = { fadeIn(animationSpec = tween(150)) },
+            popExitTransition = { fadeOut(animationSpec = tween(150)) }
         ) { entry ->
             val conversationId = entry.arguments?.read { getString("conversationId") }.orEmpty()
             val chatVm = remember(conversationId) { ChatDi.chatViewModel(conversationId) }
@@ -260,7 +271,13 @@ fun WaykiNav(
             )
         }
 
-        composable(Routes.NEW_GROUP) {
+        composable(
+            Routes.NEW_GROUP,
+            enterTransition = { fadeIn(animationSpec = tween(150)) },
+            exitTransition = { fadeOut(animationSpec = tween(150)) },
+            popEnterTransition = { fadeIn(animationSpec = tween(150)) },
+            popExitTransition = { fadeOut(animationSpec = tween(150)) }
+        ) {
             val groupVm = viewModel { AppDi.get<NewGroupViewModel>() }
             NewGroupScreen(
                 name = groupVm.name,
@@ -281,15 +298,23 @@ fun WaykiNav(
             )
         }
 
+        composable(Routes.MAP) {
+            com.gowayki.nesh.app.features.map.presentation.screens.MapScreen(
+                onBack = { nav.popBackStack() }
+            )
+        }
+
         composable(Routes.SETTINGS) {
             com.gowayki.nesh.app.features.settings.presentation.screens.SettingsScreen(
-                onBack = { nav.popBackStack() }
+                onBack = { nav.popBackStack() },
+                onMapaClick = { nav.navigate(Routes.MAP) }
             )
         }
         
         composable(Routes.SOS) {
             com.gowayki.nesh.app.features.sos.presentation.screens.SosScreen(
-                onBack = { nav.popBackStack() }
+                onBack = { nav.popBackStack() },
+                onMapaClick = { nav.navigate(Routes.MAP) }
             )
         }
     }
