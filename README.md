@@ -1,4 +1,4 @@
-# Gowayki Nesh
+# Wayki Nest
 
 ## Iconos (SVG → XML)
 
