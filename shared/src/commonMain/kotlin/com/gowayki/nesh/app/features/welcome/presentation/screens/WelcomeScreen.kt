@@ -37,6 +37,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.gowayki.nesh.app.common.ui.shared.WaykiLink
 import com.gowayki.nesh.app.common.ui.shared.WaykiPrimaryButton
+import com.gowayki.nesh.app.common.ui.shared.WaykiBackground
 import com.gowayki.nesh.app.common.ui.shared.WaykiRoads
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
@@ -47,9 +48,7 @@ import gowaykinesh.shared.generated.resources.logo
 import org.jetbrains.compose.resources.painterResource
 
 // ---------- Logo (Downloads/logo.png, 1254x1254 con fondo transparente) ----------
-// El PNG es azul oscuro (~#23274C): se tiñe al fondo claro para que se vea
-// sobre la tarjeta hero oscura. Si lo quieres en su color original,
-// quita el parámetro colorFilter.
+// El PNG se tiñe de blanco para destacar sobre la tarjeta hero azul.
 @Composable
 private fun BusIcon() {
     androidx.compose.foundation.Image(
@@ -74,12 +73,7 @@ fun WelcomeScreen(
     )
 
     // Ocupa todo el marco del celular de forma limpia y fluida (optimizado para Helio G99)
-    Box(
-        Modifier.fillMaxSize().background(AppColors.background).clipToBounds(),
-    ) {
-        // Rutas animadas optimizadas (hormigas + líneas punteadas)
-        WaykiRoads()
-
+    WaykiBackground(withRoads = true, roadsAnimated = true) {
         // Fondo limpio y moderno sin sobrecarga de blobs ni bucles infinitos
         // Contenido superior con scroll (hero + textos).
         // Se reserva padding inferior para no quedar bajo los botones anclados.
@@ -94,13 +88,13 @@ fun WelcomeScreen(
                     bottom = AppSpacing.welcomeBottomReserve,
                 ),
         ) {
-            // Tarjeta hero oscura
+            // Tarjeta hero con el azul medio de la paleta.
             Box(
                 Modifier
                     .fillMaxWidth()
                     .height(AppSpacing.heroCardHeight)
                     .clip(AppRadius.hero)
-                    .background(AppColors.onBackground)
+                    .background(AppColors.primary)
                     .graphicsLayer {
                         // Entra desde un poco más abajo y con escala menor.
                         scaleX = 0.92f + 0.08f * appear

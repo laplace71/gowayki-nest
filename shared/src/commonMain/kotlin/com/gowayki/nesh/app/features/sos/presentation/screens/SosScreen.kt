@@ -358,7 +358,7 @@ private fun SosBleBar(vm: SosViewModel, activeCount: Int) {
                 )
             }
             Box(
-                Modifier.background(AppColors.ink, RoundedCornerShape(12.dp))
+                Modifier.background(AppColors.primary, RoundedCornerShape(12.dp))
                     .clickable { if (ble.connected) vm.disconnect() else vm.connect() }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 contentAlignment = Alignment.Center,
@@ -380,11 +380,11 @@ private fun SosBleBar(vm: SosViewModel, activeCount: Int) {
                     Text(
                         text = "BT",
                         style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
-                        color = AppColors.ink,
+                        color = AppColors.cream,
                     )
                     Icon(
                         FeatherIcons.ChevronDown, null,
-                        tint = AppColors.ink,
+                        tint = AppColors.cream,
                         modifier = Modifier.size(14.dp).rotate(if (showDevices) 180f else 0f),
                     )
                 }

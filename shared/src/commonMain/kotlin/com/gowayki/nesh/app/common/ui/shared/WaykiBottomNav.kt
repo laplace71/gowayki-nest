@@ -56,7 +56,7 @@ fun WaykiBottomNav(
             .background(
                 // Opaca: si no, el contenido que scrollea se ve por detrás
                 // y la barra se ve sucia visualmente.
-                color = AppColors.slate,
+                color = AppColors.primary,
                 shape = RoundedCornerShape(32.dp)
             )
             .padding(horizontal = 8.dp, vertical = 8.dp)
@@ -112,8 +112,8 @@ private fun BottomNavItem(
     // Animated colors for smooth transition
     val bgColor by animateColorAsState(
         targetValue = when {
-            isSelected -> AppColors.mauve
-            isPressed -> AppColors.mauve.copy(alpha = 0.3f)
+            isSelected -> AppColors.secondary
+            isPressed -> AppColors.secondary.copy(alpha = 0.35f)
             else -> Color.Transparent
         },
         animationSpec = tween(200),
@@ -122,7 +122,7 @@ private fun BottomNavItem(
     val contentColor by animateColorAsState(
         targetValue = when {
             isSelected -> AppColors.ink
-            else -> AppColors.cream.copy(alpha = 0.8f) // better contrast
+            else -> AppColors.cream.copy(alpha = 0.82f)
         },
         animationSpec = tween(200),
         label = "navContent"
@@ -204,7 +204,7 @@ private val WaykiRouteIcon: ImageVector by lazy {
             curveTo(19.067f, 2.33203f, 17.5f, 3.89916f, 17.5f, 5.83231f)
             close()
         },
-        stroke = SolidColor(Color.Black),
+        stroke = SolidColor(AppColors.cream),
         strokeLineWidth = 1.8f,
         strokeLineCap = StrokeCap.Round,
         strokeLineJoin = StrokeJoin.Round

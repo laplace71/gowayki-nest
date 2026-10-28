@@ -87,7 +87,7 @@ fun WaykiSidebarContent(
                     .background(AppColors.mauve, CircleShape)
                     .clickable(
                         interactionSource = closeInteractionSource,
-                        indication = ripple(color = AppColors.ink.copy(alpha = 0.2f)),
+                        indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
                         onClick = onClose,
                     ),
                 contentAlignment = Alignment.Center
@@ -95,7 +95,7 @@ fun WaykiSidebarContent(
                 Icon(
                     imageVector = FeatherIcons.X,
                     contentDescription = "Cerrar",
-                    tint = AppColors.ink,
+                    tint = AppColors.cream,
                     modifier = Modifier.size(24.dp),
                 )
             }
@@ -177,10 +177,10 @@ fun WaykiSidebarContent(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(AppColors.ink, RoundedCornerShape(16.dp))
+                .background(AppColors.primary, RoundedCornerShape(16.dp))
                 .clickable(
                     interactionSource = sosInteractionSource,
-                    indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
+                    indication = ripple(color = AppColors.cream.copy(alpha = 0.12f)),
                     onClick = onSosClick
                 )
                 .padding(horizontal = 20.dp, vertical = 24.dp)
@@ -203,7 +203,7 @@ fun WaykiSidebarContent(
                     Text(
                         text = "Informacion de emergencias.",
                         style = AppTextStyles.waykiMini,
-                        color = AppColors.cream
+                        color = AppColors.cream.copy(alpha = 0.8f)
                     )
                 }
             }

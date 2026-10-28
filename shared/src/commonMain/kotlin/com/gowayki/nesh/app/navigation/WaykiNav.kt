@@ -9,6 +9,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -21,7 +22,6 @@ import com.gowayki.nesh.app.di.AppDi
 import com.gowayki.nesh.app.di.ChatDi
 import com.gowayki.nesh.app.features.communication.domain.repository.ChatRepository
 import com.gowayki.nesh.app.features.communication.presentation.chat.ChatScreen
-import com.gowayki.nesh.app.features.communication.presentation.chat.ConversationsViewModel
 import com.gowayki.nesh.app.features.communication.presentation.chat.NewGroupViewModel
 import com.gowayki.nesh.app.features.communication.presentation.chat.NewGroupScreen
 import com.gowayki.nesh.app.features.reports.presentation.screens.ReportsScreen
@@ -30,6 +30,7 @@ import com.gowayki.nesh.app.features.sign_in.presentation.screens.LoginScreen
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.PinScreen
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.RegisterScreen
 import com.gowayki.nesh.app.features.welcome.presentation.screens.WelcomeScreen
+import kotlinx.coroutines.launch
 
 @Composable
 fun WaykiNav(
@@ -43,30 +44,10 @@ fun WaykiNav(
     NavHost(
         navController = nav,
         startDestination = Routes.WELCOME,
-        enterTransition = {
-            slideIntoContainer(
-                AnimatedContentTransitionScope.SlideDirection.Left,
-                animationSpec = tween(200)
-            ) + fadeIn(animationSpec = tween(200))
-        },
-        exitTransition = {
-            slideOutOfContainer(
-                AnimatedContentTransitionScope.SlideDirection.Left,
-                animationSpec = tween(200)
-            ) + fadeOut(animationSpec = tween(200))
-        },
-        popEnterTransition = {
-            slideIntoContainer(
-                AnimatedContentTransitionScope.SlideDirection.Right,
-                animationSpec = tween(200)
-            ) + fadeIn(animationSpec = tween(200))
-        },
-        popExitTransition = {
-            slideOutOfContainer(
-                AnimatedContentTransitionScope.SlideDirection.Right,
-                animationSpec = tween(200)
-            ) + fadeOut(animationSpec = tween(200))
-        }
+        enterTransition = { fadeIn(animationSpec = tween(260)) },
+        exitTransition = { fadeOut(animationSpec = tween(200)) },
+        popEnterTransition = { fadeIn(animationSpec = tween(260)) },
+        popExitTransition = { fadeOut(animationSpec = tween(200)) }
     ) {
         composable(Routes.WELCOME) {
             WelcomeScreen(
@@ -173,14 +154,20 @@ fun WaykiNav(
         }
         
         composable(Routes.COMMUNICATION) {
+            val chatRepo = remember { AppDi.get<ChatRepository>() }
+            val scope = rememberCoroutineScope()
             com.gowayki.nesh.app.features.communication.presentation.screens.CommunicationScreen(
                 onConversationClick = { conversationId ->
-                    AppDi.get<ConversationsViewModel>().open(conversationId)
+                    scope.launch { chatRepo.markAsRead(conversationId) }
                     nav.navigate(Routes.chat(conversationId))
                 },
                 onNewGroupClick = { nav.navigate(Routes.NEW_GROUP) },
-                onClearChat = { id -> AppDi.get<ConversationsViewModel>().clearChat(id) },
-                onDeleteChat = { id -> AppDi.get<ConversationsViewModel>().deleteConversation(id) },
+                onClearChat = { id ->
+                    scope.launch { chatRepo.clearMessages(id) }
+                },
+                onDeleteChat = { id ->
+                    scope.launch { chatRepo.deleteConversation(id) }
+                },
                 onTabSelected = { tab ->
                     if (tab == 0) {
                         nav.navigate(Routes.HOME) {
@@ -278,7 +265,7 @@ fun WaykiNav(
             popEnterTransition = { fadeIn(animationSpec = tween(150)) },
             popExitTransition = { fadeOut(animationSpec = tween(150)) }
         ) {
-            val groupVm = viewModel { AppDi.get<NewGroupViewModel>() }
+            val groupVm = viewModel { NewGroupViewModel(AppDi.get<ChatRepository>()) }
             NewGroupScreen(
                 name = groupVm.name,
                 colleagues = groupVm.colleagues,
@@ -300,7 +287,17 @@ fun WaykiNav(
 
         composable(Routes.MAP) {
             com.gowayki.nesh.app.features.map.presentation.screens.MapScreen(
-                onBack = { nav.popBackStack() }
+                onBack = { nav.popBackStack() },
+                onHomeClick = {
+                    nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } }
+                },
+                onCommunicationClick = { nav.navigate(Routes.COMMUNICATION) },
+                onRecorridoClick = { nav.navigate(Routes.ROUTE_DETAIL) },
+                onMapaClick = {},
+                onSettingsClick = { nav.navigate(Routes.SETTINGS) },
+                onLogoutClick = {
+                    nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
+                }
             )
         }
 

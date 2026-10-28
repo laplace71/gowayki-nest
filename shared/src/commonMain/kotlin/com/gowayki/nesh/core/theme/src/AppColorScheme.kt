@@ -4,8 +4,8 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.lightColorScheme
 import com.gowayki.nesh.core.theme.src.core.AppColors
 
-// Esquema claro Wayki. Las variantes Material se derivan del color base con
-// opacidad (AppColors.*.copy(alpha)), nunca declaradas aparte.
+// Esquema claro Nesh — verde salvia + azul profundo + beige.
+// Las variantes Material se derivan del color base con opacidad.
 object AppColorScheme {
 
     val light: ColorScheme = lightColorScheme(

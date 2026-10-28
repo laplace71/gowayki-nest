@@ -40,7 +40,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,7 +51,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
+import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
 import com.gowayki.nesh.app.features.map.data.RouteGeometryStore
 import com.gowayki.nesh.app.features.map.data.createDeviceLocationSource
 import com.gowayki.nesh.app.features.map.domain.NavInstruction
@@ -81,8 +82,13 @@ import compose.icons.fontawesomeicons.solid.ShuttleVan
 @Composable
 fun MapScreen(
     onBack: () -> Unit = {},
+    onHomeClick: () -> Unit = {},
+    onCommunicationClick: () -> Unit = {},
+    onRecorridoClick: () -> Unit = {},
+    onMapaClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
+    onLogoutClick: () -> Unit = {},
 ) {
-    BackHandler(true) { onBack() }
     val routeState = SelectedRouteHolder.selected.collectAsState()
     val route = routeState.value
 
@@ -127,6 +133,8 @@ fun MapScreen(
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
+    BackHandler(enabled = true, onBack = onBack)
 
     val mains = remember { ArequipaRoutes.all.filter { !it.isSub && it.id.startsWith("C") } }
     val subsByLine = remember { ArequipaRoutes.all.filter { it.isSub }.groupBy { it.parent } }
@@ -182,7 +190,7 @@ fun MapScreen(
                             Icon(
                                 FeatherIcons.X,
                                 contentDescription = "Cerrar menú",
-                                tint = AppColors.ink,
+                                tint = AppColors.cream,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -294,7 +302,7 @@ fun MapScreen(
                         .clickable { scope.launch { drawerState.open() } },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(FeatherIcons.Menu, null, tint = AppColors.ink, modifier = Modifier.size(20.dp))
+                    Icon(FeatherIcons.Menu, null, tint = AppColors.cream, modifier = Modifier.size(20.dp))
                 }
                 WaykiBackButton(onClick = onBack)
                 Text(
@@ -332,6 +340,7 @@ fun MapScreen(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .navigationBarsPadding()
+                    .padding(bottom = 88.dp)
                     .padding(AppSpacing.pageHorizontal, AppSpacing.sm)
                     .background(AppColors.cream.copy(alpha = 0.92f), RoundedCornerShape(20.dp))
                     .padding(AppSpacing.pageHorizontal, AppSpacing.sm)
@@ -365,7 +374,7 @@ fun MapScreen(
                             Box(
                                 Modifier
                                     .clip(RoundedCornerShape(14.dp))
-                                    .background(AppColors.ink)
+                                    .background(AppColors.primary)
                                     .clickable { navigating = false }
                                     .padding(horizontal = 14.dp, vertical = 10.dp)
                             ) {
@@ -408,7 +417,7 @@ fun MapScreen(
                                     Icon(
                                         FeatherIcons.Navigation,
                                         contentDescription = null,
-                                        tint = AppColors.ink,
+                                        tint = AppColors.cream,
                                         modifier = Modifier.size(15.dp)
                                     )
                                     Spacer(Modifier.width(6.dp))
@@ -430,6 +439,20 @@ fun MapScreen(
                     }
                 }
             }
+
+            // Barra de navegación inferior, anclada al fondo
+            WaykiBottomNav(
+                selectedTab = 3, // "Mapa" activo
+                onTabSelected = { tab ->
+                    when (tab) {
+                        0 -> onHomeClick()
+                        1 -> onCommunicationClick()
+                        2 -> onRecorridoClick()
+                        3 -> onMapaClick()
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
 
             // Cierra el panel al tocar fuera de él. El scrim de Material3 no
             // responde cuando gesturesEnabled = false.
@@ -508,7 +531,7 @@ private fun NavigationBanner(
         modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(AppColors.ink.copy(alpha = 0.94f))
+            .background(AppColors.primary)
             .padding(horizontal = AppSpacing.md, vertical = AppSpacing.sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.sm)
@@ -537,7 +560,7 @@ private fun NavigationBanner(
                 Text(
                     text = it,
                     style = AppTextStyles.waykiMini,
-                    color = AppColors.cream.copy(alpha = 0.75f)
+                    color = AppColors.cream.copy(alpha = 0.8f)
                 )
             }
         }
