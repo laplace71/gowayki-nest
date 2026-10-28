@@ -118,6 +118,7 @@ fun CommunicationScreen(
                 modifier = Modifier.width(328.dp).fillMaxHeight()
             ) {
                 WaykiSidebarContent(
+                    selectedTab = 1,
                     onClose = {
                         coroutineScope.launch { drawerState.close() }
                     },

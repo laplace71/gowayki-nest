@@ -141,6 +141,7 @@ fun RouteDetailScreen(
                 modifier = Modifier.width(328.dp).fillMaxHeight()
             ) {
                 WaykiSidebarContent(
+                    selectedTab = 2,
                     onClose = { coroutineScope.launch { drawerState.close() } },
                     onSosClick = {
                         coroutineScope.launch { drawerState.close() }

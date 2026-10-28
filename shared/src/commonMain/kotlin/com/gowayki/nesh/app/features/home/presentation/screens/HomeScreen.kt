@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackground
 import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
 import com.gowayki.nesh.app.common.ui.shared.WaykiReveal
+import com.gowayki.nesh.app.common.ui.shared.WaykiRouteIcon
 import com.gowayki.nesh.app.common.ui.shared.WaykiSkeleton
 import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
 import com.gowayki.nesh.core.theme.src.AppTextStyles
@@ -55,7 +56,6 @@ import compose.icons.feathericons.Bell
 import compose.icons.feathericons.Menu
 import compose.icons.feathericons.Home
 import compose.icons.feathericons.Radio
-import compose.icons.feathericons.GitCommit
 import compose.icons.feathericons.Map
 
 import androidx.compose.material3.ModalNavigationDrawer
@@ -106,6 +106,7 @@ fun HomeScreen(
                 modifier = Modifier.width(328.dp).fillMaxHeight()
             ) {
                 WaykiSidebarContent(
+                    selectedTab = 0,
                     onClose = {
                         coroutineScope.launch { drawerState.close() }
                     },
@@ -618,7 +619,8 @@ fun WaykiSidebarContent(
     onMapaClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onSupportClick: () -> Unit = {},
-    onLogoutClick: () -> Unit = {}
+    onLogoutClick: () -> Unit = {},
+    selectedTab: Int = 0
 ) {
     Column(
         modifier = Modifier
@@ -690,28 +692,28 @@ fun WaykiSidebarContent(
             icon = FeatherIcons.Home, 
             title = "Inicio", 
             subtitle = "Tu ritmo y próximo control", 
-            isSelected = false,
+            isSelected = selectedTab == 0,
             onClick = onInicioClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.Radio, 
             title = "Comunicación", 
             subtitle = "Canal de la Línea 7", 
-            isSelected = false,
+            isSelected = selectedTab == 1,
             onClick = onCommunicationClick
         )
         DrawerMenuItem(
-            icon = FeatherIcons.GitCommit, 
+            icon = WaykiRouteIcon, 
             title = "Recorrido", 
             subtitle = "Tus recorridos y horarios", 
-            isSelected = false,
+            isSelected = selectedTab == 2,
             onClick = onRecorridoClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.Map, 
             title = "Mapa", 
             subtitle = "Informacion de tus rutas", 
-            isSelected = true,
+            isSelected = selectedTab == 3,
             onClick = onMapaClick
         )
         
