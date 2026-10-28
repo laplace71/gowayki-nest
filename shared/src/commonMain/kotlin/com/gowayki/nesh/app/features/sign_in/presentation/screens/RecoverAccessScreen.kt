@@ -194,9 +194,9 @@ fun RecoverAccessScreen(
 
 @Composable
 private fun KeyIcon() {
+    val color = AppColors.ink
     androidx.compose.foundation.Canvas(modifier = Modifier.size(28.dp)) {
         val strokeWidth = 2.dp.toPx()
-        val color = AppColors.ink
         
         // Circular head
         drawCircle(

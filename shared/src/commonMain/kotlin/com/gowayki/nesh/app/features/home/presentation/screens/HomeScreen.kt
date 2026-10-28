@@ -402,7 +402,7 @@ private fun RouteCard(
     val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
-            .shadow(4.dp, AppRadius.card, spotColor = AppColors.ink.copy(alpha = 0.12f))
+            .shadow(4.dp, AppRadius.card, spotColor = AppColors.shadow.copy(alpha = 0.12f))
             .background(AppColors.ink, AppRadius.card)
             .clickable(
                 interactionSource = interactionSource,
@@ -548,7 +548,7 @@ private fun BusCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(4.dp, AppRadius.card, spotColor = AppColors.ink.copy(alpha = 0.12f))
+            .shadow(4.dp, AppRadius.card, spotColor = AppColors.shadow.copy(alpha = 0.12f))
             .background(AppColors.cream, AppRadius.card)
             .clickable(
                 interactionSource = interactionSource,

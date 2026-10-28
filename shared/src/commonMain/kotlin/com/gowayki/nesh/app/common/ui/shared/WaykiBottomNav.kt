@@ -52,11 +52,11 @@ fun WaykiBottomNav(
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = AppSpacing.pageHorizontal, vertical = AppSpacing.md)
-            .shadow(24.dp, RoundedCornerShape(32.dp), spotColor = AppColors.ink.copy(alpha = 0.4f))
+            .shadow(24.dp, RoundedCornerShape(32.dp), spotColor = AppColors.shadow.copy(alpha = 0.4f))
             .background(
                 // Opaca: si no, el contenido que scrollea se ve por detrás
                 // y la barra se ve sucia visualmente.
-                color = AppColors.slate,
+                color = if (AppColors.isDark) AppColors.card else AppColors.slate,
                 shape = RoundedCornerShape(32.dp)
             )
             .padding(horizontal = 8.dp, vertical = 8.dp)
@@ -122,7 +122,7 @@ private fun BottomNavItem(
     val contentColor by animateColorAsState(
         targetValue = when {
             isSelected -> AppColors.ink
-            else -> AppColors.cream.copy(alpha = 0.8f) // better contrast
+            else -> if (AppColors.isDark) AppColors.slate else AppColors.cream.copy(alpha = 0.8f) // better contrast
         },
         animationSpec = tween(200),
         label = "navContent"
@@ -133,7 +133,7 @@ private fun BottomNavItem(
             .background(bgColor, RoundedCornerShape(24.dp))
             .clickable(
                 interactionSource = interactionSource,
-                indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
+                indication = ripple(color = AppColors.onOverlay.copy(alpha = 0.2f)),
                 onClick = onClick
             )
             .padding(horizontal = AppSpacing.xs, vertical = AppSpacing.sm),
