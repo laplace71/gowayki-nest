@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackground
 import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
 import com.gowayki.nesh.app.common.ui.shared.WaykiReveal
+import com.gowayki.nesh.app.common.ui.shared.WaykiRouteIcon
 import com.gowayki.nesh.app.common.ui.shared.WaykiSkeleton
 import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
 import com.gowayki.nesh.core.theme.src.AppTextStyles
@@ -55,7 +56,6 @@ import compose.icons.feathericons.Bell
 import compose.icons.feathericons.Menu
 import compose.icons.feathericons.Home
 import compose.icons.feathericons.Radio
-import compose.icons.feathericons.GitCommit
 import compose.icons.feathericons.Map
 
 import androidx.compose.material3.ModalNavigationDrawer
@@ -703,7 +703,7 @@ fun WaykiSidebarContent(
             onClick = onCommunicationClick
         )
         DrawerMenuItem(
-            icon = FeatherIcons.GitCommit, 
+            icon = WaykiRouteIcon, 
             title = "Recorrido", 
             subtitle = "Tus recorridos y horarios", 
             isSelected = selectedTab == 2,
