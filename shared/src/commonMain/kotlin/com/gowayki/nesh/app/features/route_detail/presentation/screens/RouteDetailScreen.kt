@@ -29,15 +29,27 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
 import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
 import com.gowayki.nesh.app.features.home.presentation.screens.WaykiSidebarContent
+import com.gowayki.nesh.app.features.map.data.RouteStopsStore
+import com.gowayki.nesh.app.features.map.data.SitRouteStop
+import com.gowayki.nesh.app.features.map.domain.model.ArequipaRoutes
+import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
@@ -46,22 +58,13 @@ import compose.icons.feathericons.Bell
 import compose.icons.feathericons.Menu
 import compose.icons.feathericons.GitCommit
 import compose.icons.feathericons.Minus
-import compose.icons.feathericons.TrendingDown
-import compose.icons.feathericons.TrendingUp
-
-enum class PointToleranceType {
-    NEUTRAL,
-    LATE,
-    EARLY
-}
 
 data class ControlPointData(
+    val id: String,
     val name: String,
-    val scheduledTime: String,
-    val actualTime: String,
-    val diffText: String,
-    val type: PointToleranceType,
-    val isFirstTwo: Boolean
+    val latitude: Double,
+    val longitude: Double,
+    val district: String?
 )
 
 @Composable
@@ -81,59 +84,31 @@ fun RouteDetailScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
 
-    val controlPoints = listOf(
-        ControlPointData(
-            name = "Pte. Grau / Av. Ejército",
-            scheduledTime = "06:14",
-            actualTime = "06:16",
-            diffText = "+2 min",
-            type = PointToleranceType.NEUTRAL,
-            isFirstTwo = true
-        ),
-        ControlPointData(
-            name = "Terminal Terrestre",
-            scheduledTime = "06:31",
-            actualTime = "06:30",
-            diffText = "-1 min",
-            type = PointToleranceType.NEUTRAL,
-            isFirstTwo = true
-        ),
-        ControlPointData(
-            name = "Plaza de Armas",
-            scheduledTime = "06:48",
-            actualTime = "06:53",
-            diffText = "+5 min",
-            type = PointToleranceType.LATE,
-            isFirstTwo = false
-        ),
-        ControlPointData(
-            name = "Av. Independencia",
-            scheduledTime = "07:05",
-            actualTime = "07:06",
-            diffText = "+1 min",
-            type = PointToleranceType.NEUTRAL,
-            isFirstTwo = false
-        ),
-        ControlPointData(
-            name = "Mercado San Camilo",
-            scheduledTime = "07:22",
-            actualTime = "07:20",
-            diffText = "-2 min",
-            type = PointToleranceType.EARLY,
-            isFirstTwo = false
-        ),
-        ControlPointData(
-            name = "Óvalo Paucarpata",
-            scheduledTime = "07:41",
-            actualTime = "07:41",
-            diffText = "±0 min",
-            type = PointToleranceType.NEUTRAL,
-            isFirstTwo = false
-        )
-    )
+    BackHandler(enabled = true, onBack = onBack)
+    val selectedRoute by SelectedRouteHolder.selected.collectAsState()
+    var routeStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
+    LaunchedEffect(selectedRoute?.routeId) {
+        val id = selectedRoute?.routeId
+        var stops = id?.let { RouteStopsStore.stopsFor(it) }.orEmpty()
+        if (stops.isEmpty()) {
+            val fallback = ArequipaRoutes.all.firstOrNull { route ->
+                route.isSub && route.routeId != null &&
+                    RouteStopsStore.stopsFor(route.routeId!!).isNotEmpty()
+            }
+            if (fallback != null) {
+                SelectedRouteHolder.select(fallback)
+                stops = RouteStopsStore.stopsFor(fallback.routeId!!)
+            }
+        }
+        routeStops = stops
+    }
+    val controlPoints = routeStops.map {
+        ControlPointData(it.id, it.name, it.latitude, it.longitude, it.district)
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = false,
         drawerContent = {
             ModalDrawerSheet(
                 drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
@@ -236,7 +211,7 @@ fun RouteDetailScreen(
 
             // Subtítulo de fecha y estado
             Text(
-                text = "Jueves 8 de octubre · Recorrido finalizado",
+                text = "Paraderos del recorrido seleccionado",
                 style = AppTextStyles.waykiMini.copy(
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Normal
@@ -262,7 +237,7 @@ fun RouteDetailScreen(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Línea 7 · Unidad 08",
+                        text = selectedRoute?.name ?: "Selecciona una ruta",
                         style = AppTextStyles.waykiLabelMedium.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
@@ -271,7 +246,7 @@ fun RouteDetailScreen(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "06:14–07:41 · Grau → Paucarpata",
+                        text = selectedRoute?.operator ?: "Sistema Integrado de Transporte",
                         style = AppTextStyles.waykiMini.copy(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Normal
@@ -281,75 +256,42 @@ fun RouteDetailScreen(
                 }
 
                 Text(
-                    text = "87 min",
-                    style = AppTextStyles.waykiLabelMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp
-                    ),
+                    text = "${routeStops.size} paraderos",
+                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
                     color = AppColors.ink
                 )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 3. Tarjeta Hero de Cumplimiento
+            // Resumen de puntos disponibles para esta ruta.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(AppColors.ink, RoundedCornerShape(28.dp))
-                    .padding(22.dp)
+                    .background(AppColors.softSage, RoundedCornerShape(24.dp))
+                    .padding(18.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "5/6",
-                        style = AppTextStyles.waykiHeroTitle.copy(
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = AppColors.cream
+                        text = "${routeStops.size}",
+                        style = AppTextStyles.waykiHeroTitle.copy(fontSize = 32.sp, fontWeight = FontWeight.Bold),
+                        color = AppColors.ink
                     )
-
-                    Spacer(modifier = Modifier.width(20.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
                         Text(
-                            text = "83% de cumplimiento",
-                            style = AppTextStyles.waykiLabelMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 12.sp
-                            ),
-                            color = AppColors.cream
+                            text = "Puntos de control de la ruta",
+                            style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
+                            color = AppColors.ink
                         )
                         Text(
-                            text = "5 de 6 puntos en tolerancia",
-                            style = AppTextStyles.waykiLabelMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 12.sp
-                            ),
-                            color = AppColors.cream
+                            text = "Ordenados según el recorrido y sus coordenadas",
+                            style = AppTextStyles.waykiMini.copy(fontSize = 12.sp),
+                            color = AppColors.slate
                         )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Barra de progreso segmentada (6 segmentos)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            for (i in 0 until 6) {
-                                val segmentColor = if (i < 5) AppColors.slate else AppColors.steel.copy(alpha = 0.5f)
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(4.dp)
-                                        .clip(CircleShape)
-                                        .background(segmentColor)
-                                )
-                            }
-                        }
                     }
                 }
             }
@@ -372,7 +314,7 @@ fun RouteDetailScreen(
                 )
 
                 Text(
-                    text = "6 registros",
+                    text = "${controlPoints.size} registros",
                     style = AppTextStyles.waykiMini.copy(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Normal
@@ -385,11 +327,11 @@ fun RouteDetailScreen(
 
             // Lista de Puntos de Control
             Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                controlPoints.forEach { point ->
-                    ControlPointCard(point = point)
+                controlPoints.forEachIndexed { index, point ->
+                    ControlPointCard(point = point, number = index + 1, isInitial = index == 0)
                 }
             }
 
@@ -397,7 +339,7 @@ fun RouteDetailScreen(
 
             // 5. Criterio de cumplimiento al pie
             Text(
-                text = "En tolerancia: entre −2 y +2 min del horario.",
+                text = if (controlPoints.isEmpty()) "No hay paraderos registrados para esta ruta." else "Coordenadas de los paraderos registrados para esta ruta.",
                 style = AppTextStyles.waykiMini.copy(
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Normal
@@ -420,85 +362,72 @@ fun RouteDetailScreen(
 }
 
 @Composable
-private fun ControlPointCard(point: ControlPointData) {
-    val cardBg = if (point.isFirstTwo) AppColors.mauve else AppColors.cream
-    val cardBorder = when {
-        point.isFirstTwo -> Modifier.border(1.dp, AppColors.mauve, RoundedCornerShape(22.dp))
-        point.type == PointToleranceType.LATE -> Modifier.border(1.dp, AppColors.slate, RoundedCornerShape(22.dp))
-        else -> Modifier.border(1.dp, AppColors.mauve, RoundedCornerShape(22.dp))
-    }
-
+private fun ControlPointCard(point: ControlPointData, number: Int, isInitial: Boolean) {
+    val shape = RoundedCornerShape(24.dp)
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .then(cardBorder)
-            .background(cardBg, RoundedCornerShape(22.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .shadow(7.dp, shape, spotColor = AppColors.ink.copy(alpha = 0.08f))
+            .clip(shape)
+            .border(1.dp, AppColors.outline, shape)
+            .background(AppColors.surface, shape)
+            .padding(16.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Icono de estado
-            val iconCircleBg = if (point.type == PointToleranceType.LATE) AppColors.slate else AppColors.mauve
-            val iconTint = if (point.type == PointToleranceType.LATE) AppColors.cream else AppColors.ink
-
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .background(iconCircleBg, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                val iconVector = when (point.type) {
-                    PointToleranceType.LATE -> FeatherIcons.TrendingUp
-                    PointToleranceType.EARLY -> FeatherIcons.TrendingDown
-                    PointToleranceType.NEUTRAL -> FeatherIcons.Minus
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .background(if (isInitial) AppColors.secondary else AppColors.softSage, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = number.toString(),
+                        style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp),
+                        color = AppColors.ink
+                    )
                 }
-
-                Icon(
-                    imageVector = iconVector,
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(14.dp)
-                )
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = point.name,
+                        style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp),
+                        color = AppColors.ink
+                    )
+                    if (!point.district.isNullOrBlank()) {
+                        Text(
+                            text = point.district,
+                            style = AppTextStyles.waykiMini.copy(fontSize = 12.sp),
+                            color = AppColors.slate
+                        )
+                    }
+                }
+                if (isInitial) {
+                    Text(
+                        text = "INICIO",
+                        style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                        color = AppColors.ink,
+                        modifier = Modifier
+                            .background(AppColors.softSage, RoundedCornerShape(20.dp))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
             }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            // Detalle del punto
-            Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(AppColors.softSage, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(FeatherIcons.GitCommit, contentDescription = null, tint = AppColors.slate, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    text = point.name,
-                    style = AppTextStyles.waykiLabelMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.5.sp
-                    ),
-                    color = AppColors.ink,
-                    maxLines = 1
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = "Prog. ${point.scheduledTime} · Real ${point.actualTime}",
-                    style = AppTextStyles.waykiMini.copy(
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Normal
-                    ),
+                    text = "${point.latitude}, ${point.longitude}",
+                    style = AppTextStyles.waykiMini.copy(fontSize = 12.sp),
                     color = AppColors.slate
                 )
             }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Diferencia de tiempo
-            Text(
-                text = point.diffText,
-                style = AppTextStyles.waykiLabelMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.5.sp
-                ),
-                color = AppColors.ink
-            )
         }
     }
 }

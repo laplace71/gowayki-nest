@@ -621,7 +621,7 @@ fun WaykiAvatar(
     online: Boolean? = null
 ) {
     val bg = if (dark) AppColors.ink else AppColors.mauve
-    val fg = if (dark) AppColors.cream else AppColors.ink
+    val fg = AppColors.cream
 
     Box(modifier = modifier.size(size)) {
         Box(

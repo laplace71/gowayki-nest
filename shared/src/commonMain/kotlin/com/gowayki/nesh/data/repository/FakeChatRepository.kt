@@ -1,7 +1,5 @@
-// Implementación en memoria de ChatRepository.
-// Datos simulados: no hay red, pero todo el flujo (enviar, crear grupo,
-// leer) funciona y se puede navegar. Cuando haya backend se cambia solo esta
-// clase por una que hable con Supabase; la UI no cambia.
+// Implementación local de ChatRepository. Las conversaciones y mensajes se
+// guardan entre sesiones; al conectar Supabase se reemplaza este repositorio.
 @file:Suppress("SpellCheckingInspection")
 package com.gowayki.nesh.data.repository
 
@@ -12,6 +10,10 @@ import com.gowayki.nesh.app.features.communication.domain.model.Message
 import com.gowayki.nesh.app.features.communication.domain.model.MessageKind
 import com.gowayki.nesh.app.features.communication.domain.model.MessageStatus
 import com.gowayki.nesh.app.features.communication.domain.repository.ChatRepository
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +35,8 @@ class FakeChatRepository(
     private val myName: String = "Carlos Mendoza"
 ) : ChatRepository {
 
+    private val chatJson = Json { ignoreUnknownKeys = true }
+
     private val _conversations = MutableStateFlow<List<Conversation>>(emptyList())
     private val _messages = MutableStateFlow<Map<String, List<Message>>>(emptyMap())
 
@@ -46,7 +50,7 @@ class FakeChatRepository(
     )
 
     init {
-        seed()
+        if (!restore()) seed()
     }
 
     override fun conversations(): Flow<List<Conversation>> = _conversations.asStateFlow()
@@ -82,6 +86,7 @@ class FakeChatRepository(
             all + (conversationId to (all[conversationId].orEmpty() + message))
         }
         updateConversationPreview(conversationId, message)
+        persist()
         // Simula la confirmación del servidor.
         delay(400)
         setStatus(conversationId, message.id, MessageStatus.DELIVERED)
@@ -103,6 +108,7 @@ class FakeChatRepository(
             }
             all + (conversationId to current)
         }
+        persist()
         return Result.success(Unit)
     }
 
@@ -125,6 +131,7 @@ class FakeChatRepository(
         )
         _conversations.update { listOf(group) + it }
         _messages.update { it + (id to emptyList()) }
+        persist()
         return Result.success(group)
     }
 
@@ -148,6 +155,7 @@ class FakeChatRepository(
         )
         _conversations.update { listOf(chat) + it }
         _messages.update { it + (id to emptyList()) }
+        persist()
         return Result.success(chat)
     }
 
@@ -157,6 +165,7 @@ class FakeChatRepository(
                 list.map { if (it.id == messageId && !it.isMine) it.copy(status = MessageStatus.READ) else it }
             }
         }
+        persist()
         return Result.success(Unit)
     }
 
@@ -165,12 +174,14 @@ class FakeChatRepository(
         _conversations.update { list ->
             list.map { if (it.id == conversationId) it.copy(preview = "Sin mensajes") else it }
         }
+        persist()
         return Result.success(Unit)
     }
 
     override suspend fun deleteConversation(conversationId: String): Result<Unit> {
         _conversations.update { list -> list.filterNot { it.id == conversationId } }
         _messages.update { all -> all - conversationId }
+        persist()
         return Result.success(Unit)
     }
 
@@ -180,12 +191,14 @@ class FakeChatRepository(
     // ── Utilidades internas ──────────────────────────────────────────────
 
     private fun setStatus(conversationId: String, messageId: String, status: MessageStatus) {
+        if (conversationId !in _messages.value) return
         _messages.update { all ->
             val list = all[conversationId].orEmpty().map {
                 if (it.id == messageId) it.copy(status = status) else it
             }
             all + (conversationId to list)
         }
+        persist()
     }
 
     private fun updateConversationPreview(conversationId: String, message: Message) {
@@ -197,6 +210,22 @@ class FakeChatRepository(
                     lastMessageAtMillis = message.sentAtMillis
                 )
             }
+        }
+    }
+
+    private fun restore(): Boolean = runCatching {
+        val raw = ChatStore.read() ?: return false
+        val saved = chatJson.decodeFromString<PersistedChatState>(raw)
+        _conversations.value = saved.conversations
+        _messages.value = saved.messages.mapValues { (_, list) ->
+            list.map { if (it.status == MessageStatus.SENDING) it.copy(status = MessageStatus.DELIVERED) else it }
+        }
+        true
+    }.getOrDefault(false)
+
+    private fun persist() {
+        runCatching {
+            ChatStore.write(chatJson.encodeToString(PersistedChatState(_conversations.value, _messages.value)))
         }
     }
 
@@ -274,7 +303,14 @@ class FakeChatRepository(
                 Message("9", "p-jefe", "jefe", "Jefatura", "Revisa el cumplimiento de la unidad 08.", sentAtMillis = now - 20000, status = MessageStatus.DELIVERED, isMine = false)
             )
         )
+        persist()
     }
+
+    @Serializable
+    private data class PersistedChatState(
+        val conversations: List<Conversation>,
+        val messages: Map<String, List<Message>>
+    )
 
     companion object {
         const val MY_ID = "me"

@@ -60,6 +60,7 @@ import com.gowayki.nesh.app.common.ui.shared.WaykiConfirmDialog
 import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
 import com.gowayki.nesh.app.common.ui.shared.WaykiSkeleton
 import com.gowayki.nesh.app.features.communication.domain.model.Conversation
+import com.gowayki.nesh.app.features.communication.domain.repository.ChatRepository
 import com.gowayki.nesh.app.features.communication.presentation.chat.ConversationAction
 import com.gowayki.nesh.app.features.communication.presentation.chat.ConversationMenuSheet
 import com.gowayki.nesh.app.features.communication.presentation.chat.ConversationsViewModel
@@ -103,7 +104,9 @@ fun CommunicationScreen(
     var confirmDelete by remember { mutableStateOf<Conversation?>(null) }
 
     // Estado desde el ViewModel (repositorio fake por ahora).
-    val vm = viewModel { AppDi.get<ConversationsViewModel>() }
+    // Se crea fresco cada vez: si fuera singleton, su viewModelScope
+    // quedaría cancelado al salir y las acciones no se ejecutarían.
+    val vm = viewModel { ConversationsViewModel(AppDi.get<ChatRepository>()) }
     val selectedCategory = vm.category
     val searchQuery = vm.query
     val filteredConversations = vm.visible
@@ -192,10 +195,10 @@ fun CommunicationScreen(
                         Box(
                             modifier = Modifier
                                 .size(38.dp)
-                                .background(AppColors.ink, CircleShape)
+                                .background(AppColors.primary, CircleShape)
                                 .clickable(
                                     interactionSource = newGroupSource,
-                                    indication = ripple(color = AppColors.cream.copy(alpha = 0.2f))
+                                    indication = ripple(color = AppColors.cream.copy(alpha = 0.12f))
                                 ) { onNewGroupClick() },
                             contentAlignment = Alignment.Center
                         ) {
@@ -235,7 +238,7 @@ fun CommunicationScreen(
                     Box(
                         modifier = Modifier
                             .size(6.dp)
-                            .background(Color(0xFFC4BDDE), CircleShape)
+                            .background(AppColors.secondary, CircleShape)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -256,7 +259,7 @@ fun CommunicationScreen(
                         .fillMaxWidth()
                         .height(40.dp)
                         .clip(RoundedCornerShape(20.dp))
-                        .background(AppColors.mauve, RoundedCornerShape(20.dp))
+                        .background(AppColors.secondary, RoundedCornerShape(20.dp))
                         .padding(horizontal = 16.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
@@ -310,7 +313,7 @@ fun CommunicationScreen(
                     val categories = listOf("Todos", "Grupos", "Privados")
                     categories.forEachIndexed { index, category ->
                         val isSelected = selectedCategory == index
-                        val bgColor = if (isSelected) AppColors.ink else AppColors.mauve
+                        val bgColor = if (isSelected) AppColors.primary else AppColors.secondary
                         val textColor = if (isSelected) AppColors.cream else AppColors.ink
 
                         Box(
@@ -473,6 +476,8 @@ private fun ConversationCard(
     } else {
         Modifier.border(1.dp, AppColors.mauve, RoundedCornerShape(24.dp))
     }
+    val titleColor = if (highlighted) AppColors.cream else AppColors.ink
+    val previewColor = if (highlighted) AppColors.cream.copy(alpha = 0.85f) else AppColors.ink
 
     Box(
         modifier = Modifier
@@ -518,7 +523,7 @@ private fun ConversationCard(
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
                         ),
-                        color = AppColors.ink,
+                        color = titleColor,
                         modifier = Modifier.weight(1f),
                         maxLines = 1
                     )
@@ -535,14 +540,14 @@ private fun ConversationCard(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Normal
                             ),
-                            color = AppColors.slate
+                            color = if (highlighted) AppColors.cream.copy(alpha = 0.8f) else AppColors.slate
                         )
 
                         if (item.unreadCount > 0) {
                             Box(
                                 modifier = Modifier
                                     .size(24.dp)
-                                    .background(AppColors.ink, CircleShape),
+                                    .background(AppColors.primary, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
@@ -568,13 +573,13 @@ private fun ConversationCard(
                     Box(
                         modifier = Modifier
                             .size(18.dp)
-                            .background(AppColors.ink, CircleShape),
+                            .background(AppColors.secondary, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = FeatherIcons.MessageCircle,
                             contentDescription = null,
-                            tint = AppColors.cream,
+                            tint = if (highlighted) AppColors.cream else AppColors.ink,
                             modifier = Modifier.size(10.dp)
                         )
                     }
@@ -588,7 +593,7 @@ private fun ConversationCard(
                             lineHeight = 17.sp,
                             fontWeight = FontWeight.Normal
                         ),
-                        color = AppColors.ink,
+                        color = previewColor,
                         maxLines = 2
                     )
                 }

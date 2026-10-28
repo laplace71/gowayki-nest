@@ -190,7 +190,7 @@ fun NewGroupScreen(
                             modifier = Modifier
                                 .size(26.dp)
                                 .background(
-                                    if (isSelected) AppColors.ink else androidx.compose.ui.graphics.Color.Transparent,
+                                    if (isSelected) AppColors.primary else androidx.compose.ui.graphics.Color.Transparent,
                                     CircleShape
                                 )
                                 .then(
@@ -206,7 +206,7 @@ fun NewGroupScreen(
                                 Icon(
                                     imageVector = compose.icons.FeatherIcons.Check,
                                     contentDescription = null,
-                                    tint = AppColors.cream,
+                                    tint = AppColors.ink,
                                     modifier = Modifier.size(14.dp)
                                 )
                             }

@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,6 +61,7 @@ fun SettingsScreen(
     onSupportClick: () -> Unit = {},
     onMapaClick: () -> Unit = {}
 ) {
+    val uriHandler = LocalUriHandler.current
     var timeAlertsEnabled by remember { mutableStateOf(true) }
     var vibrationEnabled by remember { mutableStateOf(true) }
     var channelAudioEnabled by remember { mutableStateOf(true) }
@@ -117,7 +119,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 2. Perfil del conductor
+                    // 2. Perfil del conductor
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -131,7 +133,7 @@ fun SettingsScreen(
                     Box(
                         modifier = Modifier
                             .size(48.dp)
-                            .background(AppColors.ink, CircleShape),
+                            .background(AppColors.primary, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -153,20 +155,20 @@ fun SettingsScreen(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             ),
-                            color = AppColors.ink
+                            color = AppColors.cream
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "Línea 7 · Unidad 08",
                             style = AppTextStyles.waykiMini,
-                            color = AppColors.slate
+                            color = AppColors.cream.copy(alpha = 0.8f)
                         )
                     }
 
                     Icon(
                         imageVector = FeatherIcons.CheckCircle,
                         contentDescription = "Verificado",
-                        tint = AppColors.ink,
+                        tint = AppColors.cream,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -278,7 +280,7 @@ fun SettingsScreen(
                     Icon(
                         imageVector = FeatherIcons.HelpCircle,
                         contentDescription = null,
-                        tint = AppColors.ink,
+                        tint = AppColors.cream,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -288,7 +290,7 @@ fun SettingsScreen(
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
                         ),
-                        color = AppColors.ink
+                        color = AppColors.cream
                     )
                 }
             }
@@ -304,6 +306,17 @@ fun SettingsScreen(
                 ),
                 color = AppColors.slate,
                 modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Atribución de datos geográficos",
+                style = AppTextStyles.waykiMini.copy(fontSize = 10.sp),
+                color = AppColors.slate,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .clickable { uriHandler.openUri("https://www.openstreetmap.org/copyright") }
+                    .padding(8.dp)
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -324,7 +337,7 @@ private fun SettingSwitchItem(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFFF2EDF2))
+            .background(AppColors.softSage)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(color = AppColors.ink.copy(alpha = 0.08f)),
@@ -395,7 +408,7 @@ private fun SettingActionItem(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFFF2EDF2))
+            .background(AppColors.softSage)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(color = AppColors.ink.copy(alpha = 0.08f)),

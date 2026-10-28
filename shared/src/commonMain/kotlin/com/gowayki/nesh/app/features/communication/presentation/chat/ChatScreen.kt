@@ -229,7 +229,7 @@ fun ChatScreen(
                 modifier = Modifier
                     .size(46.dp)
                     .background(
-                        if (hasText) AppColors.ink else AppColors.mauve,
+                        if (hasText) AppColors.primary else AppColors.mauve,
                         CircleShape
                     )
                     .clickable(
@@ -243,7 +243,7 @@ fun ChatScreen(
                 Icon(
                     imageVector = if (hasText) compose.icons.FeatherIcons.Send else compose.icons.FeatherIcons.Mic,
                     contentDescription = if (hasText) "Enviar" else "Nota de voz",
-                    tint = if (hasText) AppColors.cream else AppColors.ink,
+                    tint = AppColors.cream,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -311,7 +311,7 @@ private fun MessageBubble(
                             bottomEnd = if (isMine) 6.dp else 20.dp
                         )
                     )
-                    .background(if (isMine) AppColors.ink else AppColors.mauve.copy(alpha = 0.5f))
+                    .background(if (isMine) AppColors.primary else AppColors.mauve.copy(alpha = 0.5f))
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 if (message.kind == MessageKind.AUDIO) {
@@ -367,13 +367,13 @@ private fun MessageBubble(
 @Composable
 private fun AudioBubbleContent(message: Message, isMine: Boolean) {
     val contentColor = if (isMine) AppColors.cream else AppColors.ink
-    val muted = if (isMine) AppColors.cream.copy(alpha = 0.6f) else AppColors.slate
+    val muted = if (isMine) AppColors.cream.copy(alpha = 0.4f) else AppColors.slate
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
                 .size(30.dp)
-                .background(if (isMine) AppColors.cream.copy(alpha = 0.2f) else AppColors.ink, CircleShape),
+                .background(if (isMine) AppColors.secondary else AppColors.ink, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Text(

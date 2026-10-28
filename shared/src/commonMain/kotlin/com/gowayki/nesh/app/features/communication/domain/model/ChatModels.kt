@@ -4,7 +4,10 @@
 @file:Suppress("SpellCheckingInspection")
 package com.gowayki.nesh.app.features.communication.domain.model
 
+import kotlinx.serialization.Serializable
+
 /** Rol del emisor dentro de una conversación. */
+@Serializable
 enum class MessageStatus {
     /** Enviándose. */
     SENDING,
@@ -17,6 +20,7 @@ enum class MessageStatus {
 }
 
 /** Tipo de mensaje: texto simple o audio (el diseño ya usa notas de voz). */
+@Serializable
 enum class MessageKind {
     TEXT, AUDIO
 }
@@ -27,6 +31,7 @@ enum class MessageKind {
  * Para audio: [text] actúa como la transcripción/descripción y
  * [audioDurationSeconds] guarda la duración (0 si es texto).
  */
+@Serializable
 data class Message(
     val id: String,
     val conversationId: String,
@@ -41,6 +46,7 @@ data class Message(
 )
 
 /** Miembro de un grupo (no se usa en conversaciones privadas de a dos). */
+@Serializable
 data class GroupMember(
     val userId: String,
     val name: String,
@@ -55,6 +61,7 @@ data class GroupMember(
  * Para privado: [members] tiene 2 entradas (yo y el otro) y
  * [title] es el nombre del otro conductor.
  */
+@Serializable
 data class Conversation(
     val id: String,
     val title: String,

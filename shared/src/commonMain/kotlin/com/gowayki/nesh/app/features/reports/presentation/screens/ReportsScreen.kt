@@ -646,7 +646,7 @@ private fun ConductorDrawer(onSettings: () -> Unit, onLogout: () -> Unit) {
                 Modifier.size(56.dp).background(AppColors.primary, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(FeatherIcons.User, null, tint = AppColors.onBackground, modifier = Modifier.size(30.dp))
+                Icon(FeatherIcons.User, null, tint = AppColors.cream, modifier = Modifier.size(30.dp))
             }
             Spacer(Modifier.width(AppSpacing.md))
             Column {

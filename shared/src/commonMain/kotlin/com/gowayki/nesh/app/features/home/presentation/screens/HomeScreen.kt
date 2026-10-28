@@ -3,6 +3,7 @@ package com.gowayki.nesh.app.features.home.presentation.screens
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -146,13 +147,13 @@ fun HomeScreen(
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
             ) {
-                // ── Header: fondo oscuro que se desplaza con el scroll ──
+                // ── Header azul pastel que se desplaza con el scroll ──
                 WaykiReveal(delayMillis = 0) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(
-                                color = AppColors.ink,
+                                color = AppColors.primary,
                                 shape = RoundedCornerShape(
                                     topStart = 0.dp,
                                     topEnd = 0.dp,
@@ -230,7 +231,7 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(28.dp))
 
-                        // Etiqueta de sección, sobre el fondo oscuro
+                        // Etiqueta de sección, sobre el fondo azul.
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -252,7 +253,7 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(300.dp),
-                                color = AppColors.cream.copy(alpha = 0.12f),
+                                color = AppColors.cream.copy(alpha = 0.2f),
                                 shape = AppRadius.card
                             )
                         } else {
@@ -353,10 +354,10 @@ private fun TopCircleButton(
     Box(
         modifier = modifier
             .size(AppSpacing.buttonSecondaryHeight)
-            .background(AppColors.cream, CircleShape)
+            .background(AppColors.cream.copy(alpha = 0.18f), CircleShape)
             .clickable(
                 interactionSource = interactionSource,
-                indication = ripple(color = AppColors.ink.copy(alpha = 0.15f)),
+                indication = ripple(color = AppColors.cream.copy(alpha = 0.15f)),
                 onClick = onClick
             ),
         contentAlignment = Alignment.Center
@@ -364,7 +365,7 @@ private fun TopCircleButton(
         Icon(
             imageVector = icon,
             contentDescription = description,
-            tint = AppColors.ink,
+            tint = AppColors.cream,
             modifier = Modifier.size(20.dp)
         )
     }
@@ -376,19 +377,19 @@ private fun LiveBadge(modifier: Modifier = Modifier) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
-            .background(AppColors.ink, AppRadius.card)
+            .background(AppColors.cream, AppRadius.card)
             .padding(horizontal = 10.dp, vertical = 5.dp)
     ) {
         Box(
             modifier = Modifier
                 .size(6.dp)
-                .background(AppColors.cream, CircleShape)
+                .background(AppColors.ink, CircleShape)
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = "EN VIVO",
             style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
-            color = AppColors.cream
+            color = AppColors.ink
         )
     }
 }
@@ -403,10 +404,11 @@ private fun RouteCard(
     Box(
         modifier = modifier
             .shadow(4.dp, AppRadius.card, spotColor = AppColors.ink.copy(alpha = 0.12f))
-            .background(AppColors.ink, AppRadius.card)
+            .background(AppColors.white, AppRadius.card)
+            .border(1.dp, AppColors.primary, AppRadius.card)
             .clickable(
                 interactionSource = interactionSource,
-                indication = ripple(color = AppColors.cream.copy(alpha = 0.15f)),
+                indication = ripple(color = AppColors.ink.copy(alpha = 0.15f)),
                 onClick = onClick
             )
             .padding(24.dp)
@@ -418,20 +420,20 @@ private fun RouteCard(
                     text = "5",
                     style = AppTextStyles.displayLarge.copy(
                         fontWeight = FontWeight.Bold,
-                        color = AppColors.cream
+                        color = AppColors.ink
                     )
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "min",
-                    style = AppTextStyles.waykiTitle.copy(color = AppColors.cream),
+                    style = AppTextStyles.waykiTitle.copy(color = AppColors.ink),
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = "adelante de Unidad 08",
                     style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = AppColors.cream
+                    color = AppColors.ink
                 )
             }
 
@@ -459,7 +461,7 @@ private fun RouteCard(
             Text(
                 text = "PRÓXIMO PUNTO DE CONTROL",
                 style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
-                color = AppColors.cream
+                color = AppColors.ink
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -473,7 +475,7 @@ private fun RouteCard(
                     Text(
                         text = "Av. Dolores / Cercado",
                         style = AppTextStyles.waykiButtonLarge,
-                        color = AppColors.cream
+                        color = AppColors.ink
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -487,12 +489,12 @@ private fun RouteCard(
                     Text(
                         text = "6",
                         style = AppTextStyles.waykiHeader,
-                        color = AppColors.cream
+                        color = AppColors.ink
                     )
                     Text(
                         text = "min",
                         style = AppTextStyles.waykiMini,
-                        color = AppColors.cream
+                        color = AppColors.ink
                     )
                 }
             }
@@ -516,7 +518,7 @@ private fun RouteCard(
 private fun PillStat(top: String, bottom: String, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .background(AppColors.mauve.copy(alpha = 0.25f), AppRadius.card)
+            .background(AppColors.secondary, AppRadius.card)
             .padding(horizontal = 8.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -524,13 +526,13 @@ private fun PillStat(top: String, bottom: String, modifier: Modifier = Modifier)
             Text(
                 text = top,
                 style = AppTextStyles.waykiButtonLarge.copy(fontSize = 16.sp),
-                color = AppColors.cream
+                color = AppColors.ink
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = bottom,
                 style = AppTextStyles.labelSmall.copy(fontSize = 9.sp),
-                color = AppColors.cream.copy(alpha = 0.7f)
+                color = AppColors.ink.copy(alpha = 0.7f)
             )
         }
     }
@@ -565,7 +567,7 @@ private fun BusCard(
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .background(AppColors.ink, CircleShape),
+                    .background(AppColors.primary, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text("🚌", fontSize = 20.sp)
@@ -735,10 +737,10 @@ fun WaykiSidebarContent(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(AppColors.ink, RoundedCornerShape(16.dp))
+                .background(AppColors.primary, RoundedCornerShape(16.dp))
                 .clickable(
                     interactionSource = sosInteractionSource,
-                    indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
+                    indication = ripple(color = AppColors.ink.copy(alpha = 0.2f)),
                     onClick = onSosClick
                 )
                 .padding(horizontal = 20.dp, vertical = 24.dp)
@@ -747,7 +749,7 @@ fun WaykiSidebarContent(
                 Icon(
                     imageVector = FeatherIcons.AlertTriangle, 
                     contentDescription = "SOS", 
-                    tint = AppColors.cream, 
+                    tint = AppColors.cream,
                     modifier = Modifier.size(28.dp)
                 )
                 Spacer(modifier = Modifier.width(16.dp))
@@ -761,7 +763,7 @@ fun WaykiSidebarContent(
                     Text(
                         text = "Informacion de emergencias.", 
                         style = AppTextStyles.waykiMini, 
-                        color = AppColors.cream
+                        color = AppColors.cream.copy(alpha = 0.8f)
                     )
                 }
             }
