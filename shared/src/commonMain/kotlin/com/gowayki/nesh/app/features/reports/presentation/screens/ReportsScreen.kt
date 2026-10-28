@@ -314,7 +314,7 @@ fun ReportsScreen(
         AnimatedVisibility(visible = menuOpen, enter = fadeIn(tween(250)), exit = fadeOut(tween(200))) {
             Box(
                 Modifier.fillMaxSize()
-                    .background(AppColors.onBackground.copy(alpha = 0.28f))
+                    .background(AppColors.shadow.copy(alpha = 0.28f))
                     .clickable { menuOpen = false },
             )
         }

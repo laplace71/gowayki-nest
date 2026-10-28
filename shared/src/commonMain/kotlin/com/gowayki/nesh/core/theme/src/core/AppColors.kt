@@ -1,62 +1,151 @@
 package com.gowayki.nesh.core.theme.src.core
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 
 /**
- * Paleta minima de Gowayki Nesh: solo 5 colores base y sus roles.
+ * Paleta minima de Wayki: solo 5 colores base y sus roles.
  *
  * Las variantes (containers, borders suaves, scrim, blobs) se derivan del
  * color base con opacidad (`Color.copy(alpha)`) en el punto de uso o en
- * [AppColorScheme] — no se declara un color por variante.
+ * [com.gowayki.nesh.core.theme.src.AppColorScheme] — no se declara un color
+ * por variante.
+ *
+ * Cada propiedad lee la paleta vigente ([LocalWaykiPalette]), por lo que
+ * cambia automaticamente al activar/desactivar el modo oscuro.
  */
 object AppColors {
 
+    private val palette: WaykiPalette
+        @Composable @ReadOnlyComposable
+        get() = LocalWaykiPalette.current
+
     // ── 5 colores base de la marca ───────────────────────────────────────────
 
-    /** Fondo calido casi blanco. */
-    val cream = Color(0xFFFFFDF6)
+    /** Fondo calido casi blanco (claro) / fondo profundo (oscuro). */
+    val cream: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.cream
 
-    /** Malva claro (lavanda): acciones, superficies suaves. */
-    val mauve = Color(0xFFE2D4E0)
+    /** Malva lavanda: acciones y superficies suaves. */
+    val mauve: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.mauve
 
     /** Acero gris-azulado: bordes y secundario. */
-    val steel = Color(0xFF949AB1)
+    val steel: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.steel
 
     /** Gris azulado: texto secundario. */
-    val slate = Color(0xFF7C7E9D)
+    val slate: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.slate
 
-    /** Pizarra oscura: textos y tarjeta hero. */
-    val ink   = Color(0xFF2D2B4E)
+    /** Pizarra: textos y tarjeta hero. */
+    val ink: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.ink
 
-    // ── Roles semanticos (reutilizan solo los 5 colores) ─────────────────────
+    /** Superficies suaves (tarjetas de Configuracion). */
+    val card: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.card
 
-    val primary   = mauve
-    val onPrimary = ink
+    /** Color de sombras (negro en oscuro para no generar halos). */
+    val shadow: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.shadow
 
-    val secondary = steel
-    val onSecondary = ink
+    /** Indica si el tema activo es oscuro. */
+    val isDark: Boolean
+        @Composable @ReadOnlyComposable
+        get() = palette.isDark
 
-    val tertiary  = slate
-    val onTertiary = cream
+    /** Velo de carga: oscurece el contenido en ambos temas. */
+    val overlayScrim: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.overlayScrim
 
-    val background = cream
-    val onBackground = ink
+    /** Contenido sobre el velo de carga (siempre claro). */
+    val onOverlay: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.onOverlay
 
-    val surface = cream
-    val onSurface = ink
+    // ── Roles semanticos (reutilizan solo los colores base) ──────────────────
 
-    val surfaceVariant = mauve
-    val onSurfaceVariant = slate
+    val primary: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.primary
+
+    val onPrimary: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.onPrimary
+
+    val secondary: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.secondary
+
+    val onSecondary: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.onSecondary
+
+    val tertiary: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.tertiary
+
+    val onTertiary: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.onTertiary
+
+    val background: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.background
+
+    val onBackground: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.onBackground
+
+    val surface: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.surface
+
+    val onSurface: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.onSurface
+
+    val surfaceVariant: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.surfaceVariant
+
+    val onSurfaceVariant: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.onSurfaceVariant
 
     // Alias historico de Wayki: texto secundario/muted.
-    val onSurfaceMuted = slate
+    val onSurfaceMuted: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.onSurfaceMuted
 
-    val outline = steel
-    val outlineVariant = steel.copy(alpha = 0.45f)
+    val outline: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.outline
+
+    val outlineVariant: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.outlineVariant
 
     // Semantico de estado: se deriva del base mas oscuro (contraste sobre claro).
-    val error   = ink
-    val onError = cream
+    val error: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.error
 
-    val transparent = Color(0x00000000)
+    val onError: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.onError
+
+    val transparent: Color
+        @Composable @ReadOnlyComposable
+        get() = palette.transparent
 }

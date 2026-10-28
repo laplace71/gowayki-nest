@@ -220,12 +220,14 @@ fun Modifier.WaykiInteractive(
 // ---------- Botón primario (pastilla, igual que ENTRAR) ----------
 @Composable
 private fun ArrowIcon() {
+    val circle = AppColors.onSurfaceMuted
+    val arrow = AppColors.cream
     Canvas(Modifier.size(AppSpacing.arrowIconSize, AppSpacing.arrowIconSize)) {
         val s = size.width
-        drawCircle(AppColors.onSurfaceMuted, s * 0.5f, Offset(s / 2f, s / 2f))
-        drawLine(AppColors.cream, Offset(s * 0.28f, s * 0.5f), Offset(s * 0.72f, s * 0.5f), s * 0.09f, StrokeCap.Round)
-        drawLine(AppColors.cream, Offset(s * 0.72f, s * 0.5f), Offset(s * 0.5f, s * 0.28f), s * 0.09f, StrokeCap.Round)
-        drawLine(AppColors.cream, Offset(s * 0.72f, s * 0.5f), Offset(s * 0.5f, s * 0.72f), s * 0.09f, StrokeCap.Round)
+        drawCircle(circle, s * 0.5f, Offset(s / 2f, s / 2f))
+        drawLine(arrow, Offset(s * 0.28f, s * 0.5f), Offset(s * 0.72f, s * 0.5f), s * 0.09f, StrokeCap.Round)
+        drawLine(arrow, Offset(s * 0.72f, s * 0.5f), Offset(s * 0.5f, s * 0.28f), s * 0.09f, StrokeCap.Round)
+        drawLine(arrow, Offset(s * 0.72f, s * 0.5f), Offset(s * 0.5f, s * 0.72f), s * 0.09f, StrokeCap.Round)
     }
 }
 
@@ -258,7 +260,7 @@ fun WaykiPrimaryButton(
             .shadow(
                 AppSpacing.xl, AppRadius.pill,
                 ambientColor = AppColors.onSurfaceMuted.copy(alpha = 0.27f),
-                spotColor = AppColors.onSurfaceMuted.copy(alpha = 0.27f),
+                spotColor = AppColors.shadow.copy(alpha = 0.27f),
             ),
         shape = AppRadius.pill,
         enabled = enabled && !isLoading,
@@ -368,10 +370,11 @@ fun WaykiBackButton(
             ),
         contentAlignment = Alignment.Center,
     ) {
+        val arrowColor = AppColors.onBackground
         Canvas(Modifier.size(AppSpacing.backArrowSize)) {
             val s = size.width
-            drawLine(AppColors.onBackground, Offset(s * 0.65f, s * 0.2f), Offset(s * 0.3f, s * 0.5f), 2.5f, StrokeCap.Round)
-            drawLine(AppColors.onBackground, Offset(s * 0.3f, s * 0.5f), Offset(s * 0.65f, s * 0.8f), 2.5f, StrokeCap.Round)
+            drawLine(arrowColor, Offset(s * 0.65f, s * 0.2f), Offset(s * 0.3f, s * 0.5f), 2.5f, StrokeCap.Round)
+            drawLine(arrowColor, Offset(s * 0.3f, s * 0.5f), Offset(s * 0.65f, s * 0.8f), 2.5f, StrokeCap.Round)
         }
     }
 }
@@ -709,10 +712,10 @@ fun WaykiSkeleton(
 fun WaykiLoadingOverlay(visible: Boolean) {
     if (visible) {
         Box(
-            Modifier.fillMaxSize().background(AppColors.onBackground.copy(alpha = 0.25f)),
+            Modifier.fillMaxSize().background(AppColors.overlayScrim),
             contentAlignment = Alignment.Center,
         ) {
-            CircularProgressIndicator(color = AppColors.cream)
+            CircularProgressIndicator(color = AppColors.onOverlay)
         }
     }
 }
@@ -842,11 +845,12 @@ private fun StaticRoadCanvas(
     road: Path,
     density: Float,
 ) {
+    val outline = AppColors.outline
     Canvas(Modifier.size(canvasSizeX, canvasSizeY).offset(offsetX, offsetY)) {
         scale(density, density, pivot = Offset.Zero) {
             drawPath(
                 road,
-                AppColors.outline, style = Stroke(5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)),
+                outline, style = Stroke(5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)),
             )
         }
     }
@@ -868,11 +872,13 @@ private fun RoadCanvas(
     antW: Float,
     antH: Float,
 ) {
+    val outline = AppColors.outline
+    val antTint = AppColors.primary
     Canvas(Modifier.size(canvasSizeX, canvasSizeY).offset(offsetX, offsetY)) {
         scale(density, density, pivot = Offset.Zero) {
             drawPath(
                 road,
-                AppColors.outline, style = Stroke(5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), phase)),
+                outline, style = Stroke(5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), phase)),
             )
             val pos = measure.getPosition(measure.length * trip)
             val tan = measure.getTangent(measure.length * trip)
@@ -893,7 +899,7 @@ private fun RoadCanvas(
                         (center.y - antH / 2).roundToInt(),
                     ),
                     dstSize = IntSize(antW.roundToInt(), antH.roundToInt()),
-                    colorFilter = ColorFilter.tint(AppColors.primary),
+                    colorFilter = ColorFilter.tint(antTint),
                 )
             }
         }

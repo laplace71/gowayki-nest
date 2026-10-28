@@ -409,6 +409,7 @@ fun OsmMap(
                         animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart),
                         label = "ph",
                     )
+                    val routeColor = AppColors.onBackground
                     Canvas(Modifier.fillMaxSize()) {
                         val path = Path()
                         route.forEachIndexed { i, p ->
@@ -418,7 +419,7 @@ fun OsmMap(
                         }
                         drawPath(
                             path = path,
-                            color = AppColors.onBackground,
+                            color = routeColor,
                             style = Stroke(
                                 width = 5.dp.toPx(),
                                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 12f), phase),

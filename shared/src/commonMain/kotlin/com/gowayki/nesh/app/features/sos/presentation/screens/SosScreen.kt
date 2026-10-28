@@ -412,7 +412,7 @@ private fun SosActiveCard(point: ReportItem, zone: String?, accuracyM: Float?, o
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(16.dp, RoundedCornerShape(24.dp), spotColor = AppColors.ink.copy(alpha = 0.2f))
+            .shadow(16.dp, RoundedCornerShape(24.dp), spotColor = AppColors.shadow.copy(alpha = 0.2f))
             .background(AppColors.cream, RoundedCornerShape(24.dp))
             .clickable(onClick = onClick)
             .padding(24.dp)

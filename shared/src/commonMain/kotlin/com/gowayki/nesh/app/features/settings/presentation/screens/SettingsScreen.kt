@@ -33,12 +33,12 @@ import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
+import com.gowayki.nesh.core.theme.LocalThemeController
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
@@ -51,6 +51,8 @@ import compose.icons.feathericons.Globe
 import compose.icons.feathericons.HelpCircle
 import compose.icons.feathericons.Lock
 import compose.icons.feathericons.MapPin
+import compose.icons.feathericons.Moon
+import compose.icons.feathericons.Sun
 import compose.icons.feathericons.Volume2
 
 @Composable
@@ -60,6 +62,7 @@ fun SettingsScreen(
     onSupportClick: () -> Unit = {},
     onMapaClick: () -> Unit = {}
 ) {
+    val theme = LocalThemeController.current
     var timeAlertsEnabled by remember { mutableStateOf(true) }
     var vibrationEnabled by remember { mutableStateOf(true) }
     var channelAudioEnabled by remember { mutableStateOf(true) }
@@ -260,7 +263,29 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // 5. Botón Soporte Técnico
+            // 5. APARIENCIA
+            Text(
+                text = "APARIENCIA",
+                style = AppTextStyles.waykiMini.copy(
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = AppColors.slate
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            SettingSwitchItem(
+                icon = if (theme.isDark) FeatherIcons.Sun else FeatherIcons.Moon,
+                title = "Modo oscuro",
+                subtitle = "Cambia la apariencia de la aplicación",
+                checked = theme.isDark,
+                onCheckedChange = theme.setDark
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // 6. Botón Soporte Técnico
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -295,7 +320,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 6. Versión al pie
+            // 7. Versión al pie
             Text(
                 text = "GoWayki para Android · Versión 1.0.0",
                 style = AppTextStyles.waykiMini.copy(
@@ -324,7 +349,7 @@ private fun SettingSwitchItem(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFFF2EDF2))
+            .background(AppColors.card)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(color = AppColors.ink.copy(alpha = 0.08f)),
@@ -395,7 +420,7 @@ private fun SettingActionItem(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFFF2EDF2))
+            .background(AppColors.card)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(color = AppColors.ink.copy(alpha = 0.08f)),
