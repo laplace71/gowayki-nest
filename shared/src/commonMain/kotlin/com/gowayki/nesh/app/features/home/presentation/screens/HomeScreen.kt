@@ -106,6 +106,7 @@ fun HomeScreen(
                 modifier = Modifier.width(328.dp).fillMaxHeight()
             ) {
                 WaykiSidebarContent(
+                    selectedTab = 0,
                     onClose = {
                         coroutineScope.launch { drawerState.close() }
                     },
@@ -618,7 +619,8 @@ fun WaykiSidebarContent(
     onMapaClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onSupportClick: () -> Unit = {},
-    onLogoutClick: () -> Unit = {}
+    onLogoutClick: () -> Unit = {},
+    selectedTab: Int = 0
 ) {
     Column(
         modifier = Modifier
@@ -690,28 +692,28 @@ fun WaykiSidebarContent(
             icon = FeatherIcons.Home, 
             title = "Inicio", 
             subtitle = "Tu ritmo y próximo control", 
-            isSelected = false,
+            isSelected = selectedTab == 0,
             onClick = onInicioClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.Radio, 
             title = "Comunicación", 
             subtitle = "Canal de la Línea 7", 
-            isSelected = false,
+            isSelected = selectedTab == 1,
             onClick = onCommunicationClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.GitCommit, 
             title = "Recorrido", 
             subtitle = "Tus recorridos y horarios", 
-            isSelected = false,
+            isSelected = selectedTab == 2,
             onClick = onRecorridoClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.Map, 
             title = "Mapa", 
             subtitle = "Informacion de tus rutas", 
-            isSelected = true,
+            isSelected = selectedTab == 3,
             onClick = onMapaClick
         )
         
