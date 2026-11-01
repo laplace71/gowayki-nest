@@ -30,6 +30,7 @@ enum class MessageKind {
  *
  * Para audio: [text] actúa como la transcripción/descripción y
  * [audioDurationSeconds] guarda la duración (0 si es texto).
+ * [audioFilePath] apunta al archivo físico de la grabación local.
  */
 @Serializable
 data class Message(
@@ -40,6 +41,7 @@ data class Message(
     val text: String,
     val kind: MessageKind = MessageKind.TEXT,
     val audioDurationSeconds: Int = 0,
+    val audioFilePath: String? = null,
     val sentAtMillis: Long,
     val status: MessageStatus = MessageStatus.SENDING,
     val isMine: Boolean
@@ -73,5 +75,12 @@ data class Conversation(
     val avatarText: String,
     /** Fondo oscuro del avatar (estilo del diseño actual). */
     val avatarDark: Boolean = false,
-    val members: List<GroupMember> = emptyList()
+    val members: List<GroupMember> = emptyList(),
+    val photoPath: String? = null,
+    /**
+     * Un grupo al que se le borró el chat deja de listarse en "Todos",
+     * pero sigue disponible en la pestaña "Grupos" hasta borrarlo por
+     * completo con `deleteGroup`. Vuelve a "Todos" al recibir un mensaje.
+     */
+    val hiddenFromAll: Boolean = false
 )

@@ -62,6 +62,8 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.ktor.client.core)
+            implementation("io.ktor:ktor-network:3.2.3")
+            implementation("io.ktor:ktor-io:3.2.3")
             implementation(libs.compose.icons.feather)
             implementation(libs.compose.icons.fontawesome)
             implementation(project.dependencies.platform(libs.supabase.bom))

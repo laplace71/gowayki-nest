@@ -24,10 +24,18 @@ import com.gowayki.nesh.app.features.communication.domain.repository.ChatReposit
 import com.gowayki.nesh.app.features.communication.presentation.chat.ChatScreen
 import com.gowayki.nesh.app.features.communication.presentation.chat.NewGroupViewModel
 import com.gowayki.nesh.app.features.communication.presentation.chat.NewGroupScreen
+import com.gowayki.nesh.app.features.communication.presentation.chat.CommunicationVoiceViewModel
+import com.gowayki.nesh.app.features.communication.presentation.chat.CommunicationVoicePopup
 import com.gowayki.nesh.app.features.reports.presentation.screens.ReportsScreen
 import com.gowayki.nesh.app.features.sign_in.presentation.StateFlow.AuthViewModel
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.LoginScreen
+import com.gowayki.nesh.app.features.sos.presentation.StateFlow.SosViewModel
+import com.gowayki.nesh.app.features.sos.presentation.components.SosAudioPopup
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.PinScreen
+import com.gowayki.nesh.app.common.ui.shared.ToastManager
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.RegisterScreen
 import com.gowayki.nesh.app.features.welcome.presentation.screens.WelcomeScreen
 import kotlinx.coroutines.launch
@@ -40,14 +48,55 @@ fun WaykiNav(
 ) {
     val state = vm.state
     val loginState = vm.loginState
+    // Instancia raíz compartida entre módulos: BLE/GPS no se pierden al navegar.
+    val sosVm: SosViewModel = viewModel {
+        SosViewModel(chatRepository = AppDi.getOrNull<ChatRepository>())
+    }
+    // Instancia raíz para notas de voz de Comunicación.
+    val communicationVoiceVm: CommunicationVoiceViewModel = viewModel {
+        CommunicationVoiceViewModel(chatRepository = AppDi.getOrNull<ChatRepository>())
+    }
+    // Triple clic desde cualquier módulo lleva al SOS.
+    LaunchedEffect(sosVm.ui.sosTripRequestSeq) {
+        if (sosVm.ui.sosTripRequestSeq > 0 &&
+            nav.currentBackStackEntry?.destination?.route != Routes.SOS
+        ) {
+            nav.navigate(Routes.SOS)
+        }
+    }
 
-    NavHost(
+    Box(Modifier.fillMaxSize()) {
+        NavHost(
         navController = nav,
         startDestination = Routes.WELCOME,
-        enterTransition = { fadeIn(animationSpec = tween(260)) },
-        exitTransition = { fadeOut(animationSpec = tween(200)) },
-        popEnterTransition = { fadeIn(animationSpec = tween(260)) },
-        popExitTransition = { fadeOut(animationSpec = tween(200)) }
+        enterTransition = {
+            fadeIn(animationSpec = tween(300, easing = androidx.compose.animation.core.CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f))) +
+                androidx.compose.animation.slideInHorizontally(
+                    initialOffsetX = { it / 10 },
+                    animationSpec = tween(300, easing = androidx.compose.animation.core.CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f))
+                )
+        },
+        exitTransition = {
+            fadeOut(animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutLinearInEasing)) +
+                androidx.compose.animation.slideOutHorizontally(
+                    targetOffsetX = { -it / 10 },
+                    animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutLinearInEasing)
+                )
+        },
+        popEnterTransition = {
+            fadeIn(animationSpec = tween(300, easing = androidx.compose.animation.core.CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f))) +
+                androidx.compose.animation.slideInHorizontally(
+                    initialOffsetX = { -it / 10 },
+                    animationSpec = tween(300, easing = androidx.compose.animation.core.CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f))
+                )
+        },
+        popExitTransition = {
+            fadeOut(animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutLinearInEasing)) +
+                androidx.compose.animation.slideOutHorizontally(
+                    targetOffsetX = { it / 10 },
+                    animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutLinearInEasing)
+                )
+        }
     ) {
         composable(Routes.WELCOME) {
             WelcomeScreen(
@@ -88,6 +137,7 @@ fun WaykiNav(
             LaunchedEffect(state.user) {
                 if (state.user != null) {
                     vm.consumeUser()
+                    ToastManager.show("Registro exitoso. Se detectaron rutas cercanas usando la app.")
                     nav.navigate(Routes.HOME) { popUpTo(Routes.WELCOME) { inclusive = false } }
                 }
             }
@@ -126,19 +176,21 @@ fun WaykiNav(
         composable(Routes.REPORTS) {
             ReportsScreen(
                 onBack = { nav.popBackStack() },
+                onNotificationsClick = { ToastManager.show("No tienes notificaciones nuevas por ahora") },
                 onHomeClick = { /* TODO: home conductor */ },
                 onSosClick = { /* TODO: SOS */ },
                 onMapClick = { /* ya ests en reportes */ },
                 onSettingsClick = { /* TODO: ajustes */ },
-                onLogoutClick = { 
-                    nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } } 
+                onLogoutClick = {
+                    nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
                 },
+                sosVm = sosVm,
             )
         }
         composable(Routes.HOME) {
             com.gowayki.nesh.app.features.home.presentation.screens.HomeScreen(
                 onMenuClick = { /* TODO: abrir menu */ },
-                onNotificationsClick = { /* TODO: notificaciones */ },
+                onNotificationsClick = { ToastManager.show("No tienes notificaciones nuevas por ahora") },
                 onBack = { nav.popBackStack() },
                 onSosClick = { nav.navigate(Routes.SOS) },
                 onCommunicationClick = { nav.navigate(Routes.COMMUNICATION) },
@@ -162,11 +214,15 @@ fun WaykiNav(
                     nav.navigate(Routes.chat(conversationId))
                 },
                 onNewGroupClick = { nav.navigate(Routes.NEW_GROUP) },
+                onNotificationsClick = { ToastManager.show("No tienes notificaciones nuevas por ahora") },
                 onClearChat = { id ->
                     scope.launch { chatRepo.clearMessages(id) }
                 },
                 onDeleteChat = { id ->
                     scope.launch { chatRepo.deleteConversation(id) }
+                },
+                onDeleteGroup = { id ->
+                    scope.launch { chatRepo.deleteGroup(id) }
                 },
                 onTabSelected = { tab ->
                     if (tab == 0) {
@@ -196,9 +252,16 @@ fun WaykiNav(
             )
         }
         
-        composable(Routes.ROUTE_DETAIL) {
+        composable(
+            Routes.ROUTE_DETAIL,
+            enterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) },
+            exitTransition = { androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(250, easing = androidx.compose.animation.core.FastOutLinearInEasing)) },
+            popEnterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) },
+            popExitTransition = { androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(250, easing = androidx.compose.animation.core.FastOutLinearInEasing)) }
+        ) {
             com.gowayki.nesh.app.features.route_detail.presentation.screens.RouteDetailScreen(
                 onBack = { nav.popBackStack() },
+                onNotificationsClick = { ToastManager.show("No tienes notificaciones nuevas por ahora") },
                 onSosClick = { nav.navigate(Routes.SOS) },
                 onInicioClick = {
                     nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } }
@@ -229,20 +292,22 @@ fun WaykiNav(
             // El destino se declara con el placeholder: "chat/{conversationId}".
             // Usar Routes.CHAT ("chat") aquí revienta con IllegalArgumentException.
             Routes.CHAT_PATTERN,
-            arguments = listOf(navArgument("conversationId") { type = NavType.StringType }),
-            enterTransition = { fadeIn(animationSpec = tween(150)) },
-            exitTransition = { fadeOut(animationSpec = tween(150)) },
-            popEnterTransition = { fadeIn(animationSpec = tween(150)) },
-            popExitTransition = { fadeOut(animationSpec = tween(150)) }
+            arguments = listOf(navArgument("conversationId") { type = NavType.StringType })
         ) { entry ->
             val conversationId = entry.arguments?.read { getString("conversationId") }.orEmpty()
             val chatVm = remember(conversationId) { ChatDi.chatViewModel(conversationId) }
+            val chatRepo = remember { AppDi.get<ChatRepository>() }
+            val scope = rememberCoroutineScope()
 
             // La conversación puede ser nueva (recién creada), así que la
             // buscamos viva en el repositorio en vez de leer un argumento fijo.
-            val conversations by remember { AppDi.get<ChatRepository>().conversations() }
+            val conversations by remember { chatRepo.conversations() }
+                .collectAsState(initial = emptyList())
+            val archivedConversations by remember { chatRepo.archived() }
                 .collectAsState(initial = emptyList())
             val conversation = conversations.firstOrNull { it.id == conversationId }
+                ?: archivedConversations.firstOrNull { it.id == conversationId }
+            val isArchived = archivedConversations.any { it.id == conversationId }
 
             ChatScreen(
                 title = conversation?.title ?: "Conversación",
@@ -253,17 +318,39 @@ fun WaykiNav(
                 sending = chatVm.sending,
                 onDraftChange = chatVm::onDraftChange,
                 onSend = chatVm::send,
-                onVoiceNote = { chatVm.sendVoiceNote(18) },
+                conversationId = conversationId,
+                voiceVm = communicationVoiceVm,
+                photoPath = conversation?.photoPath,
+                onChangePhoto = { path ->
+                    scope.launch { chatRepo.updateConversationPhoto(conversationId, path) }
+                },
+                onDeleteMessage = { messageId ->
+                    scope.launch { chatRepo.deleteMessage(conversationId, messageId, false) }
+                },
+                onDeleteMessageForAll = { messageId ->
+                    scope.launch { chatRepo.deleteMessage(conversationId, messageId, true) }
+                },
+                archived = isArchived,
+                onArchive = {
+                    scope.launch { chatRepo.archiveConversation(conversationId) }
+                    nav.popBackStack()
+                },
+                onUnarchive = {
+                    scope.launch { chatRepo.unarchiveConversation(conversationId) }
+                },
+                onClearChat = {
+                    scope.launch { chatRepo.clearMessages(conversationId) }
+                },
+                onDeleteChat = {
+                    scope.launch { chatRepo.deleteConversation(conversationId) }
+                    nav.popBackStack()
+                },
                 onBack = { nav.popBackStack() }
             )
         }
 
         composable(
-            Routes.NEW_GROUP,
-            enterTransition = { fadeIn(animationSpec = tween(150)) },
-            exitTransition = { fadeOut(animationSpec = tween(150)) },
-            popEnterTransition = { fadeIn(animationSpec = tween(150)) },
-            popExitTransition = { fadeOut(animationSpec = tween(150)) }
+            Routes.NEW_GROUP
         ) {
             val groupVm = viewModel { NewGroupViewModel(AppDi.get<ChatRepository>()) }
             NewGroupScreen(
@@ -285,7 +372,25 @@ fun WaykiNav(
             )
         }
 
-        composable(Routes.MAP) {
+        composable(Routes.ROUTE_PICKER) {
+            com.gowayki.nesh.app.features.map.presentation.screens.RoutePickerScreen(
+                onBack = { nav.popBackStack() },
+                onRouteSelected = {
+                    // Salta directo al mapa, descartando Settings y RoutePicker del backstack.
+                    // Si el mapa no está en el backstack (entrada desde Home), navega a él.
+                    val popped = nav.popBackStack(Routes.MAP, inclusive = false)
+                    if (!popped) nav.navigate(Routes.MAP)
+                }
+            )
+        }
+
+        composable(
+            Routes.MAP,
+            enterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) },
+            exitTransition = { androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(250, easing = androidx.compose.animation.core.FastOutLinearInEasing)) },
+            popEnterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) },
+            popExitTransition = { androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(250, easing = androidx.compose.animation.core.FastOutLinearInEasing)) }
+        ) {
             com.gowayki.nesh.app.features.map.presentation.screens.MapScreen(
                 onBack = { nav.popBackStack() },
                 onHomeClick = {
@@ -303,16 +408,31 @@ fun WaykiNav(
 
         composable(Routes.SETTINGS) {
             com.gowayki.nesh.app.features.settings.presentation.screens.SettingsScreen(
+                onBack = { if (!nav.popBackStack()) nav.navigate(Routes.HOME) },
+                onNotificationsClick = { ToastManager.show("No tienes notificaciones nuevas por ahora") },
+                onMapaClick = { nav.navigate(Routes.MAP) },
+                onRoutePickerClick = { nav.navigate(Routes.ROUTE_PICKER) },
+                onProfileClick = { nav.navigate(Routes.PROFILE) },
+                sosVm = sosVm,
+            )
+        }
+
+        composable(Routes.PROFILE) {
+            com.gowayki.nesh.app.features.profile.presentation.screens.ProfileScreen(
                 onBack = { nav.popBackStack() },
-                onMapaClick = { nav.navigate(Routes.MAP) }
             )
         }
         
         composable(Routes.SOS) {
             com.gowayki.nesh.app.features.sos.presentation.screens.SosScreen(
                 onBack = { nav.popBackStack() },
-                onMapaClick = { nav.navigate(Routes.MAP) }
+                onMapaClick = { nav.navigate(Routes.MAP) },
+                sosVm = sosVm,
             )
         }
+    }
+    // Ventanas emergentes globales encima de cualquier módulo (fuera del NavHost).
+    SosAudioPopup(sosVm)
+    CommunicationVoicePopup(communicationVoiceVm)
     }
 }

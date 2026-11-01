@@ -26,6 +26,9 @@ data class SosBleState(
     val lastPressAt: Long = 0L,
     val pressCount: Int = 0,
     val error: String? = null,
+    // Nuevo: para detectar presiones múltiples (simple vs triple)
+    val pendingPressCount: Int = 0,
+    val lastPressTime: Long = 0L,
 )
 
 // Dispositivo BLE cercano (estilo lista WiFi).
@@ -52,7 +55,12 @@ interface BleSosClient {
     fun startScan()
     fun stop()
     fun connectDevice(address: String)
-    fun setOnPress(listener: () -> Unit)
+    fun setOnPress(listener: (PressType) -> Unit)
+}
+
+enum class PressType {
+    SINGLE,  // Una presión -> grabar audio
+    TRIPLE   // Tres presiones rápidas -> SOS
 }
 
 // Contrato GPS — GPS real del teléfono (LocationManager / CoreLocation).
@@ -75,7 +83,7 @@ class NoopBleSosClient : BleSosClient {
     override fun startScan() {}
     override fun stop() {}
     override fun connectDevice(address: String) {}
-    override fun setOnPress(listener: () -> Unit) {}
+    override fun setOnPress(listener: (PressType) -> Unit) {}
 }
 
 class NoopGpsProvider : GpsProvider {
