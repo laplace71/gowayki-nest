@@ -36,8 +36,8 @@ fun WaykiNumpad(
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val buttonBg = if (isEnabled) AppColors.onBackground else AppColors.surfaceVariant
-    val textColor = if (isEnabled) AppColors.cream else AppColors.onSurfaceMuted
+    val buttonBg = if (isEnabled) AppColors.primary else AppColors.surfaceVariant
+    val textColor = if (isEnabled) AppColors.onPrimary else AppColors.onSurfaceMuted
 
     Column(
         modifier = modifier.fillMaxWidth(),

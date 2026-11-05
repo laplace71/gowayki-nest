@@ -1,6 +1,7 @@
 package com.gowayki.nesh.app.common.ui.shared
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,12 +11,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
@@ -23,7 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -41,29 +46,37 @@ import compose.icons.feathericons.Home
 import compose.icons.feathericons.Map
 import compose.icons.feathericons.Radio
 
+/**
+ * Barra de navegación flotante, migrada del diseño de la app original:
+ * tarjeta M3 con esquinas redondeadas, sombra suave, pastilla primary en el
+ * ítem activo e icono que crece al seleccionarse.
+ *
+ * Mantiene la misma API (`selectedTab` / `onTabSelected`) para no tocar las
+ * pantallas que ya la usan.
+ */
 @Composable
 fun WaykiBottomNav(
     selectedTab: Int = 0,
     onTabSelected: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    Box(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
+            .padding(horizontal = 16.dp)
             .navigationBarsPadding()
-            .padding(horizontal = AppSpacing.pageHorizontal, vertical = AppSpacing.md)
-            .shadow(24.dp, RoundedCornerShape(32.dp), spotColor = AppColors.ink.copy(alpha = 0.4f))
-            .background(
-                // Opaca: si no, el contenido que scrollea se ve por detrás
-                // y la barra se ve sucia visualmente.
-                color = AppColors.slate,
-                shape = RoundedCornerShape(32.dp)
-            )
-            .padding(horizontal = 8.dp, vertical = 8.dp)
+            .padding(bottom = 12.dp),
+        shape = RoundedCornerShape(28.dp),
+        color = AppColors.cream,
+        shadowElevation = 8.dp,
+        tonalElevation = 3.dp
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.xs),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(76.dp)
+                .padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             BottomNavItem(
@@ -75,7 +88,7 @@ fun WaykiBottomNav(
             )
             BottomNavItem(
                 icon = FeatherIcons.Radio,
-                label = "Comunicacion",
+                label = "Comunicación",
                 isSelected = selectedTab == 1,
                 onClick = { onTabSelected(1) },
                 modifier = Modifier.weight(1f)
@@ -109,56 +122,62 @@ private fun BottomNavItem(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
-    // Animated colors for smooth transition
-    val bgColor by animateColorAsState(
-        targetValue = when {
-            isSelected -> AppColors.mauve
-            isPressed -> AppColors.mauve.copy(alpha = 0.3f)
-            else -> Color.Transparent
-        },
-        animationSpec = tween(200),
-        label = "navBg"
-    )
     val contentColor by animateColorAsState(
         targetValue = when {
-            isSelected -> AppColors.ink
-            else -> AppColors.cream.copy(alpha = 0.8f) // better contrast
+            isSelected -> AppColors.primary
+            isPressed -> AppColors.slate
+            else -> AppColors.slate.copy(alpha = 0.85f)
         },
-        animationSpec = tween(200),
+        animationSpec = tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing),
         label = "navContent"
     )
+    val iconSize by animateDpAsState(
+        targetValue = if (isSelected) 26.dp else 22.dp,
+        animationSpec = tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "navIconSize"
+    )
 
-    Box(
+    Column(
         modifier = modifier
-            .background(bgColor, RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(22.dp))
             .clickable(
                 interactionSource = interactionSource,
-                indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
+                indication = ripple(color = AppColors.primary),
                 onClick = onClick
             )
-            .padding(horizontal = AppSpacing.xs, vertical = AppSpacing.sm),
-        contentAlignment = Alignment.Center
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(3.dp)
+        Box(
+            modifier = Modifier
+                .then(
+                    if (isSelected) {
+                        Modifier.background(AppColors.primary.copy(alpha = 0.14f), CircleShape)
+                    } else {
+                        Modifier
+                    }
+                )
+                .padding(horizontal = 14.dp, vertical = 5.dp),
+            contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = contentColor,
-                modifier = Modifier.size(AppSpacing.iconMd)
-            )
-            Text(
-                text = label,
-                style = AppTextStyles.labelSmall.copy(
-                    fontSize = 10.sp,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                ),
-                color = contentColor,
-                maxLines = 1
+                modifier = Modifier.size(iconSize)
             )
         }
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = label,
+            style = AppTextStyles.labelSmall.copy(
+                fontSize = 10.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+            ),
+            color = contentColor,
+            maxLines = 1
+        )
     }
 }
 
@@ -204,7 +223,7 @@ private val WaykiRouteIcon: ImageVector by lazy {
             curveTo(19.067f, 2.33203f, 17.5f, 3.89916f, 17.5f, 5.83231f)
             close()
         },
-        stroke = SolidColor(Color.Black),
+        stroke = SolidColor(AppColors.white),
         strokeLineWidth = 1.8f,
         strokeLineCap = StrokeCap.Round,
         strokeLineJoin = StrokeJoin.Round

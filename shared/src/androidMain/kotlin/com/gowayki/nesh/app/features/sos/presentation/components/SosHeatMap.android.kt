@@ -118,97 +118,113 @@ actual fun SosHeatMap(
     ) {
         // Estilo + capas (una vez).
         MapEffect(Unit) { mv ->
-            mv.mapboxMap.loadStyle(Style.STANDARD) { style ->
-                val src = GeoJsonSource.Builder(SOS_SRC)
-                    .featureCollection(featureCollection(markersNow, selectedNow))
-                    .build()
-                style.addSource(src)
-                // ── Marca de calor ──────────────────────────────────────
-                // El aviso se lee como un foco de calor: halo rojo que se
-                // difumina hacia fuera y un núcleo sólido en el punto exacto.
-                style.addLayer(
-                    HeatmapLayer(SOS_HEAT, SOS_SRC).apply {
-                        heatmapColor(heatColor())
-                        heatmapIntensity(1.4)
-                        heatmapRadius(70.0)
-                        heatmapOpacity(0.9)
-                    },
-                )
-                // Halo intermedio: separa el núcleo del degradado.
-                style.addLayer(
-                    CircleLayer(SOS_HALO, SOS_SRC).apply {
-                        circleRadius(selRadius(15.0, 21.0))
-                        circleColor(Expression.rgba(198.0, 64.0, 73.0, 0.35))
-                        circleBlur(1.0)
-                    },
-                )
-                // Núcleo: el punto exacto de la emergencia.
-                style.addLayer(
-                    CircleLayer(SOS_PINS, SOS_SRC).apply {
-                        circleRadius(selRadius(9.0, 13.0))
-                        circleColor(Expression.rgb(198.0, 64.0, 73.0))
-                        circleStrokeColor(Expression.rgb(255.0, 253.0, 246.0))
-                        circleStrokeWidth(2.5)
-                    },
-                )
-                liveSrc[0] = src
-            }
-            // Punto azul "estás aquí" en vivo (permisos ya concedidos).
             runCatching {
-                mv.location.updateSettings {
-                    enabled = true
-                    pulsingEnabled = true
+                mv.mapboxMap.loadStyle(Style.STANDARD) { style ->
+                    val src = GeoJsonSource.Builder(SOS_SRC)
+                        .featureCollection(featureCollection(markersNow, selectedNow))
+                        .build()
+                    style.addSource(src)
+                    // ── Marca de calor ──────────────────────────────────────
+                    // El aviso se lee como un foco de calor: halo rojo que se
+                    // difumina hacia fuera y un núcleo sólido en el punto exacto.
+                    style.addLayer(
+                        HeatmapLayer(SOS_HEAT, SOS_SRC).apply {
+                            heatmapColor(heatColor())
+                            heatmapIntensity(1.4)
+                            heatmapRadius(70.0)
+                            heatmapOpacity(0.9)
+                        },
+                    )
+                    // Halo intermedio: separa el núcleo del degradado.
+                    style.addLayer(
+                        CircleLayer(SOS_HALO, SOS_SRC).apply {
+                            circleRadius(selRadius(15.0, 21.0))
+                            circleColor(Expression.rgba(198.0, 64.0, 73.0, 0.35))
+                            circleBlur(1.0)
+                        },
+                    )
+                    // Núcleo: el punto exacto de la emergencia.
+                    style.addLayer(
+                        CircleLayer(SOS_PINS, SOS_SRC).apply {
+                            circleRadius(selRadius(9.0, 13.0))
+                            circleColor(Expression.rgb(198.0, 64.0, 73.0))
+                            circleStrokeColor(Expression.rgb(255.0, 253.0, 246.0))
+                            circleStrokeWidth(2.5)
+                        },
+                    )
+                    liveSrc[0] = src
                 }
-            }
-            // Tap en pin: pin más cercano al toque (48 px). Centrado garantizado por SDK.
-            mv.gestures.addOnMapClickListener { tap ->
-                val mb = mv.mapboxMap
-                val tp = mb.pixelForCoordinate(tap)
-                val hit = markersNow.minByOrNull { m ->
-                    val sp = mb.pixelForCoordinate(Point.fromLngLat(m.pos.lon, m.pos.lat))
-                    hypot((sp.x - tp.x).toDouble(), (sp.y - tp.y).toDouble())
+                // Punto azul "estás aquí" en vivo (permisos ya concedidos).
+                runCatching {
+                    mv.location.updateSettings {
+                        enabled = true
+                        pulsingEnabled = true
+                    }
                 }
-                val sp = hit?.let { mb.pixelForCoordinate(Point.fromLngLat(it.pos.lon, it.pos.lat)) }
-                if (hit != null && sp != null &&
-                    hypot((sp.x - tp.x).toDouble(), (sp.y - tp.y).toDouble()) <= 48.0
-                ) {
-                    clickNow(hit)
-                    true
-                } else {
-                    false
+                // Tap en pin: pin más cercano al toque (48 px). Centrado garantizado por SDK.
+                mv.gestures.addOnMapClickListener { tap ->
+                    val mb = mv.mapboxMap
+                    val tp = mb.pixelForCoordinate(tap)
+                    val hit = markersNow.minByOrNull { m ->
+                        val sp = mb.pixelForCoordinate(Point.fromLngLat(m.pos.lon, m.pos.lat))
+                        hypot((sp.x - tp.x).toDouble(), (sp.y - tp.y).toDouble())
+                    }
+                    val sp = hit?.let { mb.pixelForCoordinate(Point.fromLngLat(it.pos.lon, it.pos.lat)) }
+                    if (hit != null && sp != null &&
+                        hypot((sp.x - tp.x).toDouble(), (sp.y - tp.y).toDouble()) <= 48.0
+                    ) {
+                        clickNow(hit)
+                        true
+                    } else {
+                        false
+                    }
                 }
+            }.onFailure { e ->
+                e.printStackTrace()
             }
         }
         // Puntos nuevos (botón físico) y cambios de selección sin recargar nada.
         MapEffect(markers, selectedId) { mv ->
-            liveSrc[0]?.featureCollection(featureCollection(markers, selectedId))
+            runCatching {
+                liveSrc[0]?.featureCollection(featureCollection(markers, selectedId))
+            }.onFailure { e ->
+                e.printStackTrace()
+            }
         }
         // Selección: vuelo suave al punto. Clave focusSeq: centra SIEMPRE,
         // incluso re-tocando el mismo pin, desde la tarjeta o al presionar el botón.
         MapEffect(reportsVm.ui.focusSeq) { mv ->
             val sel = reportsVm.ui.selectedId
             markers.firstOrNull { it.id == sel }?.let { m ->
-                mv.camera.flyTo(
-                    CameraOptions.Builder()
-                        .center(Point.fromLngLat(m.pos.lon, m.pos.lat))
-                        .zoom(14.5)
-                        .build(),
-                    MapAnimationOptions.mapAnimationOptions { duration(900L) },
-                    null,
-                )
+                runCatching {
+                    mv.camera.flyTo(
+                        CameraOptions.Builder()
+                            .center(Point.fromLngLat(m.pos.lon, m.pos.lat))
+                            .zoom(14.5)
+                            .build(),
+                        MapAnimationOptions.mapAnimationOptions { duration(900L) },
+                        null,
+                    )
+                }.onFailure { e ->
+                    e.printStackTrace()
+                }
             }
         }
         // Mi posición (calibrar): vuelo libre a la coordenada GPS.
         MapEffect(reportsVm.ui.locateSeq) { mv ->
             reportsVm.ui.locatePos?.let { p ->
-                mv.camera.flyTo(
-                    CameraOptions.Builder()
-                        .center(Point.fromLngLat(p.lon, p.lat))
-                        .zoom(15.0)
-                        .build(),
-                    MapAnimationOptions.mapAnimationOptions { duration(900L) },
-                    null,
-                )
+                runCatching {
+                    mv.camera.flyTo(
+                        CameraOptions.Builder()
+                            .center(Point.fromLngLat(p.lon, p.lat))
+                            .zoom(15.0)
+                            .build(),
+                        MapAnimationOptions.mapAnimationOptions { duration(900L) },
+                        null,
+                    )
+                }.onFailure { e ->
+                    e.printStackTrace()
+                }
             }
         }
     }

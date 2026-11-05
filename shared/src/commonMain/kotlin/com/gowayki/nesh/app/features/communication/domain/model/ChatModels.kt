@@ -4,7 +4,10 @@
 @file:Suppress("SpellCheckingInspection")
 package com.gowayki.nesh.app.features.communication.domain.model
 
+import kotlinx.serialization.Serializable
+
 /** Rol del emisor dentro de una conversación. */
+@Serializable
 enum class MessageStatus {
     /** Enviándose. */
     SENDING,
@@ -17,6 +20,7 @@ enum class MessageStatus {
 }
 
 /** Tipo de mensaje: texto simple o audio (el diseño ya usa notas de voz). */
+@Serializable
 enum class MessageKind {
     TEXT, AUDIO
 }
@@ -26,7 +30,9 @@ enum class MessageKind {
  *
  * Para audio: [text] actúa como la transcripción/descripción y
  * [audioDurationSeconds] guarda la duración (0 si es texto).
+ * [audioFilePath] apunta al archivo físico de la grabación local.
  */
+@Serializable
 data class Message(
     val id: String,
     val conversationId: String,
@@ -35,12 +41,14 @@ data class Message(
     val text: String,
     val kind: MessageKind = MessageKind.TEXT,
     val audioDurationSeconds: Int = 0,
+    val audioFilePath: String? = null,
     val sentAtMillis: Long,
     val status: MessageStatus = MessageStatus.SENDING,
     val isMine: Boolean
 )
 
 /** Miembro de un grupo (no se usa en conversaciones privadas de a dos). */
+@Serializable
 data class GroupMember(
     val userId: String,
     val name: String,
@@ -55,6 +63,7 @@ data class GroupMember(
  * Para privado: [members] tiene 2 entradas (yo y el otro) y
  * [title] es el nombre del otro conductor.
  */
+@Serializable
 data class Conversation(
     val id: String,
     val title: String,
@@ -66,5 +75,12 @@ data class Conversation(
     val avatarText: String,
     /** Fondo oscuro del avatar (estilo del diseño actual). */
     val avatarDark: Boolean = false,
-    val members: List<GroupMember> = emptyList()
+    val members: List<GroupMember> = emptyList(),
+    val photoPath: String? = null,
+    /**
+     * Un grupo al que se le borró el chat deja de listarse en "Todos",
+     * pero sigue disponible en la pestaña "Grupos" hasta borrarlo por
+     * completo con `deleteGroup`. Vuelve a "Todos" al recibir un mensaje.
+     */
+    val hiddenFromAll: Boolean = false
 )

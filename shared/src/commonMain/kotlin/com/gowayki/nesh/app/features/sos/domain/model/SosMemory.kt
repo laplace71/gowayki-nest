@@ -4,6 +4,7 @@
 package com.gowayki.nesh.app.features.sos.domain.model
 
 import androidx.compose.runtime.mutableStateListOf
+import com.gowayki.nesh.app.common.util.currentTimeMillis
 import com.gowayki.nesh.app.features.reports.domain.model.OsmLatLng
 import com.gowayki.nesh.app.features.reports.domain.model.ReportItem
 import com.gowayki.nesh.app.features.reports.domain.model.ReportStatus
@@ -21,6 +22,40 @@ object SosMemory {
     val zoneCache = mutableMapOf<String, String?>()
 
     private var loaded = false
+
+    // Contador simple para IDs únicos aunque coincidan milisegundos
+    private var idCounter = 0
+
+    /**
+     * Crea y registra un punto de emergencia SOS con el GPS recibido.
+     * La lista observable [points] es la fuente única: todas las pantallas
+     * leen el mismo estado y sobrevive a la navegación y al cierre de la app.
+     */
+    fun addEmergency(lat: Double, lon: Double): ReportItem {
+        val pos = OsmLatLng(lat, lon)
+        val timestamp = currentTimeMillis()
+        // Usamos timestamp + nanoTime + contador para garantizar unicidad
+        val uniqueId = "SOS-${timestamp}-${kotlin.random.Random.nextLong()}"
+        val item = ReportItem(
+            id = uniqueId,
+            title = "SOS botón físico · ${format6(pos.lat)}, ${format6(pos.lon)}",
+            subtitle = "Pulsación ESP32 · GPS real",
+            status = ReportStatus.ACTIVA,
+            pos = pos,
+            type = OsmMarkerType.EMERGENCIA,
+        )
+        points.add(0, item)
+        com.gowayki.nesh.core.mqtt.MqttClient.publish(
+            com.gowayki.nesh.core.mqtt.MqttTopics.MAP_ALERT,
+            com.gowayki.nesh.core.mqtt.MqttTopics.MSG_MAP_ALERT
+        )
+        return item
+    }
+
+    private fun format6(value: Double): String =
+        runCatching { kotlin.math.round(value * 1_000_000) / 1_000_000.0 }
+            .getOrDefault(value)
+            .toString()
 
     fun add(point: ReportItem) {
         points.add(0, point)
@@ -42,10 +77,18 @@ object SosMemory {
         if (loaded) return
         loaded = true
         runCatching {
+            val existingIds = points.map { it.id }.toMutableSet()
             SosStore.load().forEach { s ->
+                // Evita claves duplicadas si el almacenamiento tiene ids repetidos.
+                val id = if (existingIds.contains(s.id)) {
+                    "SOS-${s.id}-${kotlin.random.Random.nextLong()}"
+                } else {
+                    s.id
+                }
+                existingIds.add(id)
                 points.add(
                     ReportItem(
-                        id = s.id,
+                        id = id,
                         title = s.title,
                         subtitle = "Pulsación ESP32 · GPS real",
                         status = ReportStatus.ACTIVA,

@@ -88,6 +88,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import com.gowayki.nesh.app.common.modules.auth.AuthCopy
+import com.gowayki.nesh.app.common.platform.loadImageBitmap
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppRadius
@@ -618,27 +619,42 @@ fun WaykiAvatar(
     size: Dp = 48.dp,
     dark: Boolean = false,
     modifier: Modifier = Modifier,
-    online: Boolean? = null
+    online: Boolean? = null,
+    photoPath: String? = null
 ) {
     val bg = if (dark) AppColors.ink else AppColors.mauve
-    val fg = if (dark) AppColors.cream else AppColors.ink
+    val fg = AppColors.cream
+    val bitmap = remember(photoPath) {
+        runCatching { loadImageBitmap(photoPath) }.getOrNull()
+    }
 
     Box(modifier = modifier.size(size)) {
-        Box(
-            modifier = Modifier
-                .size(size)
-                .background(bg, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = text,
-                style = AppTextStyles.waykiButtonSmall.copy(
-                    fontSize = (size.value * 0.34f).sp,
-                    fontWeight = FontWeight.Bold
-                ),
-                color = fg,
-                maxLines = 1
+        if (bitmap != null) {
+            androidx.compose.foundation.Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier
+                    .size(size)
+                    .clip(CircleShape)
             )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(size)
+                    .background(bg, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = text,
+                    style = AppTextStyles.waykiButtonSmall.copy(
+                        fontSize = (size.value * 0.34f).sp,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = fg,
+                    maxLines = 1
+                )
+            }
         }
 
         // Punto de "en línea" abajo a la derecha.

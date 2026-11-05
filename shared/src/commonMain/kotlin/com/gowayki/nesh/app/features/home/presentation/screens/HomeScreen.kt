@@ -3,6 +3,7 @@ package com.gowayki.nesh.app.features.home.presentation.screens
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -34,16 +35,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackground
+import com.gowayki.nesh.app.common.ui.shared.ToastManager
 import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
+import com.gowayki.nesh.app.common.util.currentHourMinute
+import com.gowayki.nesh.core.AppSettings
 import com.gowayki.nesh.app.common.ui.shared.WaykiReveal
 import com.gowayki.nesh.app.common.ui.shared.WaykiSkeleton
+import com.gowayki.nesh.app.features.map.data.RouteStopsStore
+import com.gowayki.nesh.app.features.map.data.SitRouteStop
 import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
+import com.gowayki.nesh.app.features.map.domain.model.CombiRoute
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppRadius
@@ -90,11 +97,72 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(true) }
     val selectedRoute by SelectedRouteHolder.selected.collectAsState()
+    val direction by SelectedRouteHolder.direction.collectAsState()
+    var routeStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
+    var idaStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
+    androidx.compose.runtime.LaunchedEffect(selectedRoute, direction) {
+        val r = selectedRoute
+        val routeId = if (direction == com.gowayki.nesh.app.features.map.presentation.RouteDirection.RETORNO) {
+            r?.returnRouteId ?: r?.routeId
+        } else {
+            r?.routeId
+        }
+        routeStops = if (routeId != null) {
+            runCatching { RouteStopsStore.stopsFor(routeId) }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(selectedRoute) {
+        val r = selectedRoute
+        idaStops = if (r?.routeId != null) {
+            runCatching { RouteStopsStore.stopsFor(r.routeId!!) }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+    }
 
     // Simulate initial data load
     androidx.compose.runtime.LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(800) // Brief skeleton flash
         isLoading = false
+        if (AppSettings.notificationsEnabled.value && AppSettings.isOnRoute.value) {
+            ToastManager.show("Ruta 12 a 7 min atrás • Ruta 5 a 3 min adelante")
+        }
+    }
+
+    // Aviso de hora de almuerzo y de fin próximo.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        var lunchNotified = ""
+        var endNotified = ""
+        fun toMinutes(t: String): Int {
+            val parts = t.split(":")
+            return (parts.getOrNull(0)?.toIntOrNull() ?: 0) * 60 + (parts.getOrNull(1)?.toIntOrNull() ?: 0)
+        }
+        while (true) {
+            val now = currentHourMinute()
+            val nowMin = toMinutes(now)
+            val startMin = toMinutes(AppSettings.lunchTime.value)
+            val endMin = startMin + AppSettings.lunchDurationMinutes.value
+            if (AppSettings.notificationsEnabled.value && AppSettings.lunchEnabled.value) {
+                val startMin = toMinutes(AppSettings.lunchTime.value)
+                val fiveBefore = (startMin - 5 + 1440) % 1440
+                if (nowMin == fiveBefore && now != lunchNotified) {
+                    lunchNotified = now
+                    ToastManager.show("Tu almuerzo empieza en 5 min")
+                }
+                if (now == AppSettings.lunchTime.value && now != lunchNotified) {
+                    lunchNotified = now
+                    ToastManager.show("Hora de almuerzo: ${AppSettings.lunchTime.value}")
+                }
+                // Notificar cuando falten 5 minutos para terminar.
+                if (nowMin in (endMin - 5)..(endMin - 1) && now != endNotified) {
+                    endNotified = now
+                    ToastManager.show("Faltan 5 min para terminar tu almuerzo")
+                }
+            }
+            kotlinx.coroutines.delay(30000)
+        }
     }
 
     ModalNavigationDrawer(
@@ -106,6 +174,7 @@ fun HomeScreen(
                 modifier = Modifier.width(328.dp).fillMaxHeight()
             ) {
                 WaykiSidebarContent(
+                    selectedTab = 0,
                     onClose = {
                         coroutineScope.launch { drawerState.close() }
                     },
@@ -123,6 +192,10 @@ fun HomeScreen(
                     onRecorridoClick = {
                         coroutineScope.launch { drawerState.close() }
                         onRecorridoClick()
+                    },
+                    onMapaClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onMapaClick()
                     },
                     onSettingsClick = {
                         coroutineScope.launch { drawerState.close() }
@@ -146,13 +219,13 @@ fun HomeScreen(
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
             ) {
-                // ── Header: fondo oscuro que se desplaza con el scroll ──
+                // ── Header azul pastel que se desplaza con el scroll ──
                 WaykiReveal(delayMillis = 0) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(
-                                color = AppColors.ink,
+                                color = AppColors.primary,
                                 shape = RoundedCornerShape(
                                     topStart = 0.dp,
                                     topEnd = 0.dp,
@@ -230,7 +303,7 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(28.dp))
 
-                        // Etiqueta de sección, sobre el fondo oscuro
+                        // Etiqueta de sección, sobre el fondo azul.
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -246,17 +319,54 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
+                        // Selector rápido de sentido (ida/vuelta) sin entrar a Recorrido.
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val isIda = direction == com.gowayki.nesh.app.features.map.presentation.RouteDirection.IDA
+                            listOf(
+                                com.gowayki.nesh.app.features.map.presentation.RouteDirection.IDA to "Ida",
+                                com.gowayki.nesh.app.features.map.presentation.RouteDirection.RETORNO to "Vuelta"
+                            ).forEach { (dir, label) ->
+                                val selected = direction == dir
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(
+                                            if (selected) AppColors.cream else AppColors.cream.copy(alpha = 0.18f),
+                                            RoundedCornerShape(50)
+                                        )
+                                        .clickable { SelectedRouteHolder.setDirection(dir) }
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp),
+                                        color = if (selected) AppColors.ink else AppColors.cream
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
                         // Tarjeta principal
                         if (isLoading) {
                             WaykiSkeleton(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(300.dp),
-                                color = AppColors.cream.copy(alpha = 0.12f),
+                                color = AppColors.cream.copy(alpha = 0.2f),
                                 shape = AppRadius.card
                             )
                         } else {
                             RouteCard(
+                                route = selectedRoute,
+                                stops = routeStops,
+                                offsetMinutes = if (direction == com.gowayki.nesh.app.features.map.presentation.RouteDirection.RETORNO) routeDurationMinutes(idaStops, selectedRoute) else 0,
+                                isOnRoute = AppSettings.isOnRoute.value,
                                 onClick = onRecorridoClick,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -273,49 +383,48 @@ fun HomeScreen(
                             .padding(horizontal = AppSpacing.pageHorizontal)
                             .padding(top = 28.dp)
                     ) {
-                    // Etiqueta de sección: combis
+                    // Otras combis de la línea (aún no hay otros conductores registrados).
                     Text(
                         text = "Combis en tu línea",
                         style = AppTextStyles.waykiLabelMedium,
                         color = AppColors.ink
                     )
-
                     Spacer(modifier = Modifier.height(12.dp))
-
-                    // Tarjetas de combis
-                    if (isLoading) {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            WaykiSkeleton(
+                    androidx.compose.material3.Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = AppRadius.card,
+                        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = AppColors.cream),
+                        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(18.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(78.dp),
-                                shape = AppRadius.card
-                            )
-                            WaykiSkeleton(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(78.dp),
-                                shape = AppRadius.card
-                            )
-                        }
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            WaykiReveal(delayMillis = 120) {
-                                BusCard(
-                                    title = "combi de atrás",
-                                    line = "línea 7",
-                                    time = "5m",
-                                    icon = FeatherIcons.ArrowLeft,
-                                    onClick = onRecorridoClick
+                                    .size(44.dp)
+                                    .background(AppColors.primary.copy(alpha = 0.12f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = SolidGroup.Bus,
+                                    contentDescription = null,
+                                    tint = AppColors.primary,
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
-                            WaykiReveal(delayMillis = 180) {
-                                BusCard(
-                                    title = "combi de adelante",
-                                    line = "línea 11",
-                                    time = "8m",
-                                    icon = FeatherIcons.ArrowRight,
-                                    onClick = onRecorridoClick
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Esperando otras líneas",
+                                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                                    color = AppColors.ink
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Aún no hay otros conductores registrados en tu línea.",
+                                    style = AppTextStyles.waykiMini,
+                                    color = AppColors.slate
                                 )
                             }
                         }
@@ -353,10 +462,10 @@ private fun TopCircleButton(
     Box(
         modifier = modifier
             .size(AppSpacing.buttonSecondaryHeight)
-            .background(AppColors.cream, CircleShape)
+            .background(AppColors.cream.copy(alpha = 0.18f), CircleShape)
             .clickable(
                 interactionSource = interactionSource,
-                indication = ripple(color = AppColors.ink.copy(alpha = 0.15f)),
+                indication = ripple(color = AppColors.cream.copy(alpha = 0.15f)),
                 onClick = onClick
             ),
         contentAlignment = Alignment.Center
@@ -364,7 +473,7 @@ private fun TopCircleButton(
         Icon(
             imageVector = icon,
             contentDescription = description,
-            tint = AppColors.ink,
+            tint = AppColors.cream,
             modifier = Modifier.size(20.dp)
         )
     }
@@ -376,19 +485,19 @@ private fun LiveBadge(modifier: Modifier = Modifier) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
-            .background(AppColors.ink, AppRadius.card)
+            .background(AppColors.cream, AppRadius.card)
             .padding(horizontal = 10.dp, vertical = 5.dp)
     ) {
         Box(
             modifier = Modifier
                 .size(6.dp)
-                .background(AppColors.cream, CircleShape)
+                .background(AppColors.ink, CircleShape)
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = "EN VIVO",
             style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
-            color = AppColors.cream
+            color = AppColors.ink
         )
     }
 }
@@ -396,74 +505,72 @@ private fun LiveBadge(modifier: Modifier = Modifier) {
 // ---------- Tarjeta del recorrido del día ----------
 @Composable
 private fun RouteCard(
+    route: CombiRoute? = null,
+    stops: List<SitRouteStop> = emptyList(),
+    offsetMinutes: Int = 0,
+    isOnRoute: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    Box(
-        modifier = modifier
-            .shadow(4.dp, AppRadius.card, spotColor = AppColors.ink.copy(alpha = 0.12f))
-            .background(AppColors.ink, AppRadius.card)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = ripple(color = AppColors.cream.copy(alpha = 0.15f)),
-                onClick = onClick
-            )
-            .padding(24.dp)
+    val compliance = compliancePercent(isOnRoute)
+    val points = todayControlPoints(route, stops, offsetMinutes)
+    val next = nextControlPoint(points)
+    val oneWay = routeDurationMinutes(stops, route)
+    val roundTrip = oneWay * 2
+    // Línea activa: código corto (ej. C2, A15).
+    val lineCode = route?.id ?: "—"
+    androidx.compose.material3.Card(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = AppRadius.card,
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = AppColors.cream),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 4.dp),
+        interactionSource = interactionSource
     ) {
-        Column {
-            // Tiempo adelante
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    text = "5",
-                    style = AppTextStyles.displayLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = AppColors.cream
+        Column(modifier = Modifier.padding(20.dp)) {
+            // Cabecera
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(AppColors.primary, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = SolidGroup.Bus,
+                        contentDescription = null,
+                        tint = AppColors.cream,
+                        modifier = Modifier.size(22.dp)
                     )
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "min",
-                    style = AppTextStyles.waykiTitle.copy(color = AppColors.cream),
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
+                }
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "adelante de Unidad 08",
-                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = AppColors.cream
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = route?.name ?: "Sin ruta seleccionada",
+                        style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp),
+                        color = AppColors.ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = route?.operator?.let { "Operador: $it" } ?: "Selecciona una ruta en Mapa",
+                        style = AppTextStyles.waykiMini,
+                        color = AppColors.slate
+                    )
+                }
+                LiveBadge()
             }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = "Dato Gowayki Pulse • actualizado hace 45 s",
-                style = AppTextStyles.waykiMini,
-                color = AppColors.slate
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Separador
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(AppColors.slate.copy(alpha = 0.3f))
-            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Próximo punto de control
+            // Próximo punto de control (relacionado con el recorrido del mapa)
             Text(
                 text = "PRÓXIMO PUNTO DE CONTROL",
                 style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
-                color = AppColors.cream
+                color = AppColors.primary
             )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
+            Spacer(modifier = Modifier.height(6.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -471,52 +578,189 @@ private fun RouteCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Av. Dolores / Cercado",
+                        text = next?.name ?: "Sin puntos",
                         style = AppTextStyles.waykiButtonLarge,
-                        color = AppColors.cream
+                        color = AppColors.ink
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Programado: 08:47",
+                        text = next?.let { "Hora programada: ${it.time}" } ?: "",
                         style = AppTextStyles.waykiMini,
                         color = AppColors.slate
                     )
                 }
-                Spacer(modifier = Modifier.width(AppSpacing.sm))
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "6",
-                        style = AppTextStyles.waykiHeader,
-                        color = AppColors.cream
-                    )
-                    Text(
-                        text = "min",
-                        style = AppTextStyles.waykiMini,
-                        color = AppColors.cream
-                    )
+                next?.let {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = it.time,
+                            style = AppTextStyles.waykiHeader,
+                            color = AppColors.ink
+                        )
+                        Text(
+                            text = "hora",
+                            style = AppTextStyles.waykiMini,
+                            color = AppColors.ink
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Puntos de hoy (cada 20 min desde la hora de inicio)
+            Text(
+                text = "PUNTOS DE HOY",
+                style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                color = AppColors.primary
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                points.forEach { pt ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = pt.name,
+                            style = AppTextStyles.waykiMini,
+                            color = AppColors.ink,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = pt.time,
+                            style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                            color = AppColors.slate,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Duración ida y vuelta: ~$roundTrip min",
+                style = AppTextStyles.waykiMini,
+                color = AppColors.slate
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Estadísticas
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                PillStat(top = "84%", bottom = "Cumplimiento", modifier = Modifier.weight(1f))
-                PillStat(top = "6", bottom = "Puntos hoy", modifier = Modifier.weight(1f))
-                PillStat(top = "L12", bottom = "Línea activa", modifier = Modifier.weight(1f))
+                PillStat(top = "$compliance%", bottom = "Cumplimiento", modifier = Modifier.weight(1f))
+                PillStat(top = "${points.size}", bottom = "Puntos hoy", modifier = Modifier.weight(1f))
+                PillStat(top = lineCode, bottom = "Línea activa", modifier = Modifier.weight(1f))
             }
         }
     }
+}
+
+private data class ControlPoint(val name: String, val time: String)
+
+private fun shiftStartMinutes(): Int {
+    val t = AppSettings.shiftStartTime.value
+    val p = t.split(":")
+    return (p.getOrNull(0)?.toIntOrNull() ?: 5) * 60 + (p.getOrNull(1)?.toIntOrNull() ?: 0)
+}
+
+private fun toMinutesHome(t: String): Int {
+    val p = t.split(":")
+    return (p.getOrNull(0)?.toIntOrNull() ?: 0) * 60 + (p.getOrNull(1)?.toIntOrNull() ?: 0)
+}
+
+private fun formatMinutesHome(m: Int): String {
+    val mm = ((m % 1440) + 1440) % 1440
+    val h = (mm / 60).toString().padStart(2, '0')
+    val min = (mm % 60).toString().padStart(2, '0')
+    return "$h:$min"
+}
+
+private fun todayControlPoints(route: CombiRoute? = null, stops: List<SitRouteStop> = emptyList(), offsetMinutes: Int = 0): List<ControlPoint> {
+    val chosenStops = pickImportantStops(stops, 6)
+    val names = if (chosenStops.isNotEmpty()) {
+        chosenStops.map { it.name }
+    } else {
+        val coords = route?.waypoints ?: emptyList()
+        if (coords.isNotEmpty()) {
+            sampleRoutePoints(coords, 6).mapIndexed { i, _ ->
+                when (i) {
+                    0 -> "Terminal salida"
+                    5 -> "Terminal"
+                    else -> "Punto ${i + 1}"
+                }
+            }
+        } else {
+            listOf("Terminal salida", "Av. Dolores", "Plaza de Armas", "Av. Ejército", "Terminal retorno", "Terminal")
+        }
+    }
+    val count = names.size.coerceAtLeast(2)
+    val oneWay = routeDurationMinutes(stops, route)
+    val interval = (oneWay / (count - 1)).coerceAtLeast(5)
+    val start = shiftStartMinutes() + offsetMinutes
+    return names.mapIndexed { i, n -> ControlPoint(n, formatMinutesHome(start + i * interval)) }
+}
+
+private fun routeDurationMinutes(stops: List<SitRouteStop>, route: CombiRoute?): Int {
+    // Estimación: ~3 min por paradero (ida). Mínimo 60 min.
+    val base = if (stops.isNotEmpty()) stops.size * 3 else (route?.waypoints?.size ?: 6) * 3
+    return base.coerceAtLeast(60)
+}
+
+private fun pickImportantStops(stops: List<SitRouteStop>, count: Int = 6): List<SitRouteStop> {
+    if (stops.isEmpty()) return emptyList()
+    if (stops.size <= count) return stops
+    val result = mutableListOf<SitRouteStop>()
+    for (i in 0 until count) {
+        val idx = (i * (stops.size - 1)) / (count - 1)
+        result.add(stops[idx])
+    }
+    return result.distinctBy { it.id }
+}
+
+private fun sampleRoutePoints(waypoints: List<Pair<Double, Double>>, count: Int): List<Pair<Double, Double>> {
+    if (waypoints.isEmpty()) return emptyList()
+    if (waypoints.size == 1) return List(count) { waypoints.first() }
+    val result = mutableListOf<Pair<Double, Double>>()
+    for (i in 0 until count) {
+        val t = i.toDouble() / (count - 1)
+        val pos = t * (waypoints.size - 1)
+        val lo = pos.toInt().coerceIn(0, waypoints.size - 2)
+        val hi = (lo + 1).coerceAtMost(waypoints.size - 1)
+        val frac = pos - lo
+        val lat = waypoints[lo].first + (waypoints[hi].first - waypoints[lo].first) * frac
+        val lon = waypoints[lo].second + (waypoints[hi].second - waypoints[lo].second) * frac
+        result.add(Pair(lat, lon))
+    }
+    return result
+}
+
+private fun compliancePercent(isOnRoute: Boolean): Int {
+    if (!isOnRoute) return 0
+    val now = toMinutesHome(currentHourMinute())
+    val start = shiftStartMinutes()
+    var elapsed = now - start
+    if (elapsed < 0) elapsed += 1440
+    val total = AppSettings.shiftDurationMinutes.value.coerceAtLeast(1)
+    return (elapsed.toFloat() / total * 100).toInt().coerceIn(0, 100)
+}
+
+private fun nextControlPoint(points: List<ControlPoint>): ControlPoint? {
+    val now = toMinutesHome(currentHourMinute())
+    return points.firstOrNull { toMinutesHome(it.time) > now } ?: points.lastOrNull()
 }
 
 @Composable
 private fun PillStat(top: String, bottom: String, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .background(AppColors.mauve.copy(alpha = 0.25f), AppRadius.card)
+            .background(AppColors.secondary, AppRadius.card)
             .padding(horizontal = 8.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -524,13 +768,13 @@ private fun PillStat(top: String, bottom: String, modifier: Modifier = Modifier)
             Text(
                 text = top,
                 style = AppTextStyles.waykiButtonLarge.copy(fontSize = 16.sp),
-                color = AppColors.cream
+                color = AppColors.ink
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = bottom,
                 style = AppTextStyles.labelSmall.copy(fontSize = 9.sp),
-                color = AppColors.cream.copy(alpha = 0.7f)
+                color = AppColors.ink.copy(alpha = 0.7f)
             )
         }
     }
@@ -545,18 +789,15 @@ private fun BusCard(
     onClick: () -> Unit = {}
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(4.dp, AppRadius.card, spotColor = AppColors.ink.copy(alpha = 0.12f))
-            .background(AppColors.cream, AppRadius.card)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = ripple(color = AppColors.ink.copy(alpha = 0.1f)),
-                onClick = onClick
-            )
-            .padding(horizontal = 18.dp, vertical = 14.dp)
+    androidx.compose.material3.Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = AppRadius.card,
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = AppColors.cream),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 4.dp),
+        interactionSource = interactionSource,
     ) {
+        Box(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -565,10 +806,15 @@ private fun BusCard(
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .background(AppColors.ink, CircleShape),
+                    .background(AppColors.primary, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text("🚌", fontSize = 20.sp)
+                Icon(
+                    imageVector = SolidGroup.Bus,
+                    contentDescription = null,
+                    tint = AppColors.cream,
+                    modifier = Modifier.size(22.dp)
+                )
             }
 
             Spacer(modifier = Modifier.width(14.dp))
@@ -605,12 +851,14 @@ private fun BusCard(
             }
         }
     }
+    }
 }
 
 
 @Composable
 fun WaykiSidebarContent(
     onClose: () -> Unit,
+    selectedTab: Int = 0,
     onSosClick: () -> Unit = {},
     onInicioClick: () -> Unit = {},
     onCommunicationClick: () -> Unit = {},
@@ -690,28 +938,28 @@ fun WaykiSidebarContent(
             icon = FeatherIcons.Home, 
             title = "Inicio", 
             subtitle = "Tu ritmo y próximo control", 
-            isSelected = false,
+            isSelected = selectedTab == 0,
             onClick = onInicioClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.Radio, 
             title = "Comunicación", 
             subtitle = "Canal de la Línea 7", 
-            isSelected = false,
+            isSelected = selectedTab == 1,
             onClick = onCommunicationClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.GitCommit, 
             title = "Recorrido", 
             subtitle = "Tus recorridos y horarios", 
-            isSelected = false,
+            isSelected = selectedTab == 2,
             onClick = onRecorridoClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.Map, 
             title = "Mapa", 
             subtitle = "Informacion de tus rutas", 
-            isSelected = true,
+            isSelected = selectedTab == 3,
             onClick = onMapaClick
         )
         
@@ -735,10 +983,10 @@ fun WaykiSidebarContent(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(AppColors.ink, RoundedCornerShape(16.dp))
+                .background(AppColors.primary, RoundedCornerShape(16.dp))
                 .clickable(
                     interactionSource = sosInteractionSource,
-                    indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
+                    indication = ripple(color = AppColors.ink.copy(alpha = 0.2f)),
                     onClick = onSosClick
                 )
                 .padding(horizontal = 20.dp, vertical = 24.dp)
@@ -747,7 +995,7 @@ fun WaykiSidebarContent(
                 Icon(
                     imageVector = FeatherIcons.AlertTriangle, 
                     contentDescription = "SOS", 
-                    tint = AppColors.cream, 
+                    tint = AppColors.cream,
                     modifier = Modifier.size(28.dp)
                 )
                 Spacer(modifier = Modifier.width(16.dp))
@@ -761,7 +1009,7 @@ fun WaykiSidebarContent(
                     Text(
                         text = "Informacion de emergencias.", 
                         style = AppTextStyles.waykiMini, 
-                        color = AppColors.cream
+                        color = AppColors.cream.copy(alpha = 0.8f)
                     )
                 }
             }
@@ -796,7 +1044,7 @@ private fun DrawerMenuItem(
             isPressed -> AppColors.mauve.copy(alpha = 0.4f)
             else -> androidx.compose.ui.graphics.Color.Transparent
         },
-        animationSpec = tween(150),
+        animationSpec = tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing),
         label = "drawerItemBg"
     )
     val contentColor = if (isSelected) AppColors.cream else AppColors.ink

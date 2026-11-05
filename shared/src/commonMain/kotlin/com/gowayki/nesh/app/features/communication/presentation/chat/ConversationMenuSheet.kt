@@ -86,7 +86,7 @@ fun ConversationMenuSheet(
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         ),
-                        color = if (conversation.avatarDark) AppColors.cream else AppColors.ink
+                        color = AppColors.cream
                     )
                 }
                 Spacer(modifier = Modifier.size(14.dp))
@@ -184,7 +184,7 @@ private fun MenuAction(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (destructive) AppColors.cream else AppColors.ink,
+                tint = AppColors.cream,
                 modifier = Modifier.size(17.dp)
             )
         }

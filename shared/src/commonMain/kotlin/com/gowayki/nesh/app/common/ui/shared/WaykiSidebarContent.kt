@@ -54,6 +54,7 @@ import compose.icons.feathericons.X
 @Composable
 fun WaykiSidebarContent(
     onClose: () -> Unit,
+    selectedTab: Int = 0,
     onSosClick: () -> Unit = {},
     onInicioClick: () -> Unit = {},
     onCommunicationClick: () -> Unit = {},
@@ -87,7 +88,7 @@ fun WaykiSidebarContent(
                     .background(AppColors.mauve, CircleShape)
                     .clickable(
                         interactionSource = closeInteractionSource,
-                        indication = ripple(color = AppColors.ink.copy(alpha = 0.2f)),
+                        indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
                         onClick = onClose,
                     ),
                 contentAlignment = Alignment.Center
@@ -95,7 +96,7 @@ fun WaykiSidebarContent(
                 Icon(
                     imageVector = FeatherIcons.X,
                     contentDescription = "Cerrar",
-                    tint = AppColors.ink,
+                    tint = AppColors.cream,
                     modifier = Modifier.size(24.dp),
                 )
             }
@@ -131,28 +132,28 @@ fun WaykiSidebarContent(
             icon = FeatherIcons.Home,
             title = "Inicio",
             subtitle = "Tu ritmo y próximo control",
-            isSelected = false,
+            isSelected = selectedTab == 0,
             onClick = onInicioClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.Radio,
             title = "Comunicación",
             subtitle = "Canal de la Línea 7",
-            isSelected = false,
+            isSelected = selectedTab == 1,
             onClick = onCommunicationClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.GitCommit,
             title = "Recorrido",
             subtitle = "Tus recorridos y horarios",
-            isSelected = false,
+            isSelected = selectedTab == 2,
             onClick = onRecorridoClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.Map,
             title = "Mapa",
             subtitle = "Informacion de tus rutas",
-            isSelected = true,
+            isSelected = selectedTab == 3,
             onClick = onMapaClick
         )
 
@@ -177,10 +178,10 @@ fun WaykiSidebarContent(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(AppColors.ink, RoundedCornerShape(16.dp))
+                .background(AppColors.primary, RoundedCornerShape(16.dp))
                 .clickable(
                     interactionSource = sosInteractionSource,
-                    indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
+                    indication = ripple(color = AppColors.cream.copy(alpha = 0.12f)),
                     onClick = onSosClick
                 )
                 .padding(horizontal = 20.dp, vertical = 24.dp)
@@ -203,7 +204,7 @@ fun WaykiSidebarContent(
                     Text(
                         text = "Informacion de emergencias.",
                         style = AppTextStyles.waykiMini,
-                        color = AppColors.cream
+                        color = AppColors.cream.copy(alpha = 0.8f)
                     )
                 }
             }
@@ -238,7 +239,7 @@ private fun DrawerMenuItem(
             isPressed -> AppColors.mauve.copy(alpha = 0.4f)
             else -> Color.Transparent
         },
-        animationSpec = tween(150),
+        animationSpec = tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing),
         label = "drawerItemBg"
     )
     val contentColor = if (isSelected) AppColors.cream else AppColors.ink

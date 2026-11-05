@@ -52,6 +52,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,8 +78,11 @@ import com.gowayki.nesh.app.features.reports.domain.model.ReportItem
 import com.gowayki.nesh.app.features.reports.presentation.StateFlow.ReportsViewModel
 import com.gowayki.nesh.app.features.reports.presentation.components.OsmMap
 import com.gowayki.nesh.app.features.reports.presentation.components.OsmMarker
+import com.gowayki.nesh.app.features.sos.domain.model.SosMemory
 import com.gowayki.nesh.app.features.sos.presentation.StateFlow.SosViewModel
 import com.gowayki.nesh.app.features.sos.presentation.components.SosPanel
+import com.gowayki.nesh.app.features.communication.domain.repository.ChatRepository
+import com.gowayki.nesh.app.di.AppDi
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppRadius
@@ -109,6 +113,7 @@ import compose.icons.fontawesomeicons.solid.Bus
 @Composable
 fun ReportsScreen(
     onBack: () -> Unit = {},
+    onNotificationsClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
     onSosClick: () -> Unit = {},
     onMapClick: () -> Unit = {},
@@ -116,10 +121,21 @@ fun ReportsScreen(
     onLogoutClick: () -> Unit = {},
     vm: ReportsViewModel = viewModel { ReportsViewModel() },
     // SOS botón físico ESP32 por BLE: añadido sin tocar el resto (default = funciona solo).
-    sosVm: SosViewModel = viewModel { SosViewModel(onSosPoint = { lat, lon -> vm.addSosEmergency(lat, lon) }) },
+    sosVm: SosViewModel = viewModel { SosViewModel(
+        chatRepository = AppDi.getOrNull<ChatRepository>(),
+    ) },
 ) {
+    DisposableEffect(Unit) {
+        // Registra el mapa activo: punto SOS y botón "mi posición".
+        sosVm.onSosPoint = { item -> vm.addSosItem(item) }
+        sosVm.onLocate = { lat, lon -> vm.focusOn(lat, lon) }
+        onDispose {
+            sosVm.onSosPoint = null
+            sosVm.onLocate = null
+        }
+    }
     val ui = vm.ui
-    val reports = ui.reports
+    val reports = SosMemory.points
     val selectedId = ui.selectedId
     val expanded = ui.expanded
     val fullMap = ui.fullMap
@@ -137,8 +153,10 @@ fun ReportsScreen(
     }
 
     val mapState = vm.map
-    val markers = remember(reports) { reports.map { OsmMarker(it.id, it.pos, it.type) } }
-    val route = remember(reports) { reports.map { it.pos } }
+    // Los puntos vienen de la memoria compartida; derivar en recomposición evita
+    // quedarse con una lista cacheada aunque la referencia de SosMemory.points no cambie.
+    val markers = reports.map { OsmMarker(it.id, it.pos, it.type) }
+    val route = reports.map { it.pos }
     val mapHeight by animateDpAsState(
         targetValue = if (fullMap) 430.dp else 252.dp,
         animationSpec = spring(dampingRatio = 0.75f, stiffness = 320f),
@@ -157,7 +175,7 @@ fun ReportsScreen(
                 visible = entered,
                 enter = fadeIn(tween(350)) + slideInVertically(tween(350) { -it / 3 }),
             ) {
-                ReportsTopBar(onBack = onBack, onMenu = { menuOpen = true })
+                ReportsTopBar(onBack = onBack, onMenu = { menuOpen = true }, onNotifications = onNotificationsClick)
             }
             Spacer(Modifier.height(AppSpacing.md))
 
@@ -335,7 +353,7 @@ fun ReportsScreen(
 // ---------- TopBar (igual al video) ----------
 
 @Composable
-private fun ReportsTopBar(onBack: () -> Unit, onMenu: () -> Unit) {
+private fun ReportsTopBar(onBack: () -> Unit, onMenu: () -> Unit, onNotifications: () -> Unit = {}) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         CircleBtn(onClick = onBack) {
             Icon(FeatherIcons.ArrowLeft, null, tint = AppColors.onBackground, modifier = Modifier.size(22.dp))
@@ -357,7 +375,7 @@ private fun ReportsTopBar(onBack: () -> Unit, onMenu: () -> Unit) {
             Icon(FeatherIcons.Menu, null, tint = AppColors.onBackground, modifier = Modifier.size(22.dp))
         }
         Spacer(Modifier.width(AppSpacing.sm))
-        CircleBtn(onClick = {}, container = AppColors.cream) {
+        CircleBtn(onClick = onNotifications, container = AppColors.cream) {
             Box(Modifier.size(22.dp)) {
                 Icon(FeatherIcons.Bell, null, tint = AppColors.onBackground, modifier = Modifier.size(22.dp))
                 Box(
@@ -646,7 +664,7 @@ private fun ConductorDrawer(onSettings: () -> Unit, onLogout: () -> Unit) {
                 Modifier.size(56.dp).background(AppColors.primary, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(FeatherIcons.User, null, tint = AppColors.onBackground, modifier = Modifier.size(30.dp))
+                Icon(FeatherIcons.User, null, tint = AppColors.cream, modifier = Modifier.size(30.dp))
             }
             Spacer(Modifier.width(AppSpacing.md))
             Column {
@@ -686,6 +704,6 @@ private fun DrawerRow(icon: ImageVector, label: String, onClick: () -> Unit) {
 private fun ReportsScreenPreview() {
     // En preview no hay ViewModelStore: VM plano con remember.
     val vm = remember { ReportsViewModel() }
-    val sosVm = remember { SosViewModel(onSosPoint = { lat, lon -> vm.addSosEmergency(lat, lon) }) }
+    val sosVm = remember { SosViewModel() }
     ReportsScreen(vm = vm, sosVm = sosVm)
 }

@@ -1,7 +1,5 @@
-// Implementación en memoria de ChatRepository.
-// Datos simulados: no hay red, pero todo el flujo (enviar, crear grupo,
-// leer) funciona y se puede navegar. Cuando haya backend se cambia solo esta
-// clase por una que hable con Supabase; la UI no cambia.
+// Implementación local de ChatRepository. Las conversaciones y mensajes se
+// guardan entre sesiones; al conectar Supabase se reemplaza este repositorio.
 @file:Suppress("SpellCheckingInspection")
 package com.gowayki.nesh.data.repository
 
@@ -12,6 +10,10 @@ import com.gowayki.nesh.app.features.communication.domain.model.Message
 import com.gowayki.nesh.app.features.communication.domain.model.MessageKind
 import com.gowayki.nesh.app.features.communication.domain.model.MessageStatus
 import com.gowayki.nesh.app.features.communication.domain.repository.ChatRepository
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +35,10 @@ class FakeChatRepository(
     private val myName: String = "Carlos Mendoza"
 ) : ChatRepository {
 
+    private val chatJson = Json { ignoreUnknownKeys = true }
+
     private val _conversations = MutableStateFlow<List<Conversation>>(emptyList())
+    private val _archived = MutableStateFlow<List<Conversation>>(emptyList())
     private val _messages = MutableStateFlow<Map<String, List<Message>>>(emptyMap())
 
     /** Colegas que se pueden invitar a un grupo. */
@@ -46,10 +51,12 @@ class FakeChatRepository(
     )
 
     init {
-        seed()
+        if (!restore()) seed()
     }
 
     override fun conversations(): Flow<List<Conversation>> = _conversations.asStateFlow()
+
+    override fun archived(): Flow<List<Conversation>> = _archived.asStateFlow()
 
     override fun messages(conversationId: String): Flow<List<Message>> =
         _messages
@@ -60,7 +67,8 @@ class FakeChatRepository(
         conversationId: String,
         text: String,
         kind: MessageKind,
-        audioDurationSeconds: Int
+        audioDurationSeconds: Int,
+        audioFilePath: String?
     ): Result<Message> {
         if (text.isBlank() && kind == MessageKind.TEXT) {
             return Result.failure(IllegalArgumentException("El mensaje está vacío"))
@@ -74,6 +82,7 @@ class FakeChatRepository(
             text = text,
             kind = kind,
             audioDurationSeconds = audioDurationSeconds,
+            audioFilePath = audioFilePath,
             sentAtMillis = now,
             status = MessageStatus.SENDING,
             isMine = true
@@ -82,6 +91,7 @@ class FakeChatRepository(
             all + (conversationId to (all[conversationId].orEmpty() + message))
         }
         updateConversationPreview(conversationId, message)
+        persist()
         // Simula la confirmación del servidor.
         delay(400)
         setStatus(conversationId, message.id, MessageStatus.DELIVERED)
@@ -103,6 +113,7 @@ class FakeChatRepository(
             }
             all + (conversationId to current)
         }
+        persist()
         return Result.success(Unit)
     }
 
@@ -125,6 +136,7 @@ class FakeChatRepository(
         )
         _conversations.update { listOf(group) + it }
         _messages.update { it + (id to emptyList()) }
+        persist()
         return Result.success(group)
     }
 
@@ -148,6 +160,7 @@ class FakeChatRepository(
         )
         _conversations.update { listOf(chat) + it }
         _messages.update { it + (id to emptyList()) }
+        persist()
         return Result.success(chat)
     }
 
@@ -157,6 +170,7 @@ class FakeChatRepository(
                 list.map { if (it.id == messageId && !it.isMine) it.copy(status = MessageStatus.READ) else it }
             }
         }
+        persist()
         return Result.success(Unit)
     }
 
@@ -165,27 +179,105 @@ class FakeChatRepository(
         _conversations.update { list ->
             list.map { if (it.id == conversationId) it.copy(preview = "Sin mensajes") else it }
         }
+        persist()
         return Result.success(Unit)
     }
 
     override suspend fun deleteConversation(conversationId: String): Result<Unit> {
-        _conversations.update { list -> list.filterNot { it.id == conversationId } }
-        _messages.update { all -> all - conversationId }
+        // Un grupo no se elimina al borrar el chat: se oculta de "Todos",
+        // se vacía su historial y sigue disponible en "Grupos". Para quitarlo
+        // por completo se usa deleteGroup.
+        val isGroup = (_conversations.value.firstOrNull { it.id == conversationId }
+            ?: _archived.value.firstOrNull { it.id == conversationId })?.isGroup == true
+        if (isGroup) {
+            _messages.update { all -> all + (conversationId to emptyList()) }
+            fun reset(list: List<Conversation>): List<Conversation> = list.map { c ->
+                if (c.id == conversationId) {
+                    c.copy(
+                        preview = "Sin mensajes",
+                        lastMessageAtMillis = 0L,
+                        unreadCount = 0,
+                        hiddenFromAll = true
+                    )
+                } else {
+                    c
+                }
+            }
+            _conversations.update { reset(it) }
+            _archived.update { reset(it) }
+        } else {
+            _conversations.update { list -> list.filterNot { it.id == conversationId } }
+            _archived.update { list -> list.filterNot { it.id == conversationId } }
+            _messages.update { all -> all - conversationId }
+        }
+        persist()
         return Result.success(Unit)
     }
 
-    override suspend fun deleteGroup(conversationId: String): Result<Unit> =
-        deleteConversation(conversationId)
+    override suspend fun archiveConversation(conversationId: String): Result<Unit> {
+        val idx = _conversations.value.indexOfFirst { it.id == conversationId }
+        if (idx >= 0) {
+            val c = _conversations.value[idx]
+            _conversations.update { it.filterNot { x -> x.id == conversationId } }
+            _archived.update { listOf(c.copy()) + it }
+            persist()
+        }
+        return Result.success(Unit)
+    }
+
+    override suspend fun unarchiveConversation(conversationId: String): Result<Unit> {
+        val idx = _archived.value.indexOfFirst { it.id == conversationId }
+        if (idx >= 0) {
+            val c = _archived.value[idx]
+            _archived.update { it.filterNot { x -> x.id == conversationId } }
+            // Al desarchivar vuelve a la lista principal.
+            _conversations.update { listOf(c.copy(hiddenFromAll = false)) + it }
+            persist()
+        }
+        return Result.success(Unit)
+    }
+
+    override suspend fun updateConversationPhoto(conversationId: String, path: String?): Result<Unit> {
+        fun update(list: List<Conversation>): List<Conversation> = list.map { c ->
+            if (c.id == conversationId) c.copy(photoPath = path) else c
+        }
+        _conversations.update { update(it) }
+        _archived.update { update(it) }
+        persist()
+        return Result.success(Unit)
+    }
+
+    override suspend fun deleteMessage(conversationId: String, messageId: String, deleteForEveryone: Boolean): Result<Unit> {
+        _messages.update { all ->
+            val current = all[conversationId].orEmpty().filterNot { m ->
+                if (deleteForEveryone) m.id == messageId else (m.id == messageId && m.isMine)
+            }
+            all + (conversationId to current)
+        }
+        persist()
+        return Result.success(Unit)
+    }
+
+    override suspend fun deleteGroup(conversationId: String): Result<Unit> {
+        // Elimina el grupo por completo (conversación, historial y copia archivada).
+        _conversations.update { list -> list.filterNot { it.id == conversationId } }
+        _archived.update { list -> list.filterNot { it.id == conversationId } }
+        _messages.update { all -> all - conversationId }
+        persist()
+        return Result.success(Unit)
+    }
 
     // ── Utilidades internas ──────────────────────────────────────────────
 
     private fun setStatus(conversationId: String, messageId: String, status: MessageStatus) {
+        if (conversationId !in _messages.value) return
         _messages.update { all ->
             val list = all[conversationId].orEmpty().map {
                 if (it.id == messageId) it.copy(status = status) else it
             }
             all + (conversationId to list)
         }
+        persist()
     }
 
     private fun updateConversationPreview(conversationId: String, message: Message) {
@@ -194,9 +286,28 @@ class FakeChatRepository(
                 if (c.id != conversationId) c
                 else c.copy(
                     preview = if (message.kind == MessageKind.AUDIO) "Audio" else message.text,
-                    lastMessageAtMillis = message.sentAtMillis
+                    lastMessageAtMillis = message.sentAtMillis,
+                    // Un mensaje nuevo vuelve a mostrar el chat en "Todos".
+                    hiddenFromAll = false
                 )
             }
+        }
+    }
+
+    private fun restore(): Boolean = runCatching {
+        val raw = ChatStore.read() ?: return false
+        val saved = chatJson.decodeFromString<PersistedChatState>(raw)
+        _conversations.value = saved.conversations
+        _archived.value = saved.archived
+        _messages.value = saved.messages.mapValues { (_, list) ->
+            list.map { if (it.status == MessageStatus.SENDING) it.copy(status = MessageStatus.DELIVERED) else it }
+        }
+        true
+    }.getOrDefault(false)
+
+    private fun persist() {
+        runCatching {
+            ChatStore.write(chatJson.encodeToString(PersistedChatState(_conversations.value, _archived.value, _messages.value)))
         }
     }
 
@@ -274,7 +385,15 @@ class FakeChatRepository(
                 Message("9", "p-jefe", "jefe", "Jefatura", "Revisa el cumplimiento de la unidad 08.", sentAtMillis = now - 20000, status = MessageStatus.DELIVERED, isMine = false)
             )
         )
+        persist()
     }
+
+    @Serializable
+    private data class PersistedChatState(
+        val conversations: List<Conversation>,
+        val archived: List<Conversation> = emptyList(),
+        val messages: Map<String, List<Message>>
+    )
 
     companion object {
         const val MY_ID = "me"

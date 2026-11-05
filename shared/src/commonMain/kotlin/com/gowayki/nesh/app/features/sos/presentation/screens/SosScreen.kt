@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -43,6 +44,8 @@ import com.gowayki.nesh.app.features.sos.domain.model.SosMemory
 import com.gowayki.nesh.app.features.sos.presentation.components.SosBleDevices
 import com.gowayki.nesh.app.features.sos.presentation.components.SosHeatMap
 import com.gowayki.nesh.app.features.sos.presentation.StateFlow.SosViewModel
+import com.gowayki.nesh.app.features.communication.domain.repository.ChatRepository
+import com.gowayki.nesh.app.di.AppDi
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import compose.icons.FeatherIcons
@@ -63,16 +66,24 @@ fun SosScreen(
     reportsVm: ReportsViewModel = viewModel { ReportsViewModel() },
     sosVm: SosViewModel = viewModel {
         SosViewModel(
-            onSosPoint = { lat, lon -> reportsVm.addSosEmergency(lat, lon) },
-            onLocate = { lat, lon -> reportsVm.focusOn(lat, lon) },
+            chatRepository = AppDi.getOrNull<ChatRepository>(),
         )
     },
 ) {
+    DisposableEffect(Unit) {
+        // Registra el mapa activo: punto SOS y botón "mi posición".
+        sosVm.onSosPoint = { item -> reportsVm.addSosItem(item) }
+        sosVm.onLocate = { lat, lon -> reportsVm.focusOn(lat, lon) }
+        onDispose {
+            sosVm.onSosPoint = null
+            sosVm.onLocate = null
+        }
+    }
     BackHandler(true) { onBack() }
-    val reports = reportsVm.ui.reports
-    val markers = remember(reports) { reports.map { OsmMarker(it.id, it.pos, it.type) } }
+    val reports = SosMemory.points
+    val markers = reports.map { OsmMarker(it.id, it.pos, it.type) }
     // Solo puntos SOS del botón (sin presets): calor + tarjetas.
-    val sosPoints = remember(reports) { reports.filter { it.id.startsWith("SOS-") } }
+    val sosPoints = reports.filter { it.id.startsWith("SOS-") }
     val activeCount = sosPoints.size
     // Mapa minimizable / maximizable (no ocupa toda la pantalla).
     var mapMax by remember { mutableStateOf(false) }
@@ -158,7 +169,7 @@ fun SosScreen(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(sosPoints, key = { it.id }) { p ->
+                items(sosPoints, key = { "${it.id}-${it.pos.lat}-${it.pos.lon}" }) { p ->
                     SosSwipeCard(
                         point = p,
                         reportsVm = reportsVm,
@@ -323,6 +334,8 @@ private fun SosStat(label: String, value: String) {
 // ---------- BLE botón físico (añadido, no toca el diseño Figma de arriba) ----------
 // Conecta el ESP32 "WAYKI_SOS" sin WiFi ni tokens. Cada pulsación (GPIO14)
 // marca un punto con el GPS real del teléfono en el mapa de esta pantalla.
+// Presión simple: graba audio y envía a Comunicación.
+// Triple presión: SOS + heatmap.
 
 @Composable
 private fun SosBleBar(vm: SosViewModel, activeCount: Int) {
@@ -358,7 +371,7 @@ private fun SosBleBar(vm: SosViewModel, activeCount: Int) {
                 )
             }
             Box(
-                Modifier.background(AppColors.ink, RoundedCornerShape(12.dp))
+                Modifier.background(AppColors.primary, RoundedCornerShape(12.dp))
                     .clickable { if (ble.connected) vm.disconnect() else vm.connect() }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 contentAlignment = Alignment.Center,
@@ -380,26 +393,27 @@ private fun SosBleBar(vm: SosViewModel, activeCount: Int) {
                     Text(
                         text = "BT",
                         style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
-                        color = AppColors.ink,
+                        color = AppColors.cream,
                     )
                     Icon(
                         FeatherIcons.ChevronDown, null,
-                        tint = AppColors.ink,
+                        tint = AppColors.cream,
                         modifier = Modifier.size(14.dp).rotate(if (showDevices) 180f else 0f),
                     )
                 }
             }
         }
-        // Lista estilo WiFi: elige a cuál Bluetooth conectar (el ESP32 sale con SOS).
+
+        // Lista estilo WiFi: elige a cuál Bluetooth conectar.
         AnimatedVisibility(visible = showDevices) {
             Column {
                 Spacer(Modifier.height(8.dp))
                 SosBleDevices(vm = vm)
             }
         }
-        if (ble.error != null) {
+        ble.error?.let { error ->
             Spacer(Modifier.height(6.dp))
-            Text(ble.error, style = AppTextStyles.waykiMini, color = Color(0xFFC64049))
+            Text(error, style = AppTextStyles.waykiMini, color = Color(0xFFC64049))
         }
     }
 }

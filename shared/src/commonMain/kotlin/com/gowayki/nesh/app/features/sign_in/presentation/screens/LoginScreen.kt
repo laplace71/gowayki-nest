@@ -70,7 +70,7 @@ fun LoginScreen(
                 modifier = Modifier.align(Alignment.CenterStart)
             )
             Text(
-                text = "GoWayki",
+                text = "Wayki Nest",
                 style = AppTextStyles.waykiButtonSmall,
                 color = AppColors.onBackground,
                 modifier = Modifier.align(Alignment.CenterEnd)

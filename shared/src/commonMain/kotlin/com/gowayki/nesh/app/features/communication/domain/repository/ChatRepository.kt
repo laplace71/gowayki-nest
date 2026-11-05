@@ -14,6 +14,9 @@ interface ChatRepository {
     /** Lista de conversaciones del usuario, de la más reciente a la más antigua. */
     fun conversations(): Flow<List<Conversation>>
 
+    /** Conversaciones archivadas. */
+    fun archived(): Flow<List<Conversation>>
+
     /** Mensajes de una conversación, de más antiguo a más reciente. */
     fun messages(conversationId: String): Flow<List<Message>>
 
@@ -26,7 +29,8 @@ interface ChatRepository {
         text: String,
         kind: com.gowayki.nesh.app.features.communication.domain.model.MessageKind =
             com.gowayki.nesh.app.features.communication.domain.model.MessageKind.TEXT,
-        audioDurationSeconds: Int = 0
+        audioDurationSeconds: Int = 0,
+        audioFilePath: String? = null
     ): Result<Message>
 
     /** Marca el último mensaje ajeno como leído (actualiza el contador). */
@@ -46,6 +50,18 @@ interface ChatRepository {
 
     /** Elimina una conversación completa de la lista. */
     suspend fun deleteConversation(conversationId: String): Result<Unit>
+
+    /** Archiva una conversación. */
+    suspend fun archiveConversation(conversationId: String): Result<Unit>
+
+    /** Desarchiva una conversación. */
+    suspend fun unarchiveConversation(conversationId: String): Result<Unit>
+
+    /** Actualiza la foto de una conversación. */
+    suspend fun updateConversationPhoto(conversationId: String, path: String?): Result<Unit>
+
+    /** Elimina un mensaje de una conversación. */
+    suspend fun deleteMessage(conversationId: String, messageId: String, deleteForEveryone: Boolean): Result<Unit>
 
     /** Elimina un grupo (y sus mensajes). */
     suspend fun deleteGroup(conversationId: String): Result<Unit>

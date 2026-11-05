@@ -122,7 +122,7 @@ fun RecoverAccessScreen(
                         Text(
                             text = "Línea 7 • Unidad 08",
                             style = AppTextStyles.waykiMini,
-                            color = AppColors.ink
+                            color = AppColors.cream
                         )
                     }
                 }
@@ -243,7 +243,7 @@ private fun InfoStep(number: String, text: String) {
             Text(
                 text = number,
                 style = AppTextStyles.waykiMini,
-                color = AppColors.ink
+                color = AppColors.cream
             )
         }
         Spacer(modifier = Modifier.width(12.dp))

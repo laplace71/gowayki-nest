@@ -40,11 +40,16 @@ private class AndroidBleSosClient(
     private val _state = MutableStateFlow(SosBleState())
     override val state: StateFlow<SosBleState> = _state.asStateFlow()
 
-    private var onPress: () -> Unit = {}
+    private var onPress: (PressType) -> Unit = { _ -> }
     private var gatt: BluetoothGatt? = null
     private var scanning = false
     private var scanTimeout: Job? = null
     override var autoJoin: Boolean = true
+
+    // Para detectar presiones múltiples: ventana de 1.5s para triple click
+    private var pressWindowJob: Job? = null
+    private val TRIPLE_PRESS_WINDOW_MS = 1500L
+    private val TRIPLE_PRESS_COUNT = 3
 
     // Dispositivos vistos en el scan actual (estilo WiFi).
     private val found = mutableMapOf<String, BleDevice>()
@@ -103,7 +108,14 @@ private class AndroidBleSosClient(
                         error = null,
                     )
                 }
-                try { gatt.discoverServices() } catch (_: SecurityException) {}
+                try {
+                    gatt.discoverServices()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    scope.launch {
+                        _state.value = _state.value.copy(error = "Error descubriendo servicios: ${e.message}")
+                    }
+                }
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 scope.launch {
                     _state.value = _state.value.copy(connected = false, deviceName = null, deviceAddress = null)
@@ -112,6 +124,12 @@ private class AndroidBleSosClient(
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                scope.launch {
+                    _state.value = _state.value.copy(error = "Error descubriendo servicios: $status")
+                }
+                return
+            }
             val svc = gatt.getService(UUID.fromString(SosBleConfig.SERVICE_UUID)) ?: return
             val ch = svc.getCharacteristic(UUID.fromString(SosBleConfig.CHAR_UUID)) ?: return
             try {
@@ -128,7 +146,12 @@ private class AndroidBleSosClient(
                         gatt.writeDescriptor(cccd)
                     }
                 }
-            } catch (_: SecurityException) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+                scope.launch {
+                    _state.value = _state.value.copy(error = "Error configurando notificaciones: ${e.message}")
+                }
+            }
         }
 
         override fun onCharacteristicChanged(
@@ -151,14 +174,53 @@ private class AndroidBleSosClient(
         val txt = runCatching { bytes?.toString(Charsets.UTF_8)?.trim() }.getOrNull() ?: return
         // El ESP32 manda "SOS!" (o "1" como fallback). Cualquiera dispara el punto GPS.
         if (txt == SosBleConfig.PRESS_PAYLOAD || txt == "1" || txt.contains("SOS")) {
+            val now = System.currentTimeMillis()
+            // Usamos un Mutex para evitar race conditions en el estado de presses
             scope.launch {
+                // Capturamos el estado actual de forma atómica
                 val s = _state.value
+                val timeSinceLastPress = if (s.lastPressTime > 0) now - s.lastPressTime else Long.MAX_VALUE
+
+                // Si pasó más de la ventana, reseteamos el contador
+                val effectiveCount = if (timeSinceLastPress > TRIPLE_PRESS_WINDOW_MS) 1 else s.pendingPressCount + 1
+
                 _state.value = s.copy(
-                    lastPressAt = System.currentTimeMillis(),
+                    lastPressAt = now,
                     pressCount = s.pressCount + 1,
+                    pendingPressCount = effectiveCount,
+                    lastPressTime = now,
                 )
+
+                // Cancelamos cualquier ventana anterior de forma segura
+                pressWindowJob?.cancel()
+                pressWindowJob = null
+
+                if (effectiveCount >= TRIPLE_PRESS_COUNT) {
+                    // Triple presión detectada -> SOS
+                    _state.value = _state.value.copy(pendingPressCount = 0)
+                    // Llamamos onPress fuera del bloque de estado para evitar deadlocks
+                    try {
+                        onPress(PressType.TRIPLE)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                } else {
+                    // Programamos verificación de presión simple
+                    pressWindowJob = scope.launch {
+                        delay(TRIPLE_PRESS_WINDOW_MS)
+                        val currentState = _state.value
+                        // Verificamos que sigue siendo una presión simple válida
+                        if (currentState.pendingPressCount == 1 && currentState.lastPressTime == now) {
+                            _state.value = _state.value.copy(pendingPressCount = 0)
+                            try {
+                                onPress(PressType.SINGLE)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+                }
             }
-            onPress()
         }
     }
 
@@ -189,19 +251,23 @@ private class AndroidBleSosClient(
                 delay(20_000)
                 stopScan()
             }
-        } catch (_: SecurityException) {
+        } catch (e: SecurityException) {
             _state.value = _state.value.copy(scanning = false, error = "Faltan permisos BLE/ubicación")
+        } catch (e: Exception) {
+            _state.value = _state.value.copy(scanning = false, error = "Error al escanear: ${e.message}")
         }
     }
 
     @SuppressLint("MissingPermission")
     override fun stop() {
         stopScan()
+        pressWindowJob?.cancel()
+        pressWindowJob = null
         try { gatt?.disconnect() } catch (_: SecurityException) {}
         try { gatt?.close() } catch (_: Exception) {}
         gatt = null
         scope.launch {
-            _state.value = _state.value.copy(connected = false, scanning = false, deviceName = null, deviceAddress = null)
+            _state.value = _state.value.copy(connected = false, scanning = false, deviceName = null, deviceAddress = null, pendingPressCount = 0)
         }
     }
 
@@ -216,7 +282,7 @@ private class AndroidBleSosClient(
         connect(address)
     }
 
-    override fun setOnPress(listener: () -> Unit) {
+    override fun setOnPress(listener: (PressType) -> Unit) {
         onPress = listener
     }
 
@@ -226,8 +292,10 @@ private class AndroidBleSosClient(
             val device = btAdapter?.getRemoteDevice(address) ?: return
             gatt?.close()
             gatt = device.connectGatt(appContext, false, gattCb, BluetoothDeviceTransportSafe)
-        } catch (_: SecurityException) {
+        } catch (e: SecurityException) {
             _state.value = _state.value.copy(error = "Sin permiso BLUETOOTH_CONNECT")
+        } catch (e: Exception) {
+            _state.value = _state.value.copy(error = "Error de conexión: ${e.message}")
         }
     }
 

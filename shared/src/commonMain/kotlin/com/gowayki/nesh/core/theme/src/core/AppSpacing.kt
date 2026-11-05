@@ -130,7 +130,7 @@ object AppSpacing {
     val authContentTop    : Dp = 200.dp
 
     /** Offset vertical del bloque central en PIN. */
-    val pinContentTop     : Dp = 230.dp
+    val pinContentTop     : Dp = 40.dp
 
     /** Margen inferior del contenido central (antes del anclado de abajo). */
     val contentBottomMargin : Dp = 80.dp
