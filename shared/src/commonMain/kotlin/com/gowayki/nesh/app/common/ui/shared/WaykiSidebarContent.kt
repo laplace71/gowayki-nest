@@ -54,6 +54,7 @@ import compose.icons.feathericons.X
 @Composable
 fun WaykiSidebarContent(
     onClose: () -> Unit,
+    selectedTab: Int = 0,
     onSosClick: () -> Unit = {},
     onInicioClick: () -> Unit = {},
     onCommunicationClick: () -> Unit = {},
@@ -131,28 +132,28 @@ fun WaykiSidebarContent(
             icon = FeatherIcons.Home,
             title = "Inicio",
             subtitle = "Tu ritmo y próximo control",
-            isSelected = false,
+            isSelected = selectedTab == 0,
             onClick = onInicioClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.Radio,
             title = "Comunicación",
             subtitle = "Canal de la Línea 7",
-            isSelected = false,
+            isSelected = selectedTab == 1,
             onClick = onCommunicationClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.GitCommit,
             title = "Recorrido",
             subtitle = "Tus recorridos y horarios",
-            isSelected = false,
+            isSelected = selectedTab == 2,
             onClick = onRecorridoClick
         )
         DrawerMenuItem(
             icon = FeatherIcons.Map,
             title = "Mapa",
             subtitle = "Informacion de tus rutas",
-            isSelected = true,
+            isSelected = selectedTab == 3,
             onClick = onMapaClick
         )
 
@@ -238,7 +239,7 @@ private fun DrawerMenuItem(
             isPressed -> AppColors.mauve.copy(alpha = 0.4f)
             else -> Color.Transparent
         },
-        animationSpec = tween(150),
+        animationSpec = tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing),
         label = "drawerItemBg"
     )
     val contentColor = if (isSelected) AppColors.cream else AppColors.ink

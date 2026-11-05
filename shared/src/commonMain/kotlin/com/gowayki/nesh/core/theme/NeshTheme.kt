@@ -3,6 +3,7 @@ package com.gowayki.nesh.core.theme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
+import com.gowayki.nesh.core.theme.ThemeManager
 import com.gowayki.nesh.core.theme.src.AppColorScheme
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppBreakpoints
@@ -29,8 +30,10 @@ import com.gowayki.nesh.core.theme.src.core.AppSpacing
 fun NeshTheme(
     content: @Composable () -> Unit
 ) {
+    // Lee el estado para que el tema se recomponga al cambiar claro/oscuro.
+    val dark = ThemeManager.isDark.value
     MaterialTheme(
-        colorScheme = AppColorScheme.light,
+        colorScheme = if (dark) AppColorScheme.dark else AppColorScheme.light,
         typography  = AppTextStyles.typography,
         content     = content
     )

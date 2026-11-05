@@ -13,10 +13,18 @@ import com.gowayki.nesh.core.theme.src.core.AppColors
 @Composable
 actual fun RouteMap(
     routePoints: List<Pair<Double, Double>>,
+    returnRoutePoints: List<Pair<Double, Double>>,
     userLocation: UserLocation?,
     navigating: Boolean,
     cameraBearingDeg: Double?,
+    centerOnUserTrigger: Int,
+    routeColorHex: String,
+    returnRouteColorHex: String,
+    stops: List<Pair<Double, Double>>,
+    stopNames: List<String>,
     modifier: Modifier,
+    onStopClick: (Int) -> Unit,
+    onMatchedPointsChanged: (List<Pair<Double, Double>>, List<Pair<Double, Double>>) -> Unit,
 ) {
     Box(modifier.fillMaxSize().background(AppColors.cream), contentAlignment = Alignment.Center) {
         Text("Mapa (iOS: pendiente)")

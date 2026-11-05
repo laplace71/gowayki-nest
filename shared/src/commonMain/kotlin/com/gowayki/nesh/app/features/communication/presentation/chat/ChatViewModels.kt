@@ -20,6 +20,9 @@ class ConversationsViewModel(private val repo: ChatRepository) : ViewModel() {
     var conversations by mutableStateOf<List<Conversation>>(emptyList())
         private set
 
+    var archived by mutableStateOf<List<Conversation>>(emptyList())
+        private set
+
     var loading by mutableStateOf(true)
         private set
 
@@ -36,6 +39,9 @@ class ConversationsViewModel(private val repo: ChatRepository) : ViewModel() {
                 loading = false
             }
         }
+        viewModelScope.launch {
+            repo.archived().collect { list -> archived = list }
+        }
     }
 
     /** Conversaciones ya filtradas por categoría y búsqueda. */
@@ -44,7 +50,8 @@ class ConversationsViewModel(private val repo: ChatRepository) : ViewModel() {
             val byCategory = when (category) {
                 1 -> c.isGroup
                 2 -> !c.isGroup
-                else -> true
+                // "Todos": los chats de grupo borrados quedan solo en "Grupos".
+                else -> !c.hiddenFromAll
             }
             val byText = query.isBlank() ||
                 c.title.contains(query, ignoreCase = true) ||
@@ -68,6 +75,18 @@ class ConversationsViewModel(private val repo: ChatRepository) : ViewModel() {
     /** Elimina la conversación de la lista (funciona para grupo y privado). */
     fun deleteConversation(conversationId: String) {
         viewModelScope.launch { repo.deleteConversation(conversationId) }
+    }
+
+    fun archiveConversation(conversationId: String) {
+        viewModelScope.launch { repo.archiveConversation(conversationId) }
+    }
+
+    fun unarchiveConversation(conversationId: String) {
+        viewModelScope.launch { repo.unarchiveConversation(conversationId) }
+    }
+
+    fun updateConversationPhoto(conversationId: String, path: String?) {
+        viewModelScope.launch { repo.updateConversationPhoto(conversationId, path) }
     }
 }
 

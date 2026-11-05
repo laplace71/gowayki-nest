@@ -96,7 +96,7 @@ class ReportsViewModel : ViewModel() {
     fun select(id: String) {
         ui = ui.copy(selectedId = id, focusSeq = ui.focusSeq + 1)
         // Reubica SIEMPRE, incluso si ya estaba seleccionada.
-        ui.reports.firstOrNull { it.id == id }?.let { map.flyTo(it.pos) }
+        SosMemory.points.firstOrNull { it.id == id }?.let { map.flyTo(it.pos) }
     }
 
     fun toggleFullMap() {
@@ -110,34 +110,27 @@ class ReportsViewModel : ViewModel() {
 
     // ---------- SOS botón físico (ESP32 GPIO14 por BLE) ----------
     // Añade un punto EMERGENCIA con el GPS real del teléfono.
-    // También lo guarda en SosMemory para no perderlo al salir de la ventana.
+    // SosMemory es la fuente única: no duplica puntos ni estado.
     fun addSosEmergency(lat: Double, lon: Double) {
-        val pos = OsmLatLng(lat, lon)
-        val id = "SOS-${currentTimeMillis()}"
-        val item = ReportItem(
-            id = id,
-            title = "SOS botón físico · ${pos.lat.format6()}, ${pos.lon.format6()}",
-            subtitle = "Pulsación ESP32 · GPS real",
-            status = ReportStatus.ACTIVA,
-            pos = pos,
-            type = OsmMarkerType.EMERGENCIA,
-        )
-        SosMemory.add(item)
+        val item = SosMemory.addEmergency(lat, lon)
         viewModelScope.launch { SosMemory.persist() }
+        addSosItem(item)
+    }
+
+    /** Selecciona un punto ya creado en SosMemory y centra el mapa en él. */
+    fun addSosItem(item: ReportItem) {
         ui = ui.copy(
-            reports = listOf(item) + ui.reports,
-            selectedId = id,
-            // focusSeq: el mapa (Mapbox) vuela al punto recién marcado.
+            selectedId = item.id,
             focusSeq = ui.focusSeq + 1,
             tab = 2,
         )
-        map.flyTo(pos)
+        map.flyTo(item.pos)
     }
 
     // Elimina un punto (swipe en la tarjeta SOS). Persiste el resto.
     fun removeReport(id: String) {
         SosMemory.remove(id)
-        val rest = ui.reports.filter { it.id != id }
+        val rest = SosMemory.points.toList()
         ui = ui.copy(
             reports = rest,
             selectedId = if (ui.selectedId == id) (rest.firstOrNull()?.id ?: "") else ui.selectedId,
