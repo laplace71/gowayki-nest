@@ -62,6 +62,8 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.kotlinx.json)
             implementation("io.ktor:ktor-network:3.2.3")
             implementation("io.ktor:ktor-io:3.2.3")
             implementation(libs.compose.icons.feather)
@@ -111,11 +113,13 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
         val supabaseUrl = envMap.getOrElse("SUPABASE_URL") { extractValue("SUPABASE_URL") }
         val supabaseAnonKey = envMap.getOrElse("SUPABASE_ANON_KEY") { extractValue("SUPABASE_ANON_KEY") }
         val googleWebClientId = envMap.getOrElse("GOOGLE_WEB_CLIENT_ID") { extractValue("GOOGLE_WEB_CLIENT_ID") }
+        val backendUrl = envMap.getOrElse("BACKEND_URL") { extractValue("BACKEND_URL") }
 
         // Si aún faltan, usar defaults hardcodeados
         val finalSupabaseUrl = supabaseUrl.ifBlank { "https://bvxgdlawivdoiornfigo.supabase.co" }
         val finalSupabaseAnonKey = supabaseAnonKey.ifBlank { "sb_publishable_-_Vc3gCY-q48pGHTjmFaog_zYFLbf8c" }
         val finalGoogleWebClientId = googleWebClientId.ifBlank { "21304726166-16dakb4a1qfjl6d4qpsifnlr3m1q4sl3.apps.googleusercontent.com" }
+        val finalBackendUrl = backendUrl.ifBlank { "http://localhost:8080/api" }
 
         val content = """
             |package com.gowayki.nesh.core.config
@@ -127,6 +131,9 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
             |object AppConfig {
             |    const val APP_TITLE: String = "Gowayki Nesh"
             |    const val SHOW_DEBUG_BANNER: Boolean = false
+            |
+            |    // Backend Spring Boot API (inyectado desde .env)
+            |    const val BACKEND_URL: String = "$finalBackendUrl"
             |
             |    // Supabase (inyectado desde .env)
             |    const val SUPABASE_URL: String = "$finalSupabaseUrl"
