@@ -45,6 +45,9 @@ import com.gowayki.nesh.app.common.ui.shared.ToastManager
 import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
 import com.gowayki.nesh.app.common.util.currentHourMinute
 import com.gowayki.nesh.core.AppSettings
+import com.gowayki.nesh.core.session.TurnoSession
+import com.gowayki.nesh.core.session.UserSession
+import com.gowayki.nesh.app.features.home.presentation.components.RouteAssignmentDialog
 import com.gowayki.nesh.app.common.ui.shared.WaykiReveal
 import com.gowayki.nesh.app.common.ui.shared.WaykiSkeleton
 import com.gowayki.nesh.app.features.map.data.RouteStopsStore
@@ -96,6 +99,7 @@ fun HomeScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(true) }
+    var showRouteDialog by remember { mutableStateOf(false) }
     val selectedRoute by SelectedRouteHolder.selected.collectAsState()
     val direction by SelectedRouteHolder.direction.collectAsState()
     var routeStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
@@ -128,6 +132,16 @@ fun HomeScreen(
         isLoading = false
         if (AppSettings.notificationsEnabled.value && AppSettings.isOnRoute.value) {
             ToastManager.show("Ruta 12 a 7 min atrás • Ruta 5 a 3 min adelante")
+        }
+    }
+
+    // Turno real del chofer (línea + unidad + placa). Se muestra una sola vez
+    // por sesión la ventana "Tu ruta de hoy" / "Escoge tu ruta".
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        TurnoSession.refresh()
+        if (!TurnoSession.promptShown) {
+            TurnoSession.promptShown = true
+            showRouteDialog = true
         }
     }
 
@@ -271,11 +285,19 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Carlos Mendoza",
+                                text = UserSession.displayName,
                                 style = AppTextStyles.waykiLabelMedium,
-                                color = AppColors.cream.copy(alpha = 0.85f)
+                                color = AppColors.cream.copy(alpha = 0.85f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            selectedRoute?.let { route ->
+                            val turno = TurnoSession.turno
+                            val lineaResumen = if (turno != null) {
+                                TurnoSession.resumen
+                            } else {
+                                selectedRoute?.name?.substringBefore(" · ")
+                            }
+                            if (lineaResumen != null) {
                                 Spacer(Modifier.width(AppSpacing.sm))
                                 Text(
                                     text = "•",
@@ -291,7 +313,7 @@ fun HomeScreen(
                                 )
                                 Spacer(Modifier.width(4.dp))
                                 Text(
-                                    text = route.name.substringBefore(" · "),
+                                    text = lineaResumen,
                                     style = AppTextStyles.waykiLabelMedium,
                                     color = AppColors.cream.copy(alpha = 0.85f),
                                     maxLines = 1,
@@ -383,9 +405,71 @@ fun HomeScreen(
                             .padding(horizontal = AppSpacing.pageHorizontal)
                             .padding(top = 28.dp)
                     ) {
-                    // Otras combis de la línea (aún no hay otros conductores registrados).
+                    // Turno del chofer: si aún no tiene unidad, se le invita a escogerla.
+                    if (TurnoSession.loaded && !TurnoSession.hasTurno) {
+                        androidx.compose.material3.Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = AppRadius.card,
+                            colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = AppColors.primary.copy(alpha = 0.08f)),
+                            elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 0.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(18.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .background(AppColors.primary.copy(alpha = 0.14f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = SolidGroup.Bus,
+                                            contentDescription = null,
+                                            tint = AppColors.primary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Sin ruta asignada",
+                                            style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                                            color = AppColors.ink
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Escoge tu línea y tu combi para comenzar el turno.",
+                                            style = AppTextStyles.waykiMini,
+                                            color = AppColors.slate
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                androidx.compose.material3.TextButton(
+                                    onClick = { showRouteDialog = true },
+                                    modifier = Modifier.align(Alignment.End)
+                                ) {
+                                    Text(
+                                        text = "Escoger ruta",
+                                        color = AppColors.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
+
+                    // Otras combis de la línea, según los turnos activos reales.
+                    val miTurno = TurnoSession.turno
+                    val companeros = if (miTurno != null) {
+                        TurnoSession.activeTurnos.filter {
+                            it.lineaId == miTurno.lineaId && it.choferId != miTurno.choferId
+                        }
+                    } else {
+                        emptyList()
+                    }
                     Text(
-                        text = "Combis en tu línea",
+                        text = if (miTurno?.lineaNombre != null) "Combis en ${miTurno.lineaNombre}" else "Combis en tu línea",
                         style = AppTextStyles.waykiLabelMedium,
                         color = AppColors.ink
                     )
@@ -396,36 +480,83 @@ fun HomeScreen(
                         colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = AppColors.cream),
                         elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(18.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .background(AppColors.primary.copy(alpha = 0.12f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = SolidGroup.Bus,
-                                    contentDescription = null,
-                                    tint = AppColors.primary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Esperando otras líneas",
-                                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
-                                    color = AppColors.ink
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Aún no hay otros conductores registrados en tu línea.",
-                                    style = AppTextStyles.waykiMini,
-                                    color = AppColors.slate
-                                )
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            if (companeros.isEmpty()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .background(AppColors.primary.copy(alpha = 0.12f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = SolidGroup.Bus,
+                                            contentDescription = null,
+                                            tint = AppColors.primary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Esperando otras combis",
+                                            style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                                            color = AppColors.ink
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Aún no hay otros conductores en ruta dentro de tu línea.",
+                                            style = AppTextStyles.waykiMini,
+                                            color = AppColors.slate
+                                        )
+                                    }
+                                }
+                            } else {
+                                companeros.forEachIndexed { index, turno ->
+                                    if (index > 0) {
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(1.dp)
+                                                .background(AppColors.slate.copy(alpha = 0.15f))
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .background(AppColors.primary.copy(alpha = 0.12f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = SolidGroup.Bus,
+                                                contentDescription = null,
+                                                tint = AppColors.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Unidad ${turno.numeroPadron ?: "—"} · ${turno.placa ?: "Sin placa"}",
+                                                style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                                                color = AppColors.ink
+                                            )
+                                            Text(
+                                                text = turno.choferNombre ?: "Conductor",
+                                                style = AppTextStyles.waykiMini,
+                                                color = AppColors.slate
+                                            )
+                                        }
+                                        Text(
+                                            text = "En ruta",
+                                            style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                                            color = AppColors.primary
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -448,6 +579,15 @@ fun HomeScreen(
             )
         }
     }
+
+    RouteAssignmentDialog(
+        visible = showRouteDialog && !isLoading,
+        onDismiss = { showRouteDialog = false },
+        onAssigned = {
+            showRouteDialog = false
+            SelectedRouteHolder.selectLineByName(it.lineaNombre)
+        },
+    )
 }
 
 // ---------- Botón circular de la barra superior (menú, campana) ----------
@@ -912,15 +1052,23 @@ fun WaykiSidebarContent(
         
         // 2. Conductor
         Text(
-            text = "Carlos Mendoza", 
+            text = UserSession.displayName, 
             style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp), 
-            color = AppColors.ink
+            color = AppColors.ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "Línea 7 • Unidad 08 • Arequipa", 
-            style = AppTextStyles.waykiMini, 
-            color = AppColors.slate
+            text = if (TurnoSession.hasTurno) {
+                "${TurnoSession.lineaNombre} • ${TurnoSession.unidadTexto} • ${TurnoSession.placa ?: "Sin placa"}"
+            } else {
+                "Sin unidad asignada • Arequipa"
+            },
+            style = AppTextStyles.waykiMini,
+            color = AppColors.slate,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         
         Spacer(modifier = Modifier.height(32.dp))
@@ -944,7 +1092,7 @@ fun WaykiSidebarContent(
         DrawerMenuItem(
             icon = FeatherIcons.Radio, 
             title = "Comunicación", 
-            subtitle = "Canal de la Línea 7", 
+            subtitle = if (TurnoSession.hasTurno) "Canal de ${TurnoSession.lineaNombre}" else "Canal de tu línea", 
             isSelected = selectedTab == 1,
             onClick = onCommunicationClick
         )

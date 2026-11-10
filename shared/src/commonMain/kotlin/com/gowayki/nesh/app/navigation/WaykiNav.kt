@@ -19,6 +19,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.gowayki.nesh.app.di.AppDi
+import com.gowayki.nesh.core.session.UserSession
 import com.gowayki.nesh.app.di.ChatDi
 import com.gowayki.nesh.app.features.communication.domain.repository.ChatRepository
 import com.gowayki.nesh.app.features.communication.presentation.chat.ChatScreen
@@ -106,10 +107,17 @@ fun WaykiNav(
         }
         
         composable(Routes.LOGIN) {
+            LaunchedEffect(Unit) { vm.resetLogin() }
             LoginScreen(
                 state = loginState,
+                activeDni = vm.activeDni,
                 onNumberClick = { vm.onNumberClick(it) },
                 onDeleteClick = { vm.onDeleteClick() },
+                onDniChange = { vm.updateDni(it) },
+                onRegisterClick = {
+                    vm.clearAuthError()
+                    nav.navigate(Routes.REGISTER)
+                },
                 onForgotPinClick = { nav.navigate(Routes.RECOVER_ACCESS) },
                 onBackClick = { nav.popBackStack() },
                 onSupportClick = { /* TODO: Soporte técnico */ }
@@ -129,8 +137,10 @@ fun WaykiNav(
             RegisterScreen(
                 isLoading = state.isLoading,
                 error = state.error,
-                onRegisterClick = { name, dni, phone -> vm.register(name, dni, phone) },
-                onGoogleClick = { vm.google("demo-token") },
+                onRegisterClick = { name, dni, phone, email, pin ->
+                    vm.register(name, dni, phone, email, pin)
+                },
+                onClearError = { vm.clearAuthError() },
                 onLoginClick = { nav.popBackStack() },
                 onBack = { nav.popBackStack() },
             )
@@ -182,6 +192,7 @@ fun WaykiNav(
                 onMapClick = { /* ya ests en reportes */ },
                 onSettingsClick = { /* TODO: ajustes */ },
                 onLogoutClick = {
+                    UserSession.clear()
                     nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
                 },
                 sosVm = sosVm,
@@ -198,6 +209,7 @@ fun WaykiNav(
                 onMapaClick = { nav.navigate(Routes.MAP) },
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
                 onLogoutClick = {
+                    UserSession.clear()
                     nav.navigate(Routes.WELCOME) {
                         popUpTo(Routes.WELCOME) { inclusive = true }
                     }
@@ -245,6 +257,7 @@ fun WaykiNav(
                 onMapaClick = { nav.navigate(Routes.MAP) },
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
                 onLogoutClick = {
+                    UserSession.clear()
                     nav.navigate(Routes.WELCOME) {
                         popUpTo(Routes.WELCOME) { inclusive = true }
                     }
@@ -272,6 +285,7 @@ fun WaykiNav(
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
                 onMapaClick = { nav.navigate(Routes.MAP) },
                 onLogoutClick = {
+                    UserSession.clear()
                     nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
                 },
                 onTabSelected = { tab ->

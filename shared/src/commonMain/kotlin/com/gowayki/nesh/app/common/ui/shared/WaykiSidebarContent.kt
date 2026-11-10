@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,8 +34,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gowayki.nesh.core.session.TurnoSession
+import com.gowayki.nesh.core.session.UserSession
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppRadius
@@ -70,6 +74,7 @@ fun WaykiSidebarContent(
             .background(AppColors.cream)
             .padding(24.dp)
     ) {
+        LaunchedEffect(Unit) { TurnoSession.refresh() }
         // 1. Marca y cierre
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -106,15 +111,23 @@ fun WaykiSidebarContent(
 
         // 2. Conductor
         Text(
-            text = "Carlos Mendoza",
+            text = UserSession.displayName,
             style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
-            color = AppColors.ink
+            color = AppColors.ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "Línea 7 • Unidad 08 • Arequipa",
+            text = if (TurnoSession.hasTurno) {
+                "${TurnoSession.lineaNombre} • ${TurnoSession.unidadTexto} • ${TurnoSession.placa ?: "Sin placa"}"
+            } else {
+                "Sin unidad asignada • Arequipa"
+            },
             style = AppTextStyles.waykiMini,
-            color = AppColors.slate
+            color = AppColors.slate,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -138,7 +151,7 @@ fun WaykiSidebarContent(
         DrawerMenuItem(
             icon = FeatherIcons.Radio,
             title = "Comunicación",
-            subtitle = "Canal de la Línea 7",
+            subtitle = if (TurnoSession.hasTurno) "Canal de ${TurnoSession.lineaNombre}" else "Canal de tu línea",
             isSelected = selectedTab == 1,
             onClick = onCommunicationClick
         )

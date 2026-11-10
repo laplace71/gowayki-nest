@@ -22,13 +22,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,8 +48,11 @@ import com.gowayki.nesh.app.common.platform.pickImageFromGallery
 import com.gowayki.nesh.app.common.ui.shared.WaykiAvatar
 import com.gowayki.nesh.app.common.ui.shared.ToastManager
 import com.gowayki.nesh.core.theme.src.AppTextStyles
+import com.gowayki.nesh.core.session.TurnoSession
+import com.gowayki.nesh.core.session.UserSession
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
+import com.gowayki.nesh.data.repository.DisplayNameState
 import com.gowayki.nesh.data.repository.ProfilePhotoState
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.ArrowLeft
@@ -61,6 +67,10 @@ fun ProfileScreen(
     val photoPath by ProfilePhotoState.path
     var pickingPhoto by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    var showNameDialog by remember { mutableStateOf(false) }
+    var nameInput by remember { mutableStateOf(DisplayNameState.value.value ?: "") }
+
+    LaunchedEffect(Unit) { TurnoSession.refresh() }
 
     fun pickPhoto() {
         if (pickingPhoto) return
@@ -132,7 +142,7 @@ fun ProfileScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     WaykiAvatar(
-                        text = "CM",
+                        text = UserSession.displayInitials,
                         size = 104.dp,
                         dark = false,
                         photoPath = photoPath
@@ -156,20 +166,35 @@ fun ProfileScreen(
                 Spacer(Modifier.height(14.dp))
 
                 Text(
-                    text = "Carlos Mendoza",
+                    text = UserSession.displayName,
                     style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 22.sp),
                     color = AppColors.ink,
                     textAlign = TextAlign.Center
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Línea 7 · Unidad 08",
+                    text = if (TurnoSession.hasTurno) {
+                        "${TurnoSession.lineaNombre} · ${TurnoSession.unidadTexto}"
+                    } else {
+                        "Sin unidad asignada"
+                    },
                     style = AppTextStyles.waykiMini.copy(fontSize = 13.sp),
                     color = AppColors.slate,
                     textAlign = TextAlign.Center
                 )
 
                 Spacer(Modifier.height(10.dp))
+
+                TextButton(onClick = {
+                    nameInput = DisplayNameState.value.value ?: UserSession.currentUser?.name?.takeIf { !it.contains("@") } ?: ""
+                    showNameDialog = true
+                }) {
+                    Text(
+                        text = "Cambiar nombre",
+                        style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                        color = AppColors.primary
+                    )
+                }
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -213,10 +238,27 @@ fun ProfileScreen(
 
             HorizontalDivider(thickness = 0.5.dp, color = AppColors.slate.copy(alpha = 0.3f))
 
-            ProfileInfoRow(label = "Nombre", value = "Carlos Mendoza")
+            ProfileInfoRow(label = "Nombre", value = UserSession.displayName)
             ProfileInfoRow(label = "Rol", value = "Conductor de combi")
-            ProfileInfoRow(label = "Unidad", value = "Unidad 08 · Línea 7")
-            ProfileInfoRow(label = "Teléfono", value = "+51 987 654 321")
+            ProfileInfoRow(
+                label = "Línea",
+                value = if (TurnoSession.hasTurno) TurnoSession.lineaNombre else "Sin asignar"
+            )
+            ProfileInfoRow(
+                label = "Unidad",
+                value = if (TurnoSession.hasTurno) TurnoSession.unidadTexto else "Sin asignar"
+            )
+            ProfileInfoRow(
+                label = "Placa",
+                value = TurnoSession.placa ?: "Sin asignar"
+            )
+            ProfileInfoRow(
+                label = "Teléfono",
+                value = UserSession.currentUser?.phone
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { "+51 $it" }
+                    ?: "+51 987 654 321"
+            )
 
             Spacer(Modifier.height(24.dp))
 
@@ -237,6 +279,32 @@ fun ProfileScreen(
             }
 
             Spacer(Modifier.height(32.dp))
+        }
+
+        if (showNameDialog) {
+            AlertDialog(
+                onDismissRequest = { showNameDialog = false },
+                title = { Text("Cambiar nombre", color = AppColors.ink) },
+                text = {
+                    OutlinedTextField(
+                        value = nameInput,
+                        onValueChange = { nameInput = it },
+                        label = { Text("Tu nombre") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        DisplayNameState.update(nameInput)
+                        showNameDialog = false
+                        ToastManager.show("Nombre actualizado")
+                    }) { Text("Guardar", color = AppColors.primary, fontWeight = FontWeight.Bold) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showNameDialog = false }) { Text("Cancelar", color = AppColors.slate) }
+                }
+            )
         }
     }
 }
