@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.LoginStatus
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.LoginUiState
+import com.gowayki.nesh.core.session.UserSession
 import com.gowayki.nesh.domain.model.User
 import com.gowayki.nesh.domain.repository.AuthRepository
 import kotlinx.coroutines.Job
@@ -29,6 +30,24 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
     // Estado especifico para el Numpad (Login PIN)
     var loginState by mutableStateOf(LoginUiState())
         private set
+
+    // Persona activa: el login se hace contra este DNI.
+    var activeDni by mutableStateOf(UserSession.activeDni)
+        private set
+
+    /** Cambia de persona y limpia cualquier intento de PIN en curso. */
+    fun updateDni(dni: String) {
+        val clean = dni.trim()
+        if (clean.isBlank()) return
+        activeDni = clean
+        UserSession.activeDni = clean
+        loginState = LoginUiState()
+    }
+
+    /** Deja el teclado de login limpio (al volver a la pantalla). */
+    fun resetLogin() {
+        loginState = LoginUiState()
+    }
 
     private var blockTimerJob: Job? = null
 
@@ -63,10 +82,11 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
         state = AuthUiState(isLoading = true) // Mostrar loading si hubiera un overlay general
         
         viewModelScope.launch {
-            repo.login(pin)
-                .onSuccess { 
-                    state = AuthUiState(user = it) 
-                    // Exito!
+            repo.loginWithDni(activeDni, pin)
+                .onSuccess {
+                    // Limpia el teclado para el próximo ingreso (p. ej. tras cerrar sesión).
+                    loginState = LoginUiState()
+                    state = AuthUiState(user = it)
                 }
                 .onFailure {
                     val newAttempts = loginState.attemptsLeft - 1
@@ -106,9 +126,22 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
         }
     }
 
-    // Compatibilidad antigua
-    fun register(name: String, dni: String, phone: String) =
-        exec { repo.register(name, dni, phone) }
+    // Registro en dos pasos: datos + PIN. El backend crea la cuenta con el PIN
+    // hasheado, así que después se puede iniciar sesión con DNI + PIN.
+    fun register(name: String, dni: String, phone: String, email: String, pin: String) {
+        state = AuthUiState(isLoading = true)
+        viewModelScope.launch {
+            repo.register(name, dni, phone, email, pin)
+                .onSuccess { registered ->
+                    activeDni = registered.dni.ifBlank { dni.trim() }
+                    UserSession.activeDni = activeDni
+                    state = AuthUiState(user = registered)
+                }
+                .onFailure {
+                    state = AuthUiState(error = it.message ?: "Error inesperado")
+                }
+        }
+    }
 
     fun sendRecoveryCode(dni: String) {
         state = AuthUiState(isLoading = true)
@@ -126,6 +159,11 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
 
     fun consumeUser() {
         state = state.copy(user = null)
+    }
+
+    /** Limpia el error compartido (al cambiar de pantalla o reintentar). */
+    fun clearAuthError() {
+        if (state.error != null) state = state.copy(error = null)
     }
 
     private fun exec(block: suspend () -> Result<User>) {

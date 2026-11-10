@@ -54,6 +54,26 @@ object SelectedRouteHolder {
         select(route)
     }
 
+    /**
+     * Selecciona la línea del turno a partir de su nombre del backend
+     * ("Línea C2", "Línea C3", ...). Si no coincide con el catálogo, no cambia.
+     */
+    fun selectLineByName(nombre: String?) {
+        val clean = nombre?.trim() ?: return
+        val code = clean
+            .removePrefix("Línea")
+            .removePrefix("Linea")
+            .trim()
+            .split(" ")
+            .firstOrNull()
+            ?.trim()
+            ?.uppercase()
+            ?.takeIf { it.isNotBlank() }
+            ?: return
+        val route = ArequipaRoutes.byId(code) ?: return
+        select(route)
+    }
+
     /** Restaura la última ruta guardada. Idempotente. */
     suspend fun restore() {
         if (restored) return

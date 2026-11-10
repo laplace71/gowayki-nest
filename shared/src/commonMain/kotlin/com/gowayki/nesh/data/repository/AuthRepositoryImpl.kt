@@ -25,11 +25,15 @@ class FakeAuthRepository : AuthRepository {
         return Result.success(User(id = "demo-1", name = "Demo"))
     }
 
-    override suspend fun register(name: String, dni: String, phone: String): Result<User> {
+    override suspend fun register(name: String, dni: String, phone: String, email: String, pin: String): Result<User> {
         delay(1.seconds)
         if (name.isBlank()) return Result.failure(IllegalArgumentException("Ingresa tu nombre"))
         validDniPhone(dni, phone).onFailure { return Result.failure(it) }
-        return Result.success(User(id = "demo-1", name = name, dni = dni, phone = phone))
+        if (pin.length != 6) return Result.failure(IllegalArgumentException("El PIN debe tener 6 digitos"))
+        if (email.isNotBlank() && !email.contains("@")) {
+            return Result.failure(IllegalArgumentException("Ingresa un correo válido"))
+        }
+        return Result.success(User(id = "demo-1", name = name, dni = dni, phone = phone, email = email))
     }
 
     override suspend fun google(idToken: String): Result<User> {

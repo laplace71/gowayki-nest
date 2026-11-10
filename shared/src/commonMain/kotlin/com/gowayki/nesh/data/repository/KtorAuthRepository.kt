@@ -4,6 +4,7 @@ import com.gowayki.nesh.core.network.HttpClientFactory
 import com.gowayki.nesh.core.session.UserSession
 import com.gowayki.nesh.data.entities.auth.LoginRequestDto
 import com.gowayki.nesh.data.entities.auth.LoginResponseDto
+import com.gowayki.nesh.data.entities.auth.RegisterRequestDto
 import com.gowayki.nesh.domain.model.User
 import com.gowayki.nesh.domain.repository.AuthRepository
 import io.ktor.client.call.body
@@ -21,7 +22,7 @@ class KtorAuthRepository : AuthRepository {
         return loginWithDni(UserSession.activeDni, pin)
     }
 
-    suspend fun loginWithDni(dni: String, pin: String): Result<User> {
+    override suspend fun loginWithDni(dni: String, pin: String): Result<User> {
         return try {
             val response: HttpResponse = client.post("$baseUrl/auth/login") {
                 setBody(LoginRequestDto(dni = dni.trim(), pin = pin.trim()))
@@ -56,15 +57,48 @@ class KtorAuthRepository : AuthRepository {
         }
     }
 
-    override suspend fun register(name: String, dni: String, phone: String): Result<User> {
-        val user = User(
-            id = "pending-id",
-            name = name,
-            dni = dni,
-            phone = phone
-        )
-        UserSession.saveUser(user)
-        return Result.success(user)
+    override suspend fun register(name: String, dni: String, phone: String, email: String, pin: String): Result<User> {
+        return try {
+            val response: HttpResponse = client.post("$baseUrl/auth/registro") {
+                setBody(
+                    RegisterRequestDto(
+                        nombre = name.trim(),
+                        dni = dni.trim(),
+                        telefono = phone.trim(),
+                        email = email.trim().takeIf { it.isNotBlank() },
+                        pin = pin.trim(),
+                    )
+                )
+            }
+
+            val body: LoginResponseDto? = try {
+                response.body<LoginResponseDto>()
+            } catch (_: Exception) {
+                null
+            }
+            val dto = body?.usuario
+
+            if (response.status.isSuccess() && body?.exito == true && dto != null) {
+                val user = User(
+                    id = dto.id,
+                    name = dto.nombre,
+                    email = dto.email ?: "",
+                    dni = dto.dni,
+                    phone = dto.telefono,
+                )
+                UserSession.saveUser(user)
+                Result.success(user)
+            } else {
+                Result.failure(
+                    Exception(
+                        body?.mensaje
+                            ?: "No se pudo registrar la cuenta (${response.status.value})"
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(e.message ?: "No se pudo conectar con el servidor"))
+        }
     }
 
     override suspend fun google(idToken: String): Result<User> {

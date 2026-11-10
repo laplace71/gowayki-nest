@@ -29,6 +29,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowayki.nesh.app.common.ui.shared.WaykiAvatar
@@ -60,10 +62,14 @@ import compose.icons.feathericons.Clock
 import compose.icons.feathericons.Globe
 import compose.icons.feathericons.HelpCircle
 import compose.icons.feathericons.Lock
+import compose.icons.feathericons.Map
 import compose.icons.feathericons.MapPin
 import compose.icons.feathericons.Moon
 import compose.icons.feathericons.Volume2
 import com.gowayki.nesh.core.AppSettings
+import com.gowayki.nesh.core.session.TurnoSession
+import com.gowayki.nesh.core.session.UserSession
+import com.gowayki.nesh.app.features.home.presentation.components.RouteAssignmentDialog
 import com.gowayki.nesh.core.theme.ThemeManager
 import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
 import com.gowayki.nesh.app.features.map.domain.model.ArequipaRoutes
@@ -96,7 +102,10 @@ fun SettingsScreen(
     var lunchDurationInput by remember { mutableStateOf(AppSettings.lunchDurationMinutes.value.toString()) }
     var darkModeEnabled by remember { mutableStateOf(ThemeManager.isDark.value) }
     var showPinDialog by remember { mutableStateOf(false) }
+    var showRouteDialog by remember { mutableStateOf(false) }
     var newPin by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) { TurnoSession.refresh() }
 
     Box(
         modifier = Modifier
@@ -165,7 +174,7 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     WaykiAvatar(
-                        text = "CM",
+                        text = UserSession.displayInitials,
                         size = 48.dp,
                         dark = false,
                         photoPath = profilePhotoPath
@@ -175,7 +184,7 @@ fun SettingsScreen(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Carlos Mendoza",
+                            text = UserSession.displayName,
                             style = AppTextStyles.waykiLabelMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
@@ -184,9 +193,15 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Línea 7 · Unidad 08",
+                            text = if (TurnoSession.hasTurno) {
+                                "${TurnoSession.lineaNombre} · ${TurnoSession.unidadTexto}"
+                            } else {
+                                "Sin unidad asignada"
+                            },
                             style = AppTextStyles.waykiMini,
-                            color = AppColors.cream.copy(alpha = 0.8f)
+                            color = AppColors.cream.copy(alpha = 0.8f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
@@ -198,6 +213,32 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // 2b. RUTA Y UNIDAD
+            Text(
+                text = "RUTA Y UNIDAD",
+                style = AppTextStyles.waykiMini.copy(
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = AppColors.slate
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            SettingActionItem(
+                icon = FeatherIcons.Map,
+                title = "Mi ruta / unidad",
+                subtitle = if (com.gowayki.nesh.core.config.BetaFlags.selfAssignRoutes) {
+                    "Escoge o cambia tu combi (beta)"
+                } else {
+                    "La unidad la asigna tu empresa"
+                },
+                value = TurnoSession.resumen,
+                onClick = { showRouteDialog = true }
+            )
 
             Spacer(modifier = Modifier.height(28.dp))
 
@@ -795,6 +836,12 @@ fun SettingsScreen(
                 }
             )
         }
+
+        RouteAssignmentDialog(
+            visible = showRouteDialog,
+            onDismiss = { showRouteDialog = false },
+            onAssigned = { showRouteDialog = false },
+        )
     }
 }
 

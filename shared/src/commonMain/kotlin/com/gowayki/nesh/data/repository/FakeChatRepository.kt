@@ -32,7 +32,8 @@ import kotlinx.coroutines.flow.update
 class FakeChatRepository(
     /** Id del usuario actual (yo). */
     private val myUserId: String = MY_ID,
-    private val myName: String = "Carlos Mendoza"
+    private val myName: String = com.gowayki.nesh.core.session.UserSession.displayName,
+    private val myInitials: String = com.gowayki.nesh.core.session.UserSession.displayInitials,
 ) : ChatRepository {
 
     private val chatJson = Json { ignoreUnknownKeys = true }
@@ -122,7 +123,7 @@ class FakeChatRepository(
         if (members.isEmpty()) return Result.failure(IllegalArgumentException("Elige al menos un conductor"))
         val now = currentTimeMillis()
         val id = "g-$now"
-        val allMembers = listOf(GroupMember(myUserId, myName, "CM", isOnline = true)) + members
+        val allMembers = listOf(GroupMember(myUserId, myName, myInitials, isOnline = true)) + members
         val group = Conversation(
             id = id,
             title = name,
@@ -156,7 +157,7 @@ class FakeChatRepository(
             unreadCount = 0,
             avatarText = member.initials,
             avatarDark = false,
-            members = listOf(GroupMember(myUserId, myName, "CM", isOnline = true), member)
+            members = listOf(GroupMember(myUserId, myName, myInitials, isOnline = true), member)
         )
         _conversations.update { listOf(chat) + it }
         _messages.update { it + (id to emptyList()) }
@@ -331,7 +332,7 @@ class FakeChatRepository(
             unreadCount = 3,
             avatarText = "L7",
             avatarDark = true,
-            members = listOf(GroupMember(myUserId, myName, "CM"), marco, ana, juan)
+            members = listOf(GroupMember(myUserId, myName, myInitials), marco, ana, juan)
         )
         val privadoMarco = Conversation(
             id = "p-marco",
@@ -341,7 +342,7 @@ class FakeChatRepository(
             lastMessageAtMillis = now - 5000,
             unreadCount = 1,
             avatarText = "MR",
-            members = listOf(GroupMember(myUserId, myName, "CM"), marco)
+            members = listOf(GroupMember(myUserId, myName, myInitials), marco)
         )
         val privadoJefe = Conversation(
             id = "p-jefe",
@@ -351,7 +352,7 @@ class FakeChatRepository(
             lastMessageAtMillis = now - 20000,
             unreadCount = 1,
             avatarText = "JL",
-            members = listOf(GroupMember(myUserId, myName, "CM"), GroupMember("jefe", "Jefatura", "JL"))
+            members = listOf(GroupMember(myUserId, myName, myInitials), GroupMember("jefe", "Jefatura", "JL"))
         )
         val grupoOperativos = Conversation(
             id = "g-operativos",
@@ -361,7 +362,7 @@ class FakeChatRepository(
             lastMessageAtMillis = now - 40000,
             unreadCount = 4,
             avatarText = "OP",
-            members = listOf(GroupMember(myUserId, myName, "CM"), ana, juan)
+            members = listOf(GroupMember(myUserId, myName, myInitials), ana, juan)
         )
 
         _conversations.value = listOf(grupoLinea, privadoMarco, grupoOperativos, privadoJefe)
