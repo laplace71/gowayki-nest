@@ -82,8 +82,9 @@ class KtorChatRepository : ChatRepository {
     }
 
     private fun getActiveRouteGroupTitle(): String {
+        val turnoLinea = com.gowayki.nesh.core.session.TurnoSession.turno?.lineaNombre?.takeIf { it.isNotBlank() }
         val route = SelectedRouteHolder.selected.value
-        val name = route?.name?.takeIf { it.isNotBlank() } ?: "Línea C2"
+        val name = turnoLinea ?: route?.name?.takeIf { it.isNotBlank() } ?: "Línea C2"
         return "GRUPO · $name"
     }
 
@@ -123,8 +124,13 @@ class KtorChatRepository : ChatRepository {
 
     private fun filterAndEmitConversations(list: List<ConversacionResponseDto>, activeTitle: String) {
         val filtered = list.filter { dto ->
-            if (!dto.esGrupo) true
-            else dto.titulo == activeTitle
+            if (!dto.esGrupo) {
+                true
+            } else if (dto.titulo.startsWith("GRUPO · ")) {
+                dto.titulo == activeTitle
+            } else {
+                true
+            }
         }
         val mapped = filtered.map { mapDtoToConversation(it) }
         _conversations.value = mapped
@@ -490,20 +496,31 @@ class KtorChatRepository : ChatRepository {
     }
 
     private fun handleIncomingWebSocketMessage(text: String) {
-        val dto = runCatching { chatJson.decodeFromString<MensajeResponseDto>(text) }.getOrNull() ?: return
-        val myId = UserSession.currentUserId ?: ""
-        val message = mapDtoToMessage(dto, myId)
+        val dto = runCatching { chatJson.decodeFromString<MensajeResponseDto>(text) }.getOrNull()
+        if (dto != null) {
+            val myId = UserSession.currentUserId ?: ""
+            val message = mapDtoToMessage(dto, myId)
 
-        _messages.update { all ->
-            val existing = all[message.conversationId].orEmpty()
-            if (existing.any { it.id == message.id }) {
-                all
-            } else {
-                all + (message.conversationId to (existing + message))
+            _messages.update { all ->
+                val existing = all[message.conversationId].orEmpty()
+                if (existing.any { it.id == message.id }) {
+                    all
+                } else {
+                    all + (message.conversationId to (existing + message))
+                }
             }
+            updateConversationPreview(message.conversationId, message)
+            if (_conversations.value.none { it.id == message.conversationId }) {
+                refreshConversations()
+            }
+            persist()
+            return
         }
-        updateConversationPreview(message.conversationId, message)
-        persist()
+
+        val convDto = runCatching { chatJson.decodeFromString<ConversacionResponseDto>(text) }.getOrNull()
+        if (convDto != null) {
+            refreshConversations()
+        }
     }
 
     private fun restore(): Boolean = runCatching {

@@ -67,7 +67,7 @@ object BackendChatApi {
         contenido: String
     ): Result<MensajeResponseDto> = runCatching {
         val response = client.post("$baseUrl/chat/conversaciones/$conversacionId/mensajes/texto") {
-            setBody(EnviarMensajeTextoRequestDto(emisorId = emisorId, contenido = contenido))
+            setBody(EnviarMensajeTextoRequestDto(emisorId = emisorId, contenidoTexto = contenido))
         }
         if (response.status.isSuccess()) {
             response.body<MensajeResponseDto>()

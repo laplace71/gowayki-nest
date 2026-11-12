@@ -78,6 +78,7 @@ object TurnoSession {
             error = null
             try {
                 turno = BackendTurnosApi.turnoActivo(choferId)
+                turno?.lineaNombre?.let { com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder.selectLineByName(it) }
                 activeTurnos = BackendTurnosApi.turnosActivos()
             } catch (e: Exception) {
                 error = e.message ?: "No se pudo consultar tu turno"
