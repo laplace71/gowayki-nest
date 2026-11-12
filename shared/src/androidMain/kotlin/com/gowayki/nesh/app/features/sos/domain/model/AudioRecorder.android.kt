@@ -344,7 +344,7 @@ actual fun createAudioRecorder(): AudioRecorder {
 private class NoopAudioRecorder : AudioRecorder {
     private val _state = MutableStateFlow(RecordingState.IDLE)
     override val state: StateFlow<RecordingState> = _state.asStateFlow()
-    private val _error = MutableStateFlow<String?>("Audio no disponible en Preview")
+    private val _error = MutableStateFlow<String?>(null)
     override val error: StateFlow<String?> = _error.asStateFlow()
     private val _duracion = MutableStateFlow(0L)
     override val recordingDuration: StateFlow<Long> = _duracion.asStateFlow()

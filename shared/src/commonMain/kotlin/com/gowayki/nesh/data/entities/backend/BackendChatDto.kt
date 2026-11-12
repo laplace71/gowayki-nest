@@ -39,7 +39,7 @@ data class CrearConversacionRequestDto(
 @Serializable
 data class EnviarMensajeTextoRequestDto(
     val emisorId: String,
-    val contenido: String
+    val contenidoTexto: String
 )
 
 @Serializable
