@@ -64,6 +64,7 @@ kotlin {
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.ktor.client.websockets)
             implementation("io.ktor:ktor-network:3.2.3")
             implementation("io.ktor:ktor-io:3.2.3")
             implementation(libs.compose.icons.feather)
