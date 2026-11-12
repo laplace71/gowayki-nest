@@ -209,12 +209,14 @@ private class AndroidAudioRecorder(
     }
 
     override suspend fun playAudio(filePath: String): Result<Unit> = runCatching {
-        val file = File(filePath)
-        if (!file.exists()) {
-            throw IOException("Archivo no encontrado: $filePath")
+        val isRemote = filePath.startsWith("http://") || filePath.startsWith("https://")
+        if (!isRemote) {
+            val file = File(filePath)
+            if (!file.exists()) {
+                throw IOException("Archivo no encontrado: $filePath")
+            }
         }
 
-        // Detener reproducción anterior si hay
         playbackTimer?.cancel()
         playbackTimer = null
         mediaPlayer?.apply {

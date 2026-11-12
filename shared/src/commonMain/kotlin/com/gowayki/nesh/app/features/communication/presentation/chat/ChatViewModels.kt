@@ -154,14 +154,21 @@ class NewGroupViewModel(private val repo: ChatRepository) : ViewModel() {
     var creating by mutableStateOf(false)
         private set
 
-    var colleagues: List<GroupMember> = emptyList()
+    var colleagues: List<GroupMember> by mutableStateOf(emptyList())
         private set
 
     init {
-        // FakeChatRepository expone la lista; con backend real vendrá del repo.
-        (repo as? com.gowayki.nesh.data.repository.FakeChatRepository)
-            ?.availableColleagues()
-            ?.let { colleagues = it }
+        (repo as? com.gowayki.nesh.data.repository.FakeChatRepository)?.availableColleagues()?.let { colleagues = it }
+        val ktorRepo = repo as? com.gowayki.nesh.data.repository.KtorChatRepository
+        if (ktorRepo != null) {
+            colleagues = ktorRepo.availableColleagues()
+            ktorRepo.fetchColleagues()
+            viewModelScope.launch {
+                ktorRepo.colleaguesFlow.collect {
+                    if (it.isNotEmpty()) colleagues = it
+                }
+            }
+        }
     }
 
     fun onNameChange(value: String) { name = value }
