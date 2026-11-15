@@ -7,6 +7,7 @@ package com.gowayki.nesh.app.common.ui.shared
 // viene de los tokens de core/theme (AppColors, AppSpacing, AppRadius,
 // AppTextStyles).
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -37,6 +38,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -112,8 +114,20 @@ fun FloatingBlob(
     travelX: Dp = 16.dp,
     travelY: Dp = 22.dp,
 ) {
+    if (!WaykiPerf.heavyAnimationsEnabled) {
+        // Gama baja: círculo quieto (sin transición infinita por frame).
+        Box(
+            Modifier.size(sizeX, sizeY)
+                .offset(x = baseX, y = baseY)
+                .background(color, CircleShape),
+        )
+        return
+    }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val travelXPx = with(density) { travelX.toPx() }
+    val travelYPx = with(density) { travelY.toPx() }
     val transition = rememberInfiniteTransition(label = "blob")
-    val fx by transition.animateFloat(
+    val fx = transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
@@ -122,7 +136,7 @@ fun FloatingBlob(
         ),
         label = "fx",
     )
-    val fy by transition.animateFloat(
+    val fy = transition.animateFloat(
         initialValue = 1f,
         targetValue = 0f,
         animationSpec = infiniteRepeatable(
@@ -133,7 +147,11 @@ fun FloatingBlob(
     )
     Box(
         Modifier.size(sizeX, sizeY)
-            .offset(x = baseX + travelX * fx, y = baseY + travelY * fy)
+            .offset(x = baseX, y = baseY)
+            .graphicsLayer {
+                translationX = travelXPx * fx.value
+                translationY = travelYPx * fy.value
+            }
             .background(color, CircleShape),
     )
 }
@@ -154,13 +172,22 @@ fun WaykiBackground(
             .background(AppColors.background)
             .clipToBounds(),
     ) {
-        FloatingBlob((-90).dp, (-70).dp, 260.dp, 240.dp, AppColors.surfaceVariant.copy(alpha = 0.7f), durationMillis = 4200)
-        FloatingBlob(280.dp, (-50).dp, 180.dp, 170.dp, AppColors.slate.copy(alpha = 0.5f), durationMillis = 5200, delayMillis = 400)
-        FloatingBlob(150.dp, (-30).dp, 80.dp, 80.dp, AppColors.outline.copy(alpha = 0.85f), durationMillis = 3400, delayMillis = 200)
-        FloatingBlob((-60).dp, 320.dp, 140.dp, 130.dp, AppColors.outline.copy(alpha = 0.4f), durationMillis = 5600, delayMillis = 300)
-        FloatingBlob(320.dp, 480.dp, 90.dp, 90.dp, AppColors.surfaceVariant.copy(alpha = 0.8f), durationMillis = 4400, delayMillis = 1000)
+        // Blobs decorativos estáticos para evitar animaciones infinitas constantes.
+        Box(
+            Modifier
+                .size(240.dp, 220.dp)
+                .offset(x = (-80).dp, y = (-60).dp)
+                .background(AppColors.surfaceVariant.copy(alpha = 0.45f), CircleShape),
+        )
+        Box(
+            Modifier
+                .size(160.dp)
+                .offset(x = 260.dp, y = 420.dp)
+                .background(AppColors.outline.copy(alpha = 0.22f), CircleShape),
+        )
         if (withRoads) {
-            WaykiRoads(animated = roadsAnimated)
+            // Forzar modo estático: las rutas/hormigas animadas consumen mucho en pantallas de auth.
+            WaykiRoads(animated = false)
         }
         content()
     }
@@ -681,6 +708,14 @@ fun WaykiSkeleton(
     color: androidx.compose.ui.graphics.Color = AppColors.surfaceVariant.copy(alpha = 0.6f),
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(12.dp),
 ) {
+    if (!WaykiPerf.heavyAnimationsEnabled) {
+        Box(
+            modifier = modifier
+                .clip(shape)
+                .background(color.copy(alpha = 0.35f))
+        )
+        return
+    }
     // Shimmer: una banda de luz recorre el bloque de izquierda a derecha,
     // como en WhatsApp/Skeleton Screens. Se ve "vivo" en vez de parpadear.
     val progress = rememberInfiniteTransition(label = "skeleton").animateFloat(
@@ -723,12 +758,18 @@ fun WaykiSkeleton(
 // ---------- Carga + error (los maneja el ViewModel) ----------
 @Composable
 fun WaykiLoadingOverlay(visible: Boolean) {
-    if (visible) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = androidx.compose.animation.fadeIn(animationSpec = tween(180)),
+        exit = androidx.compose.animation.fadeOut(animationSpec = tween(180))
+    ) {
         Box(
-            Modifier.fillMaxSize().background(AppColors.onBackground.copy(alpha = 0.25f)),
+            Modifier
+                .fillMaxSize()
+                .background(AppColors.ink.copy(alpha = 0.28f)),
             contentAlignment = Alignment.Center,
         ) {
-            CircularProgressIndicator(color = AppColors.cream)
+            WaykiBrandLoader()
         }
     }
 }
@@ -757,7 +798,7 @@ fun WaykiErrorText(
 // Para cambiar la forma: `moveTo/cubicTo` de cada road*.
 @Composable
 fun WaykiRoads(animated: Boolean = true) {
-    if (!animated) {
+    if (!animated || !WaykiPerf.heavyAnimationsEnabled) {
         // Versión estática: solo las rutas sin animación
         val density = LocalDensity.current.density
         val roadA = remember { Path().apply { moveTo(54.14f, 625.11f); cubicTo(-12.01f, 305.0f, 524.43f, 417.46f, 468.54f, 38.23f) } }

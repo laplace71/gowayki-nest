@@ -47,7 +47,9 @@ import androidx.compose.ui.unit.sp
 import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
 import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
-import com.gowayki.nesh.app.features.home.presentation.screens.WaykiSidebarContent
+import com.gowayki.nesh.app.common.ui.shared.WaykiSidebarContent
+import com.gowayki.nesh.app.common.ui.shared.WaykiReveal
+import com.gowayki.nesh.app.common.ui.shared.WaykiSkeleton
 import com.gowayki.nesh.app.features.map.data.RouteStopsStore
 import com.gowayki.nesh.app.features.map.data.SitRouteStop
 import com.gowayki.nesh.app.features.map.domain.model.ArequipaRoutes
@@ -65,6 +67,15 @@ import compose.icons.feathericons.MapPin
 import compose.icons.feathericons.Menu
 import compose.icons.feathericons.Navigation
 import kotlinx.coroutines.launch
+
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 
 /**
  * Colores de la paleta de la app para distinguir el sentido del recorrido
@@ -94,9 +105,11 @@ fun RouteDetailScreen(
 
     val selectedRoute by SelectedRouteHolder.selected.collectAsState()
     var idaStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
+    var loadingStops by remember { mutableStateOf(true) }
     var returnStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
 
     LaunchedEffect(selectedRoute?.id, selectedRoute?.routeId, selectedRoute?.returnRouteId) {
+        loadingStops = true
         var effective = selectedRoute
         var ida = effective?.routeId?.let { RouteStopsStore.stopsFor(it) }.orEmpty()
 
@@ -116,6 +129,7 @@ fun RouteDetailScreen(
 
         idaStops = ida
         returnStops = effective?.returnRouteId?.let { RouteStopsStore.stopsFor(it) }.orEmpty()
+        loadingStops = false
     }
 
     val sharedDirection = SelectedRouteHolder.direction.collectAsState()
@@ -125,6 +139,7 @@ fun RouteDetailScreen(
     val isIda = direction == RouteDirection.IDA || !hasReturn
     val directionColor = if (isIda) IdaColor else VueltaColor
     val stops = if (!isIda) returnStops else idaStops
+    val sections = remember(stops) { buildStopSections(stops) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -235,130 +250,77 @@ fun RouteDetailScreen(
                 }
 
                 // ── Contenido desplazable ─────────────────────────────────
-                Column(
+                // LazyColumn: una ruta puede tener hasta 219 paraderos. Con
+                // Column + verticalScroll se componían y medían TODOS de golpe
+                // (más una sombra y un `IntrinsicSize.Min` por fila), y ese
+                // trabajo en el primer frame era el tirón al entrar.
+                // Ahora solo se componen las filas visibles y se animan escalonadamente.
+                LazyColumn(
                     modifier = Modifier
                         .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = AppSpacing.pageHorizontal)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(
+                        start = AppSpacing.pageHorizontal,
+                        end = AppSpacing.pageHorizontal,
+                        bottom = 130.dp
+                    )
                 ) {
-                    // Ficha de la ruta
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .shadow(10.dp, RoundedCornerShape(26.dp), spotColor = AppColors.ink.copy(alpha = 0.14f))
-                            .clip(RoundedCornerShape(26.dp))
-                            .background(AppColors.cream)
-                            .border(1.dp, AppColors.outline.copy(alpha = 0.22f), RoundedCornerShape(26.dp))
-                            .padding(AppSpacing.lg)
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.md)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(AppSpacing.md)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(directionColor.copy(alpha = 0.16f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = FeatherIcons.MapPin,
-                                        contentDescription = null,
-                                        tint = directionColor,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = selectedRoute?.name ?: "Selecciona una ruta",
-                                        style = AppTextStyles.waykiLabelMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp
-                                        ),
-                                        color = AppColors.ink,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = selectedRoute?.operator ?: "Sistema Integrado de Transporte",
-                                        style = AppTextStyles.waykiMini.copy(fontSize = 12.sp),
-                                        color = AppColors.slate
-                                    )
-                                }
+                    item(key = "ficha") {
+                        // Ficha de la ruta
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(10.dp, RoundedCornerShape(26.dp), spotColor = AppColors.ink.copy(alpha = 0.14f))
+                                .clip(RoundedCornerShape(26.dp))
+                                .background(AppColors.cream)
+                                .border(1.dp, AppColors.outline.copy(alpha = 0.22f), RoundedCornerShape(26.dp))
+                                .padding(AppSpacing.lg)
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.md)) {
+                                Text(
+                                    text = selectedRoute?.name ?: "Selecciona una ruta",
+                                    style = AppTextStyles.waykiTitle.copy(fontSize = 24.sp),
+                                    color = directionColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = selectedRoute?.routeId ?: "Ruta sin nombre",
+                                    style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
+                                    color = AppColors.slate
+                                )
                             }
+                        }
+                    }
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                MetaChip(text = "${stops.size} paraderos", tint = AppColors.slate)
-                                if (hasReturn) {
-                                    MetaChip(
-                                        text = if (isIda) "Ida" else "Vuelta",
-                                        tint = directionColor
-                                    )
-                                }
-                            }
-
-                            // Selector de sentido (solo si hay retorno cargado)
-                            if (hasReturn) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    DirectionTab(
-                                        text = "IDA",
-                                        tint = IdaColor,
-                                        selected = isIda,
-                                        modifier = Modifier.weight(1f),
-                                        onClick = {
-                                            direction = RouteDirection.IDA
-                                            SelectedRouteHolder.setDirection(RouteDirection.IDA)
-                                        }
-                                    )
-                                    DirectionTab(
-                                        text = "VUELTA",
-                                        tint = VueltaColor,
-                                        selected = !isIda,
-                                        modifier = Modifier.weight(1f),
-                                        onClick = {
-                                            direction = RouteDirection.RETORNO
-                                            SelectedRouteHolder.setDirection(RouteDirection.RETORNO)
-                                        }
-                                    )
-                                }
-                            }
-
-                            if (selectedRoute != null) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(AppColors.primary)
-                                        .clickable(onClick = onMapaClick)
-                                        .padding(vertical = 14.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = FeatherIcons.Navigation,
-                                            contentDescription = null,
-                                            tint = AppColors.onPrimary,
-                                            modifier = Modifier.size(17.dp)
+                    // Secciones de paraderos por distrito
+                    when {
+                        loadingStops -> items(4) { SkeletonStopRow() }
+                        stops.isEmpty() -> item(key = "vacio") { EmptyStopsCard() }
+                        else -> {
+                            sections.forEach { section ->
+                                val district = section.district
+                                if (district != null) {
+                                    item(key = "zona-${section.startIndex}") {
+                                        StopSectionHeader(
+                                            title = district.districtDisplayName(),
+                                            count = section.stops.size,
+                                            accent = directionColor
                                         )
-                                        Text(
-                                            text = "Ver en el mapa",
-                                            style = AppTextStyles.waykiLabelMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp
-                                            ),
-                                            color = AppColors.onPrimary
+                                    }
+                                }
+                                itemsIndexed(
+                                    items = section.stops,
+                                    key = { i, stop -> "${stop.id}-${section.startIndex + i}" }
+                                ) { i, stop ->
+                                    val index = section.startIndex + i
+                                    StopEntrance(index) {
+                                        TimelineStop(
+                                            stop = stop,
+                                            number = index + 1,
+                                            isFirst = index == 0,
+                                            isLast = index == stops.lastIndex,
+                                            accent = directionColor
                                         )
                                     }
                                 }
@@ -366,72 +328,12 @@ fun RouteDetailScreen(
                         }
                     }
 
-                    Spacer(Modifier.height(AppSpacing.xl))
-
-                    // ── Lista de paraderos en orden ───────────────────────
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "PARADEROS",
-                            style = AppTextStyles.waykiMini.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
-                            ),
-                            color = AppColors.slate
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .background(directionColor, CircleShape)
-                            )
-                            Text(
-                                text = if (isIda) "Recorrido de ida" else "Recorrido de vuelta",
-                                style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
-                                color = AppColors.slate
-                            )
-                        }
+                    item(key = "pie") {
+                        Spacer(Modifier.height(AppSpacing.xl))
                     }
-
-                    Spacer(Modifier.height(AppSpacing.md))
-
-                    if (stops.isEmpty()) {
-                        EmptyStopsCard()
-                    } else {
-                        stops.forEachIndexed { index, stop ->
-                            TimelineStop(
-                                stop = stop,
-                                number = index + 1,
-                                isFirst = index == 0,
-                                isLast = index == stops.lastIndex,
-                                accent = directionColor
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(AppSpacing.xl))
-
-                    Text(
-                        text = if (stops.isEmpty()) {
-                            "No hay paraderos registrados para esta ruta."
-                        } else {
-                            "Paraderos ordenados según el recorrido oficial de la ruta."
-                        },
-                        style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
-                        color = AppColors.slate,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 130.dp),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
                 }
-            }
+
+                }
 
             // Barra de navegación inferior
             WaykiBottomNav(
@@ -440,8 +342,8 @@ fun RouteDetailScreen(
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
+        }
     }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -466,6 +368,107 @@ private fun CircleIconButton(
             tint = AppColors.ink,
             modifier = Modifier.size(19.dp)
         )
+    }
+}
+
+@Composable
+private fun StopSectionHeader(title: String, count: Int, accent: Color) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .background(accent, CircleShape)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = title,
+            style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp),
+            color = AppColors.ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = if (count == 1) "1 paradero" else "$count paraderos",
+            style = AppTextStyles.waykiMini.copy(fontSize = 10.sp),
+            color = AppColors.slate
+        )
+    }
+}
+
+@Composable
+private fun StopEntrance(index: Int, content: @Composable () -> Unit) {
+    content()
+}
+
+@Composable
+private fun SkeletonStopRow() {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        WaykiSkeleton(Modifier.size(26.dp), shape = CircleShape)
+        Spacer(Modifier.width(12.dp))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(bottom = 10.dp)
+        ) {
+            WaykiSkeleton(Modifier.fillMaxWidth(0.5f).height(14.dp))
+            Spacer(Modifier.height(8.dp))
+            WaykiSkeleton(Modifier.fillMaxWidth(0.28f).height(10.dp))
+            Spacer(Modifier.height(10.dp))
+            WaykiSkeleton(
+                Modifier.fillMaxWidth().height(76.dp),
+                shape = RoundedCornerShape(20.dp)
+            )
+        }
+    }
+}
+
+private data class StopSection(
+    val district: String?,
+    val startIndex: Int,
+    val stops: List<SitRouteStop>
+)
+
+/**
+ * Agrupa los paraderos por distrito conservando el orden oficial del recorrido.
+ * Si la ruta no trae distritos (24 % de los datos), devuelve una sola sección
+ * sin encabezado para no inventar zonas.
+ */
+private fun buildStopSections(stops: List<SitRouteStop>): List<StopSection> {
+    if (stops.isEmpty()) return emptyList()
+    val hasDistrict = stops.any { !it.district.isNullOrBlank() }
+    if (!hasDistrict) return listOf(StopSection(null, 0, stops))
+
+    val sections = mutableListOf<StopSection>()
+    var start = 0
+    var current: String? = null
+    var bucket = mutableListOf<SitRouteStop>()
+
+    fun flush() {
+        if (bucket.isEmpty()) return
+        sections += StopSection(current, start, bucket)
+        start += bucket.size
+        bucket = mutableListOf()
+    }
+
+    stops.forEach { stop ->
+        val district = stop.district?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }
+        if (district != null && district != current && bucket.isNotEmpty()) flush()
+        if (district != null) current = district
+        bucket += stop
+    }
+    flush()
+    return sections
+}
+
+private fun String.districtDisplayName(): String {
+    return lowercase().split(" ").joinToString(" ") { word ->
+        word.replaceFirstChar { it.uppercaseChar() }
     }
 }
 
@@ -525,8 +528,8 @@ private fun DirectionTab(
 }
 
 /**
- * Paradero en formato línea de tiempo: riel vertical + nodo numerado + tarjeta.
- * El primer y último paradero se resaltan como inicio / fin del recorrido.
+ * Paradero en formato línea de tiempo: riel + nodo + tarjeta.
+ * Optimizado para scroll rápido: sin shadow por fila, sin IntrinsicSize.Min.
  */
 @Composable
 private fun TimelineStop(
@@ -537,32 +540,36 @@ private fun TimelineStop(
     accent: Color,
 ) {
     val isTerminal = isFirst || isLast
+    val cardShape = RoundedCornerShape(20.dp)
+    val district = stop.district?.takeIf { it.isNotBlank() }
+    val coords = remember(stop.latitude, stop.longitude) {
+        "${formatCoord(stop.latitude)}, ${formatCoord(stop.longitude)}"
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min)
+            .drawBehind {
+                val x = 21.dp.toPx()
+                val lineColor = accent.copy(alpha = 0.26f)
+                val top = if (isFirst) 14.dp.toPx() + 15.dp.toPx() else 0f
+                val bottom = if (isLast) 14.dp.toPx() + 15.dp.toPx() else size.height
+                if (bottom > top) {
+                    drawLine(lineColor, Offset(x, top), Offset(x, bottom), strokeWidth = 2.dp.toPx())
+                }
+            }
+            .padding(bottom = 2.dp)
     ) {
         // Riel y nodo
         Box(
-            modifier = Modifier
-                .width(42.dp)
-                .fillMaxHeight()
+            modifier = Modifier.width(42.dp),
+            contentAlignment = Alignment.TopCenter
         ) {
-            if (!isLast) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .width(2.dp)
-                        .fillMaxHeight()
-                        .background(accent.copy(alpha = 0.3f))
-                )
-            }
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
+                    .padding(top = 14.dp)
                     .size(if (isTerminal) 30.dp else 26.dp)
                     .clip(CircleShape)
-                    .background(if (isTerminal) accent else AppColors.surface)
+                    .background(if (isTerminal) accent else AppColors.cream)
                     .border(2.dp, accent, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
@@ -577,87 +584,87 @@ private fun TimelineStop(
             }
         }
 
-        // Tarjeta del paradero
-        Box(
+        // Tarjeta del paradero (sin shadow para scroll fluido)
+        Column(
             modifier = Modifier
                 .weight(1f)
                 .padding(start = 10.dp, bottom = 10.dp)
-                .shadow(6.dp, RoundedCornerShape(20.dp), spotColor = AppColors.ink.copy(alpha = 0.1f))
-                .clip(RoundedCornerShape(20.dp))
-                .background(AppColors.surface)
+                .clip(cardShape)
+                .background(AppColors.cream)
                 .border(
                     1.dp,
-                    if (isTerminal) accent.copy(alpha = 0.4f) else AppColors.outline.copy(alpha = 0.25f),
-                    RoundedCornerShape(20.dp)
+                    if (isTerminal) accent.copy(alpha = 0.38f) else AppColors.outline.copy(alpha = 0.2f),
+                    cardShape
                 )
-                .padding(horizontal = 14.dp, vertical = 12.dp)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stop.name,
-                            style = AppTextStyles.waykiLabelMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            ),
-                            color = AppColors.ink,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        if (!stop.district.isNullOrBlank()) {
-                            Text(
-                                text = stop.district,
-                                style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
-                                color = AppColors.slate
-                            )
-                        }
-                    }
-                    if (isTerminal) {
-                        Text(
-                            text = if (isFirst) "INICIO" else "FIN",
-                            style = AppTextStyles.waykiMini.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 9.sp
-                            ),
-                            color = accent,
-                            modifier = Modifier
-                                .background(accent.copy(alpha = 0.12f), RoundedCornerShape(50))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(AppColors.surfaceVariant.copy(alpha = 0.55f))
-                        .padding(horizontal = 10.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = FeatherIcons.GitCommit,
-                        contentDescription = null,
-                        tint = AppColors.slate,
-                        modifier = Modifier.size(13.dp)
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "${formatCoord(stop.latitude)}, ${formatCoord(stop.longitude)}",
-                        style = AppTextStyles.waykiMini.copy(fontSize = 10.sp),
-                        color = AppColors.slate,
-                        maxLines = 1,
+                        text = stop.name,
+                        style = AppTextStyles.waykiLabelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        ),
+                        color = AppColors.ink,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(Modifier.weight(1f))
-                    Icon(
-                        imageVector = if (isTerminal) FeatherIcons.Clock else FeatherIcons.MapPin,
-                        contentDescription = null,
-                        tint = accent.copy(alpha = 0.8f),
-                        modifier = Modifier.size(13.dp)
+                    if (district != null) {
+                        Text(
+                            text = district,
+                            style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
+                            color = AppColors.slate,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                if (isTerminal) {
+                    Text(
+                        text = if (isFirst) "INICIO" else "FIN",
+                        style = AppTextStyles.waykiMini.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp
+                        ),
+                        color = accent,
+                        modifier = Modifier
+                            .background(accent.copy(alpha = 0.12f), RoundedCornerShape(50))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(AppColors.surfaceVariant.copy(alpha = 0.45f))
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = FeatherIcons.GitCommit,
+                    contentDescription = null,
+                    tint = AppColors.slate,
+                    modifier = Modifier.size(13.dp)
+                )
+                Text(
+                    text = coords,
+                    style = AppTextStyles.waykiMini.copy(fontSize = 10.sp),
+                    color = AppColors.slate,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    imageVector = if (isTerminal) FeatherIcons.Clock else FeatherIcons.MapPin,
+                    contentDescription = null,
+                    tint = accent.copy(alpha = 0.8f),
+                    modifier = Modifier.size(13.dp)
+                )
             }
         }
     }

@@ -164,9 +164,6 @@ actual fun RouteMap(
     // Se pasan los puntos actuales explícitamente para evitar closures stale.
     LaunchedEffect(matched, returnMatched, navigating) {
         if (!navigating) fitRouteToScreen(matched, returnMatched)
-    }
-    // Notifica al padre los puntos emparejados (suavizados) para navegación/instrucciones.
-    LaunchedEffect(matched, returnMatched) {
         onMatchedPointsChanged(matched, returnMatched)
     }
 
@@ -414,24 +411,16 @@ actual fun RouteMap(
             }
         }
 
-        // Actualiza trazado de IDA
-        MapEffect(matched) { _ ->
+        // Actualiza todo lo relacionado con la ruta y paraderos en un solo MapEffect
+        // para reducir el número de actualizaciones de estilo
+        MapEffect(matched, returnMatched, stops) { _ ->
             liveSrc[0]?.featureCollection(FeatureCollection.fromFeatures(lineFeatures(matched)))
-            liveTerminalsSrc[0]?.featureCollection(FeatureCollection.fromFeatures(terminalFeatures(matched, returnMatched)))
-        }
-
-        // Actualiza trazado de RETORNO
-        MapEffect(returnMatched) { _ ->
             liveReturnSrc[0]?.featureCollection(FeatureCollection.fromFeatures(lineFeatures(returnMatched)))
+            liveStopsSrc[0]?.featureCollection(FeatureCollection.fromFeatures(stopFeatures(stops)))
             liveTerminalsSrc[0]?.featureCollection(FeatureCollection.fromFeatures(terminalFeatures(matched, returnMatched)))
         }
 
-        // Actualiza los paraderos intermedios
-        MapEffect(stops) { _ ->
-            liveStopsSrc[0]?.featureCollection(FeatureCollection.fromFeatures(stopFeatures(stops)))
-        }
-
-        // Actualiza la posición real del usuario
+        // Actualiza la posición real del usuario (separado porque cambia más frecuentemente)
         MapEffect(userLocation, navigating) { _ ->
             val meSrc = liveMeSrc[0] ?: return@MapEffect
             val features = if (userLocation != null) {

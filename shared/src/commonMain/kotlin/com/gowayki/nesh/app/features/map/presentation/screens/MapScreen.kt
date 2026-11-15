@@ -36,11 +36,13 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -103,34 +105,26 @@ fun MapScreen(
 
     val sharedDirection = SelectedRouteHolder.direction.collectAsState()
     var selectedDirection by remember(route?.id) { mutableStateOf(sharedDirection.value) }
-    
+
     // Estado de carga: true hasta que la geometría esté lista o se confirme que no hay geometría
     var isLoadingGeometry by remember(route?.id) { mutableStateOf(true) }
-    
-    var idaPoints by remember(route?.id) {
-        mutableStateOf(
-            // Usa el cache si corresponde a la ruta actual; si no, empieza vacío
-            // y el LaunchedEffect cargará la geometría real.
-            SelectedRouteHolder.cachedIdaPoints(route?.id)
-        )
-    }
-    var returnPoints by remember(route?.id) {
-        mutableStateOf(
-            SelectedRouteHolder.cachedReturnPoints(route?.id)
-        )
-    }
-    // Trazado suavizado (Mapbox Directions) para navegación e instrucciones de giro.
-    var matchedIdaPoints by remember(route?.id) {
-        mutableStateOf(route?.waypoints ?: emptyList())
-    }
-    var matchedReturnPoints by remember(route?.id) {
-        mutableStateOf<List<Pair<Double, Double>>>(emptyList())
-    }
-    var idaStopList by remember(route?.id) {
-        mutableStateOf<List<SitRouteStop>>(emptyList())
-    }
-    var returnStopList by remember(route?.id) {
-        mutableStateOf<List<SitRouteStop>>(emptyList())
+
+    // Cache de geometría - usar data class para reducir recomposiciones
+    data class RouteGeometry(
+        val idaPoints: List<Pair<Double, Double>> = emptyList(),
+        val returnPoints: List<Pair<Double, Double>> = emptyList(),
+        val matchedIdaPoints: List<Pair<Double, Double>> = emptyList(),
+        val matchedReturnPoints: List<Pair<Double, Double>> = emptyList(),
+        val idaStopList: List<SitRouteStop> = emptyList(),
+        val returnStopList: List<SitRouteStop> = emptyList()
+    )
+
+    var geometry by remember(route?.id) {
+        mutableStateOf(RouteGeometry(
+            idaPoints = SelectedRouteHolder.cachedIdaPoints(route?.id),
+            returnPoints = SelectedRouteHolder.cachedReturnPoints(route?.id),
+            matchedIdaPoints = route?.waypoints ?: emptyList()
+        ))
     }
 
     // Colores fijos por sentido: IDA azul brillante, VUELTA rosada.
@@ -140,69 +134,81 @@ fun MapScreen(
     // Carga los trazados reales empaquetados (Ida y Retorno) y los paraderos de la ruta.
     LaunchedEffect(route?.id, route?.routeId, route?.returnRouteId) {
         // Si hay cache, no mostrar loader
-        val hasCache = idaPoints.isNotEmpty() || returnPoints.isNotEmpty()
+        val hasCache = geometry.idaPoints.isNotEmpty() || geometry.returnPoints.isNotEmpty()
         if (hasCache) {
             isLoadingGeometry = false
         }
-        
-        val id = route?.routeId
-        if (id != null) {
-            val geometry = RouteGeometryStore.geometryFor(id)
-            if (!geometry.isNullOrEmpty()) {
-                idaPoints = geometry
-                matchedIdaPoints = geometry
-            }
-            // Si no hay geometría en el store, idaPoints queda como fue inicializado
-            // (vacío para ruta nueva, cacheado para ruta conocida).
 
+        val id = route?.routeId
+        var newGeometry = geometry
+
+        if (id != null) {
+            val geom = RouteGeometryStore.geometryFor(id)
+            if (!geom.isNullOrEmpty()) {
+                newGeometry = newGeometry.copy(
+                    idaPoints = geom,
+                    matchedIdaPoints = geom
+                )
+            }
             val loadedStops = RouteStopsStore.stopsFor(id)
             if (loadedStops.isNotEmpty()) {
-                idaStopList = loadedStops
+                newGeometry = newGeometry.copy(idaStopList = loadedStops)
             }
         } else {
-            idaPoints = route?.waypoints ?: emptyList()
-            idaStopList = emptyList()
+            newGeometry = newGeometry.copy(
+                idaPoints = route?.waypoints ?: emptyList(),
+                idaStopList = emptyList()
+            )
         }
 
         val retId = route?.returnRouteId
         if (retId != null) {
             val retGeom = RouteGeometryStore.geometryFor(retId)
             if (!retGeom.isNullOrEmpty()) {
-                returnPoints = retGeom
-                matchedReturnPoints = retGeom
+                newGeometry = newGeometry.copy(
+                    returnPoints = retGeom,
+                    matchedReturnPoints = retGeom
+                )
             }
 
             val loadedReturnStops = RouteStopsStore.stopsFor(retId)
             if (loadedReturnStops.isNotEmpty()) {
-                returnStopList = loadedReturnStops
+                newGeometry = newGeometry.copy(returnStopList = loadedReturnStops)
             }
         } else {
-            returnPoints = emptyList()
-            returnStopList = emptyList()
+            newGeometry = newGeometry.copy(
+                returnPoints = emptyList(),
+                returnStopList = emptyList()
+            )
         }
+
+        geometry = newGeometry
 
         // Persiste en cache identificado por route?.id para que la próxima visita
         // a la misma ruta muestre la geometría al instante.
-        SelectedRouteHolder.cacheGeometry(route?.id, idaPoints, returnPoints)
-        
+        SelectedRouteHolder.cacheGeometry(route?.id, newGeometry.idaPoints, newGeometry.returnPoints)
+
         // Terminar carga - la geometría ya está lista (o confirmada como no disponible)
         isLoadingGeometry = false
     }
 
     // Trazado activo para navegación según el sentido seleccionado (Ida o Retorno)
-    val activePoints = remember(selectedDirection, matchedIdaPoints, matchedReturnPoints) {
-        if (selectedDirection == RouteDirection.RETORNO && matchedReturnPoints.isNotEmpty()) {
-            matchedReturnPoints
+    // Usar derivedStateOf para evitar recomposiciones innecesarias
+    val activePoints = derivedStateOf {
+        if (selectedDirection == RouteDirection.RETORNO && geometry.matchedReturnPoints.isNotEmpty()) {
+            geometry.matchedReturnPoints
         } else {
-            matchedIdaPoints
+            geometry.matchedIdaPoints
         }
     }
-    val activeStops = remember(selectedDirection, idaStopList, returnStopList) {
-        val list = if (selectedDirection == RouteDirection.RETORNO && returnStopList.isNotEmpty()) returnStopList else idaStopList
+    val activeStops = derivedStateOf {
+        val list = if (selectedDirection == RouteDirection.RETORNO && geometry.returnStopList.isNotEmpty())
+            geometry.returnStopList else geometry.idaStopList
         list.map { Pair(it.latitude, it.longitude) }
     }
-    val activeStopNames = remember(selectedDirection, idaStopList, returnStopList) {
-        val list = if (selectedDirection == RouteDirection.RETORNO && returnStopList.isNotEmpty()) returnStopList else idaStopList
+    val activeStopNames = derivedStateOf {
+        val list = if (selectedDirection == RouteDirection.RETORNO && geometry.returnStopList.isNotEmpty())
+            geometry.returnStopList else geometry.idaStopList
         list.map { it.name }
     }
 
@@ -221,7 +227,7 @@ fun MapScreen(
     }
 
     // ── Navegación (estilo inDrive y Gowayki GO) ───────────────────────────
-    val navigationPath = remember(activePoints) { NavigationPath.build(activePoints) }
+    val navigationPath = remember(activePoints) { NavigationPath.build(activePoints.value) }
     val locationSource = remember { createDeviceLocationSource() }
 
     var navigating by remember { mutableStateOf(false) }
@@ -320,18 +326,8 @@ fun MapScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier.padding(horizontal = 32.dp)
                     ) {
-                        androidx.compose.material3.CircularProgressIndicator(
-                            color = AppColors.primary,
-                            modifier = Modifier.size(48.dp),
-                            strokeWidth = 4.dp
-                        )
-                        Text(
-                            text = "Cargando trazado de ruta",
-                            style = AppTextStyles.waykiLabelMedium.copy(
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = AppColors.ink
+                        com.gowayki.nesh.app.common.ui.shared.WaykiBrandLoader(
+                            message = "Cargando trazado…"
                         )
                         Text(
                             text = route?.name ?: "Ruta seleccionada",
@@ -343,7 +339,13 @@ fun MapScreen(
             } else {
                 // Contenido del mapa - solo se muestra cuando la geometría está lista
             var mapReady by remember { mutableStateOf(false) }
-            LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); mapReady = true }
+            // Espera a que el mapa tenga al menos un frame medido antes de
+            // fundirlo; así no hay parpadeo y no hay espera artificial.
+            LaunchedEffect(Unit) {
+                withFrameNanos { }
+                withFrameNanos { }
+                mapReady = true
+            }
             val mapAlpha by androidx.compose.animation.core.animateFloatAsState(
                 targetValue = if (mapReady) 1f else 0f,
                 animationSpec = androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.FastOutSlowInEasing),
@@ -356,20 +358,22 @@ fun MapScreen(
             )
             RouteMap(
                 modifier = Modifier.fillMaxSize().graphicsLayer { alpha = mapAlpha },
-                routePoints = idaPoints,
-                returnRoutePoints = returnPoints,
+                routePoints = geometry.idaPoints,
+                returnRoutePoints = geometry.returnPoints,
                 userLocation = userLocation,
                 navigating = navigating,
                 cameraBearingDeg = navInstruction?.bearingDeg,
                 centerOnUserTrigger = centerOnUserTrigger,
                 routeColorHex = routeColorHex,
                 returnRouteColorHex = returnRouteColorHex,
-                stops = activeStops,
-                stopNames = activeStopNames,
+                stops = activeStops.value,
+                stopNames = activeStopNames.value,
                 onStopClick = { idx -> tappedStopIndex = idx },
                 onMatchedPointsChanged = { ida, ret ->
-                    if (ida.isNotEmpty()) matchedIdaPoints = ida
-                    if (ret.isNotEmpty()) matchedReturnPoints = ret
+                    geometry = geometry.copy(
+                        matchedIdaPoints = if (ida.isNotEmpty()) ida else geometry.matchedIdaPoints,
+                        matchedReturnPoints = if (ret.isNotEmpty()) ret else geometry.matchedReturnPoints
+                    )
                 },
             )
 
@@ -386,15 +390,8 @@ fun MapScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        androidx.compose.material3.CircularProgressIndicator(
-                            color = AppColors.primary,
-                            modifier = Modifier.size(36.dp),
-                            strokeWidth = 3.dp
-                        )
-                        Text(
-                            text = "Cargando mapa...",
-                            style = AppTextStyles.waykiMini.copy(fontSize = 13.sp),
-                            color = AppColors.slate
+                        com.gowayki.nesh.app.common.ui.shared.WaykiBrandLoader(
+                            message = "Cargando mapa…"
                         )
                     }
                 }
@@ -537,7 +534,7 @@ fun MapScreen(
                                         }
                                     }
                                 } else {
-                                    val start = activePoints.firstOrNull()
+                                    val start = activePoints.value.firstOrNull()
                                     if (start == null) {
                                         com.gowayki.nesh.app.common.ui.shared.ToastManager.show("Selecciona una ruta")
                                     } else {
@@ -580,7 +577,7 @@ fun MapScreen(
                     }
 
                     // Ficha del paradero tocado en el mapa (nombre + orden)
-                    val tapped = tappedStopIndex?.takeIf { it in activeStopNames.indices }
+                    val tapped = tappedStopIndex?.takeIf { it in activeStopNames.value.indices }
                     AnimatedVisibility(
                         visible = tapped != null,
                         enter = fadeIn() + expandVertically(),
@@ -612,14 +609,14 @@ fun MapScreen(
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                 Text(
-                                    text = tapped?.let { activeStopNames.getOrNull(it) } ?: "",
+                                    text = tapped?.let { activeStopNames.value.getOrNull(it) } ?: "",
                                     style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp),
                                     color = AppColors.ink,
                                     maxLines = 1,
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "Paradero ${(tapped ?: 0) + 1} de ${activeStopNames.size} · " +
+                                    text = "Paradero ${(tapped ?: 0) + 1} de ${activeStopNames.value.size} · " +
                                         if (selectedDirection == RouteDirection.IDA) "IDA" else "VUELTA",
                                     style = AppTextStyles.waykiMini.copy(fontSize = 10.sp),
                                     color = AppColors.slate
@@ -646,8 +643,8 @@ fun MapScreen(
                         }
                         val sameRouteOthers = others.filter { !it.isSelf && it.routeId == route.id }
                         val loc = userLocation
-                        val userProgress = if (loc != null && activePoints.size >= 2) {
-                            projectProgressMeters(activePoints, loc.lat, loc.lon)
+                        val userProgress = if (loc != null && activePoints.value.size >= 2) {
+                            projectProgressMeters(activePoints.value, loc.lat, loc.lon)
                         } else 0.0
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -673,7 +670,7 @@ fun MapScreen(
                                 MiniChip("Sin otros conductores")
                             } else {
                                 sameRouteOthers.forEach { driver ->
-                                    val otherProgress = projectProgressMeters(activePoints, driver.lat, driver.lon)
+                                    val otherProgress = projectProgressMeters(activePoints.value, driver.lat, driver.lon)
                                     val ahead = otherProgress > userProgress
                                     val diffMeters = kotlin.math.abs(otherProgress - userProgress)
                                     val minutes = (diffMeters / 500.0).toInt().coerceAtLeast(1)
@@ -732,7 +729,7 @@ fun MapScreen(
                         route != null -> {
                             if (!enteredRoute) {
                                 val locNow = userLocation
-                                val startPoint = activePoints.firstOrNull()
+                                val startPoint = activePoints.value.firstOrNull()
                                 val distToStart = if (locNow != null && startPoint != null) {
                                     haversineMeters(locNow.lat, locNow.lon, startPoint.first, startPoint.second)
                                 } else null
@@ -758,7 +755,7 @@ fun MapScreen(
                                             )
                                         }
                                         Text(
-                                            text = "${activeStops.size} paraderos",
+                                            text = "${activeStops.value.size} paraderos",
                                             style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
                                             color = AppColors.ink,
                                             modifier = Modifier
@@ -780,7 +777,7 @@ fun MapScreen(
                                                 SelectedRouteHolder.setDirection(RouteDirection.IDA)
                                             }
                                         )
-                                        if (returnPoints.isNotEmpty() || route.returnRouteId != null) {
+                                        if (geometry.returnPoints.isNotEmpty() || route.returnRouteId != null) {
                                             DirectionPill(
                                                 text = "VUELTA",
                                                 tint = Color(0xFFE91E63),
@@ -813,7 +810,7 @@ fun MapScreen(
                                                 .clickable(enabled = !waitingForGps) {
                                                     centerOnUserTrigger++
                                                     val currentLoc = userLocation
-                                                    val startPoint = activePoints.firstOrNull()
+                                                    val startPoint = activePoints.value.firstOrNull()
                                                     val startPlace = getStartName()
 
                                                     fun processLocation(loc: UserLocation) {
@@ -897,7 +894,7 @@ fun MapScreen(
                                 }
                             } else {
                                 val loc = userLocation ?: com.gowayki.nesh.app.common.util.lastKnownLocation()?.let { com.gowayki.nesh.app.features.map.domain.model.UserLocation(it.first, it.second, null, null, null) }
-                                val startPoint = activePoints.firstOrNull()
+                                val startPoint = activePoints.value.firstOrNull()
                                 val dist = if (loc != null && startPoint != null) haversineMeters(loc.lat, loc.lon, startPoint.first, startPoint.second) else null
                                 val distStr = dist?.let { formatDistance(it) }
                                 val walkMin = if (dist != null && dist < 4000.0) (dist / 1.3 / 60.0).toInt().coerceAtLeast(1) else null

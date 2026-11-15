@@ -3,7 +3,6 @@ package com.gowayki.nesh.app.features.home.presentation.screens
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -13,13 +12,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,9 +32,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,7 +50,8 @@ import com.gowayki.nesh.core.session.TurnoSession
 import com.gowayki.nesh.core.session.UserSession
 import com.gowayki.nesh.app.features.home.presentation.components.RouteAssignmentDialog
 import com.gowayki.nesh.app.common.ui.shared.WaykiReveal
-import com.gowayki.nesh.app.common.ui.shared.WaykiSkeleton
+import com.gowayki.nesh.app.common.ui.shared.WaykiPerf
+import com.gowayki.nesh.app.common.ui.shared.WaykiSidebarContent
 import com.gowayki.nesh.app.features.map.data.RouteStopsStore
 import com.gowayki.nesh.app.features.map.data.SitRouteStop
 import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
@@ -63,10 +65,6 @@ import compose.icons.feathericons.ArrowLeft
 import compose.icons.feathericons.ArrowRight
 import compose.icons.feathericons.Bell
 import compose.icons.feathericons.Menu
-import compose.icons.feathericons.Home
-import compose.icons.feathericons.Radio
-import compose.icons.feathericons.GitCommit
-import compose.icons.feathericons.Map
 
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.DrawerValue
@@ -74,12 +72,6 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
-import compose.icons.feathericons.X
-import compose.icons.feathericons.Sliders
-import compose.icons.feathericons.HelpCircle
-import compose.icons.feathericons.LogOut
-import compose.icons.feathericons.AlertTriangle
-import compose.icons.feathericons.ChevronRight
 import compose.icons.fontawesomeicons.SolidGroup
 import compose.icons.fontawesomeicons.solid.Bus
 
@@ -98,12 +90,20 @@ fun HomeScreen(
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
-    var isLoading by remember { mutableStateOf(true) }
+    val scrollState = rememberScrollState()
     var showRouteDialog by remember { mutableStateOf(false) }
     val selectedRoute by SelectedRouteHolder.selected.collectAsState()
     val direction by SelectedRouteHolder.direction.collectAsState()
     var routeStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
     var idaStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
+
+    // Parallax effect: usar derivedStateOf para evitar recomposición en cada scroll
+    val parallaxTranslationY by remember {
+        derivedStateOf {
+            if (WaykiPerf.heavyAnimationsEnabled) scrollState.value * 0.12f else 0f
+        }
+    }
+
     androidx.compose.runtime.LaunchedEffect(selectedRoute, direction) {
         val r = selectedRoute
         val routeId = if (direction == com.gowayki.nesh.app.features.map.presentation.RouteDirection.RETORNO) {
@@ -126,56 +126,52 @@ fun HomeScreen(
         }
     }
 
-    // Simulate initial data load
+    // Bienvenida breve + inicialización de turno + avisos de almuerzo
+    // Todo en un solo LaunchedEffect para evitar múltiples corrutinas
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(800) // Brief skeleton flash
-        isLoading = false
+        // 1. Bienvenida
         if (AppSettings.notificationsEnabled.value && AppSettings.isOnRoute.value) {
             ToastManager.show("Ruta 12 a 7 min atrás • Ruta 5 a 3 min adelante")
         }
-    }
 
-    // Turno real del chofer (línea + unidad + placa). Se muestra una sola vez
-    // por sesión la ventana "Tu ruta de hoy" / "Escoge tu ruta".
-    androidx.compose.runtime.LaunchedEffect(Unit) {
+        // 2. Turno real del chofer
         TurnoSession.refresh()
         if (!TurnoSession.promptShown) {
             TurnoSession.promptShown = true
             showRouteDialog = true
         }
-    }
 
-    // Aviso de hora de almuerzo y de fin próximo.
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        var lunchNotified = ""
-        var endNotified = ""
-        fun toMinutes(t: String): Int {
-            val parts = t.split(":")
-            return (parts.getOrNull(0)?.toIntOrNull() ?: 0) * 60 + (parts.getOrNull(1)?.toIntOrNull() ?: 0)
-        }
-        while (true) {
-            val now = currentHourMinute()
-            val nowMin = toMinutes(now)
-            val startMin = toMinutes(AppSettings.lunchTime.value)
-            val endMin = startMin + AppSettings.lunchDurationMinutes.value
-            if (AppSettings.notificationsEnabled.value && AppSettings.lunchEnabled.value) {
-                val startMin = toMinutes(AppSettings.lunchTime.value)
-                val fiveBefore = (startMin - 5 + 1440) % 1440
-                if (nowMin == fiveBefore && now != lunchNotified) {
-                    lunchNotified = now
-                    ToastManager.show("Tu almuerzo empieza en 5 min")
-                }
-                if (now == AppSettings.lunchTime.value && now != lunchNotified) {
-                    lunchNotified = now
-                    ToastManager.show("Hora de almuerzo: ${AppSettings.lunchTime.value}")
-                }
-                // Notificar cuando falten 5 minutos para terminar.
-                if (nowMin in (endMin - 5)..(endMin - 1) && now != endNotified) {
-                    endNotified = now
-                    ToastManager.show("Faltan 5 min para terminar tu almuerzo")
-                }
+        // 3. Avisos de almuerzo - usar una corrutina separada que no cause recomposición
+        coroutineScope.launch {
+            var lunchNotified = ""
+            var endNotified = ""
+            fun toMinutes(t: String): Int {
+                val parts = t.split(":")
+                return (parts.getOrNull(0)?.toIntOrNull() ?: 0) * 60 + (parts.getOrNull(1)?.toIntOrNull() ?: 0)
             }
-            kotlinx.coroutines.delay(30000)
+            while (true) {
+                val now = currentHourMinute()
+                val nowMin = toMinutes(now)
+                val endMin = toMinutes(AppSettings.lunchTime.value) + AppSettings.lunchDurationMinutes.value
+                if (AppSettings.notificationsEnabled.value && AppSettings.lunchEnabled.value) {
+                    val lunchStartMin = toMinutes(AppSettings.lunchTime.value)
+                    val fiveBefore = (lunchStartMin - 5 + 1440) % 1440
+                    if (nowMin == fiveBefore && now != lunchNotified) {
+                        lunchNotified = now
+                        ToastManager.show("Tu almuerzo empieza en 5 min")
+                    }
+                    if (now == AppSettings.lunchTime.value && now != lunchNotified) {
+                        lunchNotified = now
+                        ToastManager.show("Hora de almuerzo: ${AppSettings.lunchTime.value}")
+                    }
+                    // Notificar cuando falten 5 minutos para terminar.
+                    if (nowMin in (endMin - 5)..(endMin - 1) && now != endNotified) {
+                        endNotified = now
+                        ToastManager.show("Faltan 5 min para terminar tu almuerzo")
+                    }
+                }
+                kotlinx.coroutines.delay(30000)
+            }
         }
     }
 
@@ -185,7 +181,10 @@ fun HomeScreen(
             ModalDrawerSheet(
                 drawerShape = AppRadius.modal,
                 drawerContainerColor = AppColors.cream,
-                modifier = Modifier.width(328.dp).fillMaxHeight()
+                modifier = Modifier
+                    .widthIn(max = 328.dp)
+                    .fillMaxWidth(0.88f)
+                    .fillMaxHeight()
             ) {
                 WaykiSidebarContent(
                     selectedTab = 0,
@@ -227,11 +226,17 @@ fun HomeScreen(
             }
         }
     ) {
-        WaykiBackground(withRoads = true, roadsAnimated = true) {
+        WaykiBackground(withRoads = true, roadsAnimated = false) {
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    // En pantallas anchas (tablet, landscape, plegables) el
+                    // contenido no se estira sin límite: se queda centrado con
+                    // un ancho máximo legible. En teléfonos no cambia nada.
+                    .align(Alignment.TopCenter)
+                    .fillMaxHeight()
+                    .widthIn(max = 720.dp)
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState)
             ) {
                 // ── Header azul pastel que se desplaza con el scroll ──
                 WaykiReveal(delayMillis = 0) {
@@ -239,7 +244,16 @@ fun HomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(
-                                color = AppColors.primary,
+                                brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                                    colors = listOf(
+                                        AppColors.primary,
+                                        androidx.compose.ui.graphics.lerp(
+                                            AppColors.primary,
+                                            AppColors.ink,
+                                            0.22f
+                                        )
+                                    )
+                                ),
                                 shape = RoundedCornerShape(
                                     topStart = 0.dp,
                                     topEnd = 0.dp,
@@ -251,7 +265,11 @@ fun HomeScreen(
                             .padding(horizontal = AppSpacing.pageHorizontal)
                             .padding(top = AppSpacing.sm, bottom = 32.dp)
                     ) {
-                        Column {
+                        Column(
+                            modifier = Modifier.graphicsLayer {
+                                translationY = parallaxTranslationY
+                            }
+                        ) {
                         // Barra superior
                         // Sin boton de retroceso: la navegacion (incluido
                         // "cerrar sesion") vive en el menu lateral.
@@ -374,25 +392,16 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Tarjeta principal
-                        if (isLoading) {
-                            WaykiSkeleton(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(300.dp),
-                                color = AppColors.cream.copy(alpha = 0.2f),
-                                shape = AppRadius.card
-                            )
-                        } else {
-                            RouteCard(
-                                route = selectedRoute,
-                                stops = routeStops,
-                                offsetMinutes = if (direction == com.gowayki.nesh.app.features.map.presentation.RouteDirection.RETORNO) routeDurationMinutes(idaStops, selectedRoute) else 0,
-                                isOnRoute = AppSettings.isOnRoute.value,
-                                onClick = onRecorridoClick,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
+                        // Tarjeta principal (visible al instante; la entrada la
+                        // anima WaykiReveal, sin pantallas de carga artificiales).
+                        RouteCard(
+                            route = selectedRoute,
+                            stops = routeStops,
+                            offsetMinutes = if (direction == com.gowayki.nesh.app.features.map.presentation.RouteDirection.RETORNO) routeDurationMinutes(idaStops, selectedRoute) else 0,
+                            isOnRoute = AppSettings.isOnRoute.value,
+                            onClick = onRecorridoClick,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             }
@@ -581,7 +590,7 @@ fun HomeScreen(
     }
 
     RouteAssignmentDialog(
-        visible = showRouteDialog && !isLoading,
+        visible = showRouteDialog,
         onDismiss = { showRouteDialog = false },
         onAssigned = {
             showRouteDialog = false
@@ -991,285 +1000,5 @@ private fun BusCard(
             }
         }
     }
-    }
-}
-
-
-@Composable
-fun WaykiSidebarContent(
-    onClose: () -> Unit,
-    selectedTab: Int = 0,
-    onSosClick: () -> Unit = {},
-    onInicioClick: () -> Unit = {},
-    onCommunicationClick: () -> Unit = {},
-    onRecorridoClick: () -> Unit = {},
-    onMapaClick: () -> Unit = {},
-    onSettingsClick: () -> Unit = {},
-    onSupportClick: () -> Unit = {},
-    onLogoutClick: () -> Unit = {}
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(AppColors.cream)
-            .statusBarsPadding()
-            .padding(24.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
-        // 1. Marca y cierre
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Wayki Nest", 
-                style = AppTextStyles.waykiHeader, 
-                color = AppColors.ink
-            )
-            val closeInteractionSource = remember { MutableInteractionSource() }
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(AppColors.mauve, CircleShape)
-                    .clickable(
-                        interactionSource = closeInteractionSource,
-                        indication = ripple(color = AppColors.ink.copy(alpha = 0.2f)),
-                        onClick = onClose
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = FeatherIcons.X, 
-                    contentDescription = "Cerrar", 
-                    tint = AppColors.ink,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(32.dp))
-        
-        // 2. Conductor
-        Text(
-            text = UserSession.displayName, 
-            style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp), 
-            color = AppColors.ink,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = if (TurnoSession.hasTurno) {
-                "${TurnoSession.lineaNombre} • ${TurnoSession.unidadTexto} • ${TurnoSession.placa ?: "Sin placa"}"
-            } else {
-                "Sin unidad asignada • Arequipa"
-            },
-            style = AppTextStyles.waykiMini,
-            color = AppColors.slate,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        
-        Spacer(modifier = Modifier.height(32.dp))
-        
-        // 3. Menu Principal label
-        Text(
-            text = "Menu Principal", 
-            style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold), 
-            color = AppColors.slate
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // 4. Navegacion Principal
-        DrawerMenuItem(
-            icon = FeatherIcons.Home, 
-            title = "Inicio", 
-            subtitle = "Tu ritmo y próximo control", 
-            isSelected = selectedTab == 0,
-            onClick = onInicioClick
-        )
-        DrawerMenuItem(
-            icon = FeatherIcons.Radio, 
-            title = "Comunicación", 
-            subtitle = if (TurnoSession.hasTurno) "Canal de ${TurnoSession.lineaNombre}" else "Canal de tu línea", 
-            isSelected = selectedTab == 1,
-            onClick = onCommunicationClick
-        )
-        DrawerMenuItem(
-            icon = FeatherIcons.GitCommit, 
-            title = "Recorrido", 
-            subtitle = "Tus recorridos y horarios", 
-            isSelected = selectedTab == 2,
-            onClick = onRecorridoClick
-        )
-        DrawerMenuItem(
-            icon = FeatherIcons.Map, 
-            title = "Mapa", 
-            subtitle = "Informacion de tus rutas", 
-            isSelected = selectedTab == 3,
-            onClick = onMapaClick
-        )
-        
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        // 5. Separador
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(AppColors.slate.copy(alpha = 0.2f)))
-        
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        // 6. Preferencias y ayuda
-        DrawerSimpleItem(icon = FeatherIcons.Sliders, title = "Configuración", onClick = onSettingsClick)
-        DrawerSimpleItem(icon = FeatherIcons.HelpCircle, title = "Soporte técnico", onClick = onSupportClick)
-        DrawerSimpleItem(icon = FeatherIcons.LogOut, title = "Cerrar sesión", onClick = onLogoutClick)
-        
-        Spacer(modifier = Modifier.weight(1f))
-        Spacer(modifier = Modifier.height(32.dp)) // ensure space if small screen
-        
-        // 7. SOS
-        val sosInteractionSource = remember { MutableInteractionSource() }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(AppColors.primary, RoundedCornerShape(16.dp))
-                .clickable(
-                    interactionSource = sosInteractionSource,
-                    indication = ripple(color = AppColors.ink.copy(alpha = 0.2f)),
-                    onClick = onSosClick
-                )
-                .padding(horizontal = 20.dp, vertical = 24.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = FeatherIcons.AlertTriangle, 
-                    contentDescription = "SOS", 
-                    tint = AppColors.cream,
-                    modifier = Modifier.size(28.dp)
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text(
-                        text = "S.O.S", 
-                        style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp), 
-                        color = AppColors.cream
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Informacion de emergencias.", 
-                        style = AppTextStyles.waykiMini, 
-                        color = AppColors.cream.copy(alpha = 0.8f)
-                    )
-                }
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(32.dp))
-        
-        Text(
-            text = "Recorrido en curso • GPS activo", 
-            style = AppTextStyles.waykiMini, 
-            color = AppColors.slate,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        )
-        
-        Spacer(modifier = Modifier.height(24.dp))
-    }
-}
-
-@Composable
-private fun DrawerMenuItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    isSelected: Boolean,
-    onClick: () -> Unit = {}
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val bgColor by animateColorAsState(
-        targetValue = when {
-            isSelected -> AppColors.ink
-            isPressed -> AppColors.mauve.copy(alpha = 0.4f)
-            else -> androidx.compose.ui.graphics.Color.Transparent
-        },
-        animationSpec = tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-        label = "drawerItemBg"
-    )
-    val contentColor = if (isSelected) AppColors.cream else AppColors.ink
-    val subtitleColor = if (isSelected) AppColors.cream.copy(alpha = 0.7f) else AppColors.slate
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(bgColor, RoundedCornerShape(16.dp))
-            .clickable(
-                interactionSource = interactionSource,
-                indication = ripple(color = AppColors.primary.copy(alpha = 0.15f)),
-                onClick = onClick
-            )
-            .padding(horizontal = 16.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = contentColor,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(modifier = Modifier.width(16.dp))
-        Column {
-            Text(
-                text = title,
-                style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
-                color = contentColor
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = subtitle,
-                style = AppTextStyles.waykiMini,
-                color = subtitleColor
-            )
-        }
-    }
-}
-
-@Composable
-private fun DrawerSimpleItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    onClick: () -> Unit = {}
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(
-                interactionSource = interactionSource,
-                indication = ripple(color = AppColors.primary.copy(alpha = 0.15f)),
-                onClick = onClick
-            )
-            .padding(horizontal = 16.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = AppColors.ink,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(modifier = Modifier.width(16.dp))
-        Text(
-            text = title,
-            style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
-            color = AppColors.ink,
-            modifier = Modifier.weight(1f)
-        )
-        Icon(
-            imageVector = FeatherIcons.ChevronRight,
-            contentDescription = null,
-            tint = AppColors.ink,
-            modifier = Modifier.size(20.dp)
-        )
     }
 }

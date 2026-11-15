@@ -58,8 +58,10 @@ import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import com.gowayki.nesh.app.common.ui.shared.WaykiAvatar
 import com.gowayki.nesh.app.common.ui.shared.ToastManager
 import com.gowayki.nesh.app.features.sos.domain.model.createAudioRecorder
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.derivedStateOf
 import com.gowayki.nesh.app.features.communication.domain.model.Message
 import com.gowayki.nesh.app.features.communication.domain.model.MessageKind
 import com.gowayki.nesh.app.features.communication.domain.model.MessageStatus
@@ -110,10 +112,52 @@ fun ChatScreen(
     var confirmClearChat by remember { mutableStateOf(false) }
     BackHandler(true) { if (showInfo) showInfo = false else onBack() }
     val listState = rememberLazyListState()
+    val audioScope = rememberCoroutineScope()
+    val audioPlayer = remember { runCatching { createAudioRecorder() }.getOrNull() }
+    var playingPath by remember { mutableStateOf<String?>(null) }
+    var playerIsPlaying by remember { mutableStateOf(false) }
+    var playerPosition by remember { mutableStateOf(0L) }
+    var playerDuration by remember { mutableStateOf(0L) }
 
-    // Baja al último mensaje cuando llega uno nuevo.
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
+    // Collect audio player state in LaunchedEffect to avoid recomposition on every position update
+    LaunchedEffect(audioPlayer) {
+        if (audioPlayer != null) {
+            audioScope.launch {
+                audioPlayer.isPlaying.collect { playerIsPlaying = it }
+            }
+            audioScope.launch {
+                audioPlayer.playbackPosition.collect { playerPosition = it }
+            }
+            audioScope.launch {
+                audioPlayer.playbackDuration.collect { playerDuration = it }
+            }
+        }
+    }
+
+    LaunchedEffect(playerIsPlaying, playingPath) {
+        if (!playerIsPlaying && playingPath != null) {
+            // Al terminar la reproducción, limpia el estado visual del bubble.
+            // (pequeño retardo para permitir que el player actualice posición final)
+            kotlinx.coroutines.delay(120)
+            if (!playerIsPlaying) playingPath = null
+        }
+    }
+    DisposableEffect(audioPlayer) {
+        onDispose { audioScope.launch { runCatching { audioPlayer?.stopPlayback() } } }
+    }
+
+    // Baja al último mensaje solo si el usuario ya está al final (o si es
+    // la primera carga). Antes cualquier mensaje nuevo arrastraba la lista
+    // y se perdía el punto de lectura del historial.
+    var firstScrollDone by remember { mutableStateOf(false) }
+    LaunchedEffect(messages.lastOrNull()?.id, messages.size) {
+        if (messages.isEmpty()) return@LaunchedEffect
+        val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+        val nearBottom = lastVisible >= messages.lastIndex - 1
+        if (!firstScrollDone) {
+            listState.scrollToItem(messages.lastIndex)
+            firstScrollDone = true
+        } else if (nearBottom) {
             listState.animateScrollToItem(messages.lastIndex)
         }
     }
@@ -207,17 +251,28 @@ fun ChatScreen(
             contentPadding = PaddingValues(horizontal = AppSpacing.pageHorizontal, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            itemsIndexed(messages) { index, message ->
+            itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
                 // Agrupa mensajes seguidos del mismo emisor (solo en grupos).
                 val previous = messages.getOrNull(index - 1)
                 val showSender = isGroup && previous?.senderId != message.senderId
+                val animatePop = index >= (messages.size - 10).coerceAtLeast(0)
 
-                MessageBubble(
-                    message = message,
-                    showSender = showSender,
-                    showAvatar = !message.isMine && showSender,
-                    onLongPress = { longPressedMessage = message }
-                )
+                Box(if (animatePop) Modifier.animateItem() else Modifier) {
+                    MessageBubble(
+                        message = message,
+                        showSender = showSender,
+                        showAvatar = !message.isMine && showSender,
+                        animatePop = animatePop,
+                        onLongPress = { longPressedMessage = message },
+                        audioPlayer = audioPlayer,
+                        playingPath = playingPath,
+                        onPlayingPathChange = { playingPath = it },
+                        playerIsPlaying = playerIsPlaying,
+                        // Solo pasar posición/duración si este mensaje es el que se está reproduciendo
+                        playerPosition = if (playingPath == message.audioFilePath.orEmpty() && playerIsPlaying) playerPosition else 0L,
+                        playerDuration = if (playingPath == message.audioFilePath.orEmpty() && playerIsPlaying) playerDuration else 0L,
+                    )
+                }
             }
         }
 
@@ -515,17 +570,26 @@ private fun MessageBubble(
     message: Message,
     showSender: Boolean,
     showAvatar: Boolean,
-    onLongPress: () -> Unit = {}
+    animatePop: Boolean = true,
+    onLongPress: () -> Unit = {},
+    audioPlayer: com.gowayki.nesh.app.features.sos.domain.model.AudioRecorder? = null,
+    playingPath: String? = null,
+    onPlayingPathChange: (String?) -> Unit = {},
+    playerIsPlaying: Boolean = false,
+    playerPosition: Long = 0L,
+    playerDuration: Long = 0L,
 ) {
     val isMine = message.isMine
 
-    // Cada burbuja "pop"a al aparecer: escala desde un poco más chica.
-    val pop = remember(message.id) { Animatable(0.85f) }
-    LaunchedEffect(message.id) {
-        pop.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(260, easing = LinearOutSlowInEasing)
-        )
+    // Pop solo para mensajes recientes/entrantes para evitar trabajo en scroll largo.
+    val pop = if (animatePop) remember(message.id) { Animatable(0.92f) } else null
+    LaunchedEffect(message.id, animatePop) {
+        if (pop != null) {
+            pop.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(200, easing = LinearOutSlowInEasing)
+            )
+        }
     }
 
     Row(
@@ -535,11 +599,13 @@ private fun MessageBubble(
                 onClick = {},
                 onLongClick = onLongPress
             )
-            .graphicsLayer {
-                scaleX = pop.value
-                scaleY = pop.value
-                alpha = pop.value
-            },
+            .then(
+                if (pop != null) Modifier.graphicsLayer {
+                    scaleX = pop.value
+                    scaleY = pop.value
+                    alpha = pop.value
+                } else Modifier
+            ),
         horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Bottom
     ) {
@@ -566,6 +632,9 @@ private fun MessageBubble(
 
             Box(
                 modifier = Modifier
+                    // En tablets/landscape un mensaje no debe ocupar todo el
+                    // ancho: se limita a una medida de lectura cómoda.
+                    .widthIn(max = 520.dp)
                     .clip(
                         RoundedCornerShape(
                             topStart = 20.dp,
@@ -578,7 +647,16 @@ private fun MessageBubble(
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 if (message.kind == MessageKind.AUDIO) {
-                    AudioBubbleContent(message = message, isMine = isMine)
+                    AudioBubbleContent(
+                        message = message,
+                        isMine = isMine,
+                        audioPlayer = audioPlayer,
+                        playingPath = playingPath,
+                        onPlayingPathChange = onPlayingPathChange,
+                        playerIsPlaying = playerIsPlaying,
+                        playerPosition = playerPosition,
+                        playerDuration = playerDuration,
+                    )
                 } else {
                     Text(
                         text = message.text,
@@ -628,23 +706,29 @@ private fun MessageBubble(
 
 /** Contenido de una burbuja de audio: botón play real + barra + duración. */
 @Composable
-private fun AudioBubbleContent(message: Message, isMine: Boolean) {
+private fun AudioBubbleContent(
+    message: Message,
+    isMine: Boolean,
+    audioPlayer: com.gowayki.nesh.app.features.sos.domain.model.AudioRecorder?,
+    playingPath: String?,
+    onPlayingPathChange: (String?) -> Unit,
+    playerIsPlaying: Boolean,
+    playerPosition: Long,
+    playerDuration: Long,
+) {
     val contentColor = if (isMine) AppColors.cream else AppColors.ink
     val muted = if (isMine) AppColors.cream.copy(alpha = 0.4f) else AppColors.slate
-    val audioRecorder = remember { runCatching { createAudioRecorder() }.getOrNull() }
-    val isPlaying by (audioRecorder?.isPlaying?.collectAsState() ?: remember { mutableStateOf(false) })
-    val position by (audioRecorder?.playbackPosition?.collectAsState() ?: remember { mutableStateOf(0L) })
-    val playbackTotal by (audioRecorder?.playbackDuration?.collectAsState() ?: remember { mutableStateOf(0L) })
     val audioPath = message.audioFilePath.orEmpty()
     val scope = rememberCoroutineScope()
+    val isThisPlaying = playerIsPlaying && playingPath == audioPath && audioPath.isNotBlank()
 
-    val totalMillis = if (isPlaying && playbackTotal > 0L) {
-        playbackTotal
+    val totalMillis = if (isThisPlaying && playerDuration > 0L) {
+        playerDuration
     } else {
         message.audioDurationSeconds * 1000L
     }
-    val progress = if (totalMillis > 0L) {
-        (position.toFloat() / totalMillis.toFloat()).coerceIn(0f, 1f)
+    val progress = if (isThisPlaying && totalMillis > 0L) {
+        (playerPosition.toFloat() / totalMillis.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
@@ -663,10 +747,12 @@ private fun AudioBubbleContent(message: Message, isMine: Boolean) {
                         ToastManager.show("Audio de muestra: sin archivo grabado")
                     } else {
                         scope.launch {
-                            if (isPlaying) {
-                                audioRecorder?.stopPlayback()
+                            if (isThisPlaying) {
+                                audioPlayer?.stopPlayback()
+                                onPlayingPathChange(null)
                             } else {
-                                audioRecorder?.playAudio(audioPath)
+                                onPlayingPathChange(audioPath)
+                                audioPlayer?.playAudio(audioPath)
                             }
                         }
                     }
@@ -674,7 +760,7 @@ private fun AudioBubbleContent(message: Message, isMine: Boolean) {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = if (isPlaying) "❚❚" else "▶",
+                text = if (isThisPlaying) "❚❚" else "▶",
                 style = AppTextStyles.waykiLabelMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
                 color = if (isMine) AppColors.ink else AppColors.cream
             )
@@ -697,7 +783,7 @@ private fun AudioBubbleContent(message: Message, isMine: Boolean) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = if (isPlaying) formatVoiceTime(position) else "0:00",
+                    text = if (isThisPlaying) formatVoiceTime(playerPosition) else "0:00",
                     style = AppTextStyles.waykiMini.copy(fontSize = 10.sp),
                     color = contentColor.copy(alpha = 0.8f)
                 )
