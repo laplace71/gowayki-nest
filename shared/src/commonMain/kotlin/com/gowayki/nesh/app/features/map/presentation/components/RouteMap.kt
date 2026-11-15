@@ -27,8 +27,8 @@ expect @Composable fun RouteMap(
     returnRouteColorHex: String = "#F59E0B",
     stops: List<Pair<Double, Double>> = emptyList(),
     stopNames: List<String> = emptyList(),
+    otherDrivers: List<com.gowayki.nesh.app.features.map.data.ActiveDriver> = emptyList(),
     modifier: Modifier = Modifier,
-    /** Índice del paradero tocado por el usuario (para mostrar su ficha). */
     onStopClick: (Int) -> Unit = {},
     onMatchedPointsChanged: (List<Pair<Double, Double>>, List<Pair<Double, Double>>) -> Unit = { _, _ -> },
 )

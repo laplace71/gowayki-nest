@@ -63,6 +63,11 @@ private const val ME_SRC = "gowayki-me-src"
 private const val ME_HALO = "gowayki-me-halo"
 private const val ME_PIN = "gowayki-me-pin"
 
+private const val DRIVERS_SRC = "gowayki-drivers-src"
+private const val DRIVERS_HALO = "gowayki-drivers-halo"
+private const val DRIVERS_PIN = "gowayki-drivers-pin"
+private const val DRIVERS_LABEL = "gowayki-drivers-label"
+
 private const val ICON_COMBI_START = "gowayki-marker-combi_start"
 private const val ICON_COMBI_END = "gowayki-marker-combi_end"
 private const val ICON_PEDESTRIAN_STOP = "gowayki-marker-pedestrian_stop"
@@ -80,6 +85,7 @@ actual fun RouteMap(
     returnRouteColorHex: String,
     stops: List<Pair<Double, Double>>,
     stopNames: List<String>,
+    otherDrivers: List<com.gowayki.nesh.app.features.map.data.ActiveDriver>,
     modifier: Modifier,
     onStopClick: (Int) -> Unit,
     onMatchedPointsChanged: (List<Pair<Double, Double>>, List<Pair<Double, Double>>) -> Unit,
@@ -119,6 +125,7 @@ actual fun RouteMap(
     val liveStopsSrc = remember { arrayOfNulls<GeoJsonSource>(1) }
     val liveTerminalsSrc = remember { arrayOfNulls<GeoJsonSource>(1) }
     val liveMeSrc = remember { arrayOfNulls<GeoJsonSource>(1) }
+    val liveDriversSrc = remember { arrayOfNulls<GeoJsonSource>(1) }
 
     // Refs "vivas" a los puntos actuales, accesibles desde el callback de loadStyle
     // sin capturar closures stale.
@@ -411,6 +418,37 @@ actual fun RouteMap(
                         circleStrokeWidth(3.0)
                     },
                 )
+
+                val driversSrc = GeoJsonSource.Builder(DRIVERS_SRC).featureCollection(empty).build()
+                style.addSource(driversSrc)
+                liveDriversSrc[0] = driversSrc
+                style.addLayer(
+                    CircleLayer(DRIVERS_HALO, DRIVERS_SRC).apply {
+                        circleRadius(22.0)
+                        circleColor("#10B981")
+                        circleOpacity(0.22)
+                    },
+                )
+                style.addLayer(
+                    CircleLayer(DRIVERS_PIN, DRIVERS_SRC).apply {
+                        circleRadius(10.0)
+                        circleColor("#10B981")
+                        circleStrokeColor("#FFFFFF")
+                        circleStrokeWidth(2.5)
+                    },
+                )
+                style.addLayer(
+                    SymbolLayer(DRIVERS_LABEL, DRIVERS_SRC).apply {
+                        textField(Expression.get("label"))
+                        textSize(11.0)
+                        textColor("#0F172A")
+                        textHaloColor("#FFFFFF")
+                        textHaloWidth(2.0)
+                        textOffset(listOf(0.0, -1.8))
+                        textAllowOverlap(true)
+                        textIgnorePlacement(true)
+                    },
+                )
             }
         }
 
@@ -444,6 +482,20 @@ actual fun RouteMap(
                 emptyList()
             }
             meSrc.featureCollection(FeatureCollection.fromFeatures(features))
+        }
+
+        MapEffect(otherDrivers) { _ ->
+            val src = liveDriversSrc[0] ?: return@MapEffect
+            val features = otherDrivers.filter { !it.isSelf }.map { driver ->
+                Feature.fromGeometry(
+                    Point.fromLngLat(driver.lon, driver.lat)
+                ).apply {
+                    val label = driver.numeroPadron?.let { "U-$it" } ?: driver.id
+                    addStringProperty("label", label)
+                    addNumberProperty("bearing", driver.bearingDeg)
+                }
+            }
+            src.featureCollection(FeatureCollection.fromFeatures(features))
         }
     }
 }

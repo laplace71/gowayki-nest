@@ -235,6 +235,13 @@ fun MapScreen(
     // true mientras se espera el primer fix GPS tras presionar "Entrar en ruta"
     var waitingForGps by remember { mutableStateOf(false) }
 
+    val activeDrivers by com.gowayki.nesh.app.features.map.data.ActiveDriversStore.drivers.collectAsState()
+    val sameRouteOthers = remember(activeDrivers, route?.id, route?.parent) {
+        val rId = route?.id.orEmpty()
+        val parent = route?.parent.orEmpty()
+        activeDrivers.filter { !it.isSelf && (it.routeId.isBlank() || it.routeId == rId || it.routeId == parent) }
+    }
+
     // Captura la ubicación actual aunque no se esté navegando,
     // para poder validar si el usuario está en el inicio de la ruta.
     // Se inicializa con la última ubicación conocida del sistema para
@@ -261,6 +268,16 @@ fun MapScreen(
     LaunchedEffect(route?.id) {
         navigating = false
         enteredRoute = false
+        val lineaId = com.gowayki.nesh.core.session.TurnoSession.turno?.lineaId
+        val unidades = if (lineaId != null) {
+            com.gowayki.nesh.data.repository.BackendTurnosApi.unidadesPorLinea(lineaId)
+        } else {
+            com.gowayki.nesh.data.repository.BackendTurnosApi.unidadesTodas()
+        }
+        com.gowayki.nesh.app.features.map.data.ActiveDriversStore.updateFromUnidades(
+            unidades,
+            com.gowayki.nesh.core.session.TurnoSession.turno?.unidadId
+        )
     }
 
     // Mientras navega, escucha el GPS real y recalcula la instrucción.
@@ -366,6 +383,7 @@ fun MapScreen(
                 returnRouteColorHex = returnRouteColorHex,
                 stops = activeStops,
                 stopNames = activeStopNames,
+                otherDrivers = sameRouteOthers,
                 onStopClick = { idx -> tappedStopIndex = idx },
                 onMatchedPointsChanged = { ida, ret ->
                     if (ida.isNotEmpty()) matchedIdaPoints = ida
@@ -640,11 +658,27 @@ fun MapScreen(
                     // Otros conductores de la misma ruta que usan la app: adelante / atrás
                     if (route != null) {
                         val others by com.gowayki.nesh.app.features.map.data.ActiveDriversStore.drivers.collectAsState()
-                        // Registra la posición del conductor actual para que otros lo vean.
+                        var lastSendPosMillis by remember { mutableStateOf(0L) }
                         androidx.compose.runtime.LaunchedEffect(userLocation, route.id) {
-                            userLocation?.let { com.gowayki.nesh.app.features.map.data.ActiveDriversStore.updateSelf(route.id, it) }
+                            val loc = userLocation
+                            if (loc != null) {
+                                com.gowayki.nesh.app.features.map.data.ActiveDriversStore.updateSelf(route.id, loc)
+                                val now = com.gowayki.nesh.app.common.util.currentTimeMillis()
+                                val uId = com.gowayki.nesh.core.session.TurnoSession.turno?.unidadId
+                                if (uId != null && now - lastSendPosMillis >= 2500L) {
+                                    lastSendPosMillis = now
+                                    val speedKmh = (loc.speedMps ?: 0f) * 3.6
+                                    val bearing = loc.bearingDeg?.toInt() ?: 0
+                                    com.gowayki.nesh.data.repository.BackendTurnosApi.actualizarPosicion(
+                                        unidadId = uId,
+                                        latitud = loc.lat,
+                                        longitud = loc.lon,
+                                        velocidadKmh = speedKmh.toDouble(),
+                                        rumboGrados = bearing
+                                    )
+                                }
+                            }
                         }
-                        val sameRouteOthers = others.filter { !it.isSelf && it.routeId == route.id }
                         val loc = userLocation
                         val userProgress = if (loc != null && activePoints.size >= 2) {
                             projectProgressMeters(activePoints, loc.lat, loc.lon)
@@ -677,7 +711,8 @@ fun MapScreen(
                                     val ahead = otherProgress > userProgress
                                     val diffMeters = kotlin.math.abs(otherProgress - userProgress)
                                     val minutes = (diffMeters / 500.0).toInt().coerceAtLeast(1)
-                                    MiniChip("${driver.id} · $minutes min ${if (ahead) "adelante" else "atrás"}")
+                                    val label = driver.numeroPadron?.let { "Unidad $it" } ?: driver.id
+                                    MiniChip("$label · $minutes min ${if (ahead) "adelante" else "atrás"}")
                                 }
                             }
                         }

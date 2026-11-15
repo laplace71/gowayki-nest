@@ -520,6 +520,16 @@ class KtorChatRepository : ChatRepository {
         val convDto = runCatching { chatJson.decodeFromString<ConversacionResponseDto>(text) }.getOrNull()
         if (convDto != null) {
             refreshConversations()
+            return
+        }
+
+        val posDto = runCatching { chatJson.decodeFromString<com.gowayki.nesh.data.entities.backend.PosicionGpsDto>(text) }.getOrNull()
+        if (posDto != null && posDto.unidadId != null) {
+            com.gowayki.nesh.app.features.map.data.ActiveDriversStore.updateRemoteDriver(
+                posDto,
+                com.gowayki.nesh.core.session.TurnoSession.turno?.unidadId
+            )
+            return
         }
     }
 
