@@ -35,6 +35,27 @@ data class BackendUnidadDto(
     val lineaId: Int? = null,
     val lineaNombre: String? = null,
     val estado: String? = null,
+    val posicionActual: PosicionGpsDto? = null,
+)
+
+@Serializable
+data class ActualizarPosicionGpsRequestDto(
+    val latitud: Double,
+    val longitud: Double,
+    val velocidadKmh: Double? = 0.0,
+    val rumboGrados: Int? = 0,
+)
+
+@Serializable
+data class PosicionGpsDto(
+    val unidadId: Int? = null,
+    val lineaId: Int? = null,
+    val numeroPadron: String? = null,
+    val latitud: Double,
+    val longitud: Double,
+    val velocidadKmh: Double? = null,
+    val rumboGrados: Int? = null,
+    val ultimaActualizacion: String? = null,
 )
 
 /** Cuerpo para POST /api/turnos/asignar. */

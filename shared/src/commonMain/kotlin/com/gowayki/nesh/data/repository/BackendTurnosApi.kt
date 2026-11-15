@@ -1,13 +1,16 @@
 package com.gowayki.nesh.data.repository
 
 import com.gowayki.nesh.core.network.HttpClientFactory
+import com.gowayki.nesh.data.entities.backend.ActualizarPosicionGpsRequestDto
 import com.gowayki.nesh.data.entities.backend.AsignarTurnoRequestDto
 import com.gowayki.nesh.data.entities.backend.BackendMensajeDto
 import com.gowayki.nesh.data.entities.backend.BackendTurnoDto
 import com.gowayki.nesh.data.entities.backend.BackendUnidadDto
+import com.gowayki.nesh.data.entities.backend.PosicionGpsDto
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.isSuccess
@@ -56,6 +59,30 @@ object BackendTurnosApi {
         if (response.status.isSuccess()) response.body<List<BackendUnidadDto>>() else emptyList()
     } catch (_: Exception) {
         emptyList()
+    }
+
+    suspend fun actualizarPosicion(
+        unidadId: Int,
+        latitud: Double,
+        longitud: Double,
+        velocidadKmh: Double = 0.0,
+        rumboGrados: Int = 0
+    ): Result<PosicionGpsDto> = runCatching {
+        val response: HttpResponse = client.put("$baseUrl/unidades/$unidadId/posicion") {
+            setBody(
+                ActualizarPosicionGpsRequestDto(
+                    latitud = latitud,
+                    longitud = longitud,
+                    velocidadKmh = velocidadKmh,
+                    rumboGrados = rumboGrados
+                )
+            )
+        }
+        if (response.status.isSuccess()) {
+            response.body<PosicionGpsDto>()
+        } else {
+            throw Exception("HTTP ${response.status.value}")
+        }
     }
 
 

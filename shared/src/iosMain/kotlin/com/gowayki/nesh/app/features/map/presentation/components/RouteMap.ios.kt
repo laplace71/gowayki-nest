@@ -22,6 +22,7 @@ actual fun RouteMap(
     returnRouteColorHex: String,
     stops: List<Pair<Double, Double>>,
     stopNames: List<String>,
+    otherDrivers: List<com.gowayki.nesh.app.features.map.data.ActiveDriver>,
     modifier: Modifier,
     onStopClick: (Int) -> Unit,
     onMatchedPointsChanged: (List<Pair<Double, Double>>, List<Pair<Double, Double>>) -> Unit,
