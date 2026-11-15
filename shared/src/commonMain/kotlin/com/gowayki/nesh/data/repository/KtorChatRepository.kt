@@ -18,6 +18,7 @@ import com.gowayki.nesh.data.entities.backend.MensajeResponseDto
 import io.ktor.client.plugins.websocket.ws
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,6 +28,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -46,10 +49,17 @@ class KtorChatRepository : ChatRepository {
     private val _colleagues = MutableStateFlow<List<GroupMember>>(emptyList())
     val colleaguesFlow: Flow<List<GroupMember>> = _colleagues.asStateFlow()
 
+    // Conversaciones cuyas pantallas de chat están observando mensajes.
+    private val watchedConversations = MutableStateFlow<Set<String>>(emptySet())
+    // Control para no crear el grupo de ruta en cada poll.
+    @Volatile private var ensuredRouteGroup = false
+    @Volatile private var persistPending = false
+
     init {
         restore()
-        refreshConversations()
+        refreshConversations(ensureRouteGroup = true)
         startWebSocketListener()
+        startPolling()
         observeSelectedRoute()
         fetchColleagues()
     }
@@ -91,18 +101,19 @@ class KtorChatRepository : ChatRepository {
     private fun observeSelectedRoute() {
         scope.launch {
             SelectedRouteHolder.selected.collect {
-                refreshConversations()
+                ensuredRouteGroup = false
+                refreshConversations(ensureRouteGroup = true)
             }
         }
     }
 
-    fun refreshConversations() {
+    fun refreshConversations(ensureRouteGroup: Boolean = false) {
         val myId = UserSession.currentUserId ?: return
         val expectedTitle = getActiveRouteGroupTitle()
         scope.launch {
             BackendChatApi.conversaciones(myId).onSuccess { list ->
                 val hasActiveRouteGroup = list.any { it.esGrupo && it.titulo == expectedTitle }
-                if (!hasActiveRouteGroup) {
+                if (ensureRouteGroup && !ensuredRouteGroup && !hasActiveRouteGroup) {
                     BackendChatApi.crearConversacion(
                         CrearConversacionRequestDto(
                             titulo = expectedTitle,
@@ -111,11 +122,15 @@ class KtorChatRepository : ChatRepository {
                             participanteIds = listOf(myId)
                         )
                     ).onSuccess {
+                        ensuredRouteGroup = true
                         BackendChatApi.conversaciones(myId).onSuccess { updatedList ->
                             filterAndEmitConversations(updatedList, expectedTitle)
                         }
+                    }.onFailure {
+                        filterAndEmitConversations(list, expectedTitle)
                     }
                 } else {
+                    if (hasActiveRouteGroup) ensuredRouteGroup = true
                     filterAndEmitConversations(list, expectedTitle)
                 }
             }
@@ -132,32 +147,86 @@ class KtorChatRepository : ChatRepository {
                 true
             }
         }
-        val mapped = filtered.map { mapDtoToConversation(it) }
-        _conversations.value = mapped
-        persist()
+        val existingById = (_conversations.value + _archived.value).associateBy { it.id }
+        val mapped = filtered.map { dto ->
+            val fresh = mapDtoToConversation(dto)
+            val existing = existingById[dto.id]
+            if (existing != null) {
+                val lastLocal = _messages.value[dto.id]?.lastOrNull()?.sentAtMillis ?: existing.lastMessageAtMillis
+                fresh.copy(
+                    photoPath = existing.photoPath,
+                    hiddenFromAll = existing.hiddenFromAll,
+                    unreadCount = existing.unreadCount,
+                    lastMessageAtMillis = if (lastLocal > 0L) lastLocal else existing.lastMessageAtMillis
+                )
+            } else fresh
+        }
+        val prev = _conversations.value
+        if (mapped != prev) {
+            _conversations.value = mapped
+            persist()
+        }
     }
 
     override fun conversations(): Flow<List<Conversation>> {
-        refreshConversations()
+        refreshConversations(ensureRouteGroup = false)
         return _conversations.asStateFlow()
     }
 
     override fun archived(): Flow<List<Conversation>> = _archived.asStateFlow()
 
     override fun messages(conversationId: String): Flow<List<Message>> {
+        fetchMessages(conversationId)
+        return _messages
+            .map { all -> all[conversationId].orEmpty() }
+            .distinctUntilChanged()
+            .onStart { watchedConversations.update { it + conversationId } }
+            .onCompletion { watchedConversations.update { it - conversationId } }
+    }
+
+    private fun fetchMessages(conversationId: String) {
         val myId = UserSession.currentUserId ?: ""
         scope.launch {
             BackendChatApi.mensajes(conversationId).onSuccess { dtos ->
-                if (dtos.isNotEmpty()) {
-                    val list = dtos.map { mapDtoToMessage(it, myId) }
+                val prev = _messages.value[conversationId].orEmpty()
+                val prevById = prev.associateBy { it.id }
+                val list = dtos.map { dto ->
+                    val mapped = mapDtoToMessage(dto, myId)
+                    val existing = prevById[mapped.id]
+                    // Preserva timestamp/estado local estable para evitar parpadeos en cada poll.
+                    if (existing != null) mapped.copy(sentAtMillis = existing.sentAtMillis) else mapped
+                }
+                if (list != prev) {
                     _messages.update { it + (conversationId to list) }
+                    // Actualiza preview/timestamp de la conversación desde el último mensaje real.
+                    list.lastOrNull()?.let { updateConversationPreview(conversationId, it) }
                     persist()
                 }
             }
         }
-        return _messages
-            .map { all -> all[conversationId].orEmpty() }
-            .distinctUntilChanged()
+    }
+
+    private fun startPolling() {
+        // Polling de respaldo para lista de chats: intervalo moderado para no cargar la app.
+        scope.launch {
+            while (true) {
+                delay(45_000)
+                if (UserSession.currentUserId != null) {
+                    refreshConversations(ensureRouteGroup = false)
+                }
+            }
+        }
+        // Polling de mensajes en chats abiertos: intervalo corto para sensación de tiempo real
+        // (fallback si el WebSocket no entrega eventos).
+        scope.launch {
+            while (true) {
+                delay(2_000)
+                val watched = watchedConversations.value
+                if (watched.isNotEmpty()) {
+                    watched.forEach { fetchMessages(it) }
+                }
+            }
+        }
     }
 
     override suspend fun sendMessage(
@@ -490,7 +559,7 @@ class KtorChatRepository : ChatRepository {
                     }
                 } catch (_: Throwable) {
                 }
-                delay(3000)
+                delay(5000)
             }
         }
     }
@@ -501,19 +570,33 @@ class KtorChatRepository : ChatRepository {
             val myId = UserSession.currentUserId ?: ""
             val message = mapDtoToMessage(dto, myId)
 
+            var appended = false
             _messages.update { all ->
                 val existing = all[message.conversationId].orEmpty()
                 if (existing.any { it.id == message.id }) {
                     all
                 } else {
+                    appended = true
                     all + (message.conversationId to (existing + message))
                 }
             }
-            updateConversationPreview(message.conversationId, message)
-            if (_conversations.value.none { it.id == message.conversationId }) {
-                refreshConversations()
+            if (appended) {
+                updateConversationPreview(message.conversationId, message)
+                // Si no es mi mensaje y nadie está viendo ese chat, marcar como no leído.
+                if (!message.isMine && !watchedConversations.value.contains(message.conversationId)) {
+                    _conversations.update { list ->
+                        list.map { c ->
+                            if (c.id == message.conversationId) c.copy(unreadCount = c.unreadCount + 1) else c
+                        }
+                    }
+                }
+                if (_conversations.value.none { it.id == message.conversationId } &&
+                    _archived.value.none { it.id == message.conversationId }
+                ) {
+                    refreshConversations()
+                }
+                persist()
             }
-            persist()
             return
         }
 
@@ -533,16 +616,24 @@ class KtorChatRepository : ChatRepository {
     }.getOrDefault(false)
 
     private fun persist() {
-        runCatching {
-            ChatStore.write(
-                chatJson.encodeToString(
-                    PersistedChatState(
-                        _conversations.value,
-                        _archived.value,
-                        _messages.value
+        // Debounce: coalesces rapid updates (p. ej. ráfaga de mensajes WS) en
+        // una sola serialización/escritura para no bloquear con JSON grande.
+        if (persistPending) return
+        persistPending = true
+        scope.launch {
+            delay(600)
+            persistPending = false
+            runCatching {
+                ChatStore.write(
+                    chatJson.encodeToString(
+                        PersistedChatState(
+                            _conversations.value,
+                            _archived.value,
+                            _messages.value
+                        )
                     )
                 )
-            )
+            }
         }
     }
 
