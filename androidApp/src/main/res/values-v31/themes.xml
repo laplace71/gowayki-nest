@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Splash de Android 12+: fondo de marca + ícono de la app.
+      Android dibuja este splash mientras arranca el proceso y lo retira en
+      el primer frame de Compose, donde App.kt hace el fade de entrada.
+    -->
+    <style name="Theme.WaykiNest" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@drawable/wayki_splash_background</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:forceDarkAllowed">false</item>
+
+        <item name="android:windowSplashScreenBackground">@color/wayki_splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:windowSplashScreenAnimationDuration">250</item>
+    </style>
+</resources>

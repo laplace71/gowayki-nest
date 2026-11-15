@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fondo del splash: crema de la app (modo claro). -->
+    <color name="wayki_splash_background">#FFFDF6</color>
+    <!-- Fondo del ícono adaptativo: azul primary de la paleta. -->
+    <color name="wayki_launcher_background">#7B82A0</color>
+</resources>
