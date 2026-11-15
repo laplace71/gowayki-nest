@@ -1,9 +1,14 @@
 package com.gowayki.nesh.app.navigation
 
-import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -41,6 +46,27 @@ import com.gowayki.nesh.app.features.sign_in.presentation.screens.RegisterScreen
 import com.gowayki.nesh.app.features.welcome.presentation.screens.WelcomeScreen
 import kotlinx.coroutines.launch
 
+// Transiciones compartidas del NavHost: un desplazamiento corto con fade
+// (nunca la pantalla completa) para que el cambio se sienta ligero y rápido.
+private val WaykiEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+private val WaykiExitEasing = FastOutLinearInEasing
+
+private fun forwardEnter(): EnterTransition =
+    fadeIn(tween(300, easing = WaykiEasing)) +
+        slideInHorizontally(tween(340, easing = WaykiEasing)) { width -> width / 12 }
+
+private fun forwardExit(): ExitTransition =
+    fadeOut(tween(200, easing = WaykiExitEasing)) +
+        slideOutHorizontally(tween(240, easing = WaykiExitEasing)) { width -> -width / 18 }
+
+private fun backEnter(): EnterTransition =
+    fadeIn(tween(300, easing = WaykiEasing)) +
+        slideInHorizontally(tween(340, easing = WaykiEasing)) { width -> -width / 12 }
+
+private fun backExit(): ExitTransition =
+    fadeOut(tween(200, easing = WaykiExitEasing)) +
+        slideOutHorizontally(tween(240, easing = WaykiExitEasing)) { width -> width / 18 }
+
 @Composable
 fun WaykiNav(
     nav: NavHostController = rememberNavController(),
@@ -66,38 +92,32 @@ fun WaykiNav(
         }
     }
 
+    // Navegación entre pestañas: deja Inicio como raíz del back stack.
+    // Antes cada toque en la barra inferior apilaba una pantalla nueva
+    // (Inicio → Comunicación → Recorrido → Mapa → ...) y el botón Atrás
+    // tenía que deshacer todo ese historial.
+    fun goTab(route: String) {
+        if (nav.currentBackStackEntry?.destination?.route == route) return
+        if (route == Routes.HOME) {
+            if (!nav.popBackStack(Routes.HOME, inclusive = false)) {
+                nav.navigate(Routes.HOME) { launchSingleTop = true }
+            }
+            return
+        }
+        nav.navigate(route) {
+            popUpTo(Routes.HOME) { inclusive = false }
+            launchSingleTop = true
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
         NavHost(
         navController = nav,
         startDestination = Routes.WELCOME,
-        enterTransition = {
-            fadeIn(animationSpec = tween(300, easing = androidx.compose.animation.core.CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f))) +
-                androidx.compose.animation.slideInHorizontally(
-                    initialOffsetX = { it / 10 },
-                    animationSpec = tween(300, easing = androidx.compose.animation.core.CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f))
-                )
-        },
-        exitTransition = {
-            fadeOut(animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutLinearInEasing)) +
-                androidx.compose.animation.slideOutHorizontally(
-                    targetOffsetX = { -it / 10 },
-                    animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutLinearInEasing)
-                )
-        },
-        popEnterTransition = {
-            fadeIn(animationSpec = tween(300, easing = androidx.compose.animation.core.CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f))) +
-                androidx.compose.animation.slideInHorizontally(
-                    initialOffsetX = { -it / 10 },
-                    animationSpec = tween(300, easing = androidx.compose.animation.core.CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f))
-                )
-        },
-        popExitTransition = {
-            fadeOut(animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutLinearInEasing)) +
-                androidx.compose.animation.slideOutHorizontally(
-                    targetOffsetX = { it / 10 },
-                    animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutLinearInEasing)
-                )
-        }
+        enterTransition = { forwardEnter() },
+        exitTransition = { forwardExit() },
+        popEnterTransition = { backEnter() },
+        popExitTransition = { backExit() }
     ) {
         composable(Routes.WELCOME) {
             WelcomeScreen(
@@ -204,9 +224,9 @@ fun WaykiNav(
                 onNotificationsClick = { ToastManager.show("No tienes notificaciones nuevas por ahora") },
                 onBack = { nav.popBackStack() },
                 onSosClick = { nav.navigate(Routes.SOS) },
-                onCommunicationClick = { nav.navigate(Routes.COMMUNICATION) },
-                onRecorridoClick = { nav.navigate(Routes.ROUTE_DETAIL) },
-                onMapaClick = { nav.navigate(Routes.MAP) },
+                onCommunicationClick = { goTab(Routes.COMMUNICATION) },
+                onRecorridoClick = { goTab(Routes.ROUTE_DETAIL) },
+                onMapaClick = { goTab(Routes.MAP) },
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
                 onLogoutClick = {
                     UserSession.clear()
@@ -237,24 +257,16 @@ fun WaykiNav(
                     scope.launch { chatRepo.deleteGroup(id) }
                 },
                 onTabSelected = { tab ->
-                    if (tab == 0) {
-                        nav.navigate(Routes.HOME) {
-                            popUpTo(Routes.HOME) { inclusive = true }
-                        }
-                    } else if (tab == 2) {
-                        nav.navigate(Routes.ROUTE_DETAIL)
-                    } else if (tab == 3) {
-                        nav.navigate(Routes.MAP)
+                    when (tab) {
+                        0 -> goTab(Routes.HOME)
+                        2 -> goTab(Routes.ROUTE_DETAIL)
+                        3 -> goTab(Routes.MAP)
                     }
                 },
                 onSosClick = { nav.navigate(Routes.SOS) },
-                onInicioClick = {
-                    nav.navigate(Routes.HOME) {
-                        popUpTo(Routes.HOME) { inclusive = true }
-                    }
-                },
-                onRecorridoClick = { nav.navigate(Routes.ROUTE_DETAIL) },
-                onMapaClick = { nav.navigate(Routes.MAP) },
+                onInicioClick = { goTab(Routes.HOME) },
+                onRecorridoClick = { goTab(Routes.ROUTE_DETAIL) },
+                onMapaClick = { goTab(Routes.MAP) },
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
                 onLogoutClick = {
                     UserSession.clear()
@@ -265,38 +277,26 @@ fun WaykiNav(
             )
         }
         
-        composable(
-            Routes.ROUTE_DETAIL,
-            enterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) },
-            exitTransition = { androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(250, easing = androidx.compose.animation.core.FastOutLinearInEasing)) },
-            popEnterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) },
-            popExitTransition = { androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(250, easing = androidx.compose.animation.core.FastOutLinearInEasing)) }
-        ) {
+        composable(Routes.ROUTE_DETAIL) {
             com.gowayki.nesh.app.features.route_detail.presentation.screens.RouteDetailScreen(
                 onBack = { nav.popBackStack() },
                 onNotificationsClick = { ToastManager.show("No tienes notificaciones nuevas por ahora") },
                 onSosClick = { nav.navigate(Routes.SOS) },
-                onInicioClick = {
-                    nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } }
-                },
-                onCommunicationClick = { nav.navigate(Routes.COMMUNICATION) },
+                onInicioClick = { goTab(Routes.HOME) },
+                onCommunicationClick = { goTab(Routes.COMMUNICATION) },
                 // Ya estamos en Recorrido: no hace falta navegar.
                 onRecorridoClick = {},
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
-                onMapaClick = { nav.navigate(Routes.MAP) },
+                onMapaClick = { goTab(Routes.MAP) },
                 onLogoutClick = {
                     UserSession.clear()
                     nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
                 },
                 onTabSelected = { tab ->
-                    if (tab == 0) {
-                        nav.navigate(Routes.HOME) {
-                            popUpTo(Routes.HOME) { inclusive = true }
-                        }
-                    } else if (tab == 1) {
-                        nav.navigate(Routes.COMMUNICATION)
-                    } else if (tab == 3) {
-                        nav.navigate(Routes.MAP)
+                    when (tab) {
+                        0 -> goTab(Routes.HOME)
+                        1 -> goTab(Routes.COMMUNICATION)
+                        3 -> goTab(Routes.MAP)
                     }
                 }
             )
@@ -398,20 +398,12 @@ fun WaykiNav(
             )
         }
 
-        composable(
-            Routes.MAP,
-            enterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) },
-            exitTransition = { androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(250, easing = androidx.compose.animation.core.FastOutLinearInEasing)) },
-            popEnterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) },
-            popExitTransition = { androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(250, easing = androidx.compose.animation.core.FastOutLinearInEasing)) }
-        ) {
+        composable(Routes.MAP) {
             com.gowayki.nesh.app.features.map.presentation.screens.MapScreen(
                 onBack = { nav.popBackStack() },
-                onHomeClick = {
-                    nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } }
-                },
-                onCommunicationClick = { nav.navigate(Routes.COMMUNICATION) },
-                onRecorridoClick = { nav.navigate(Routes.ROUTE_DETAIL) },
+                onHomeClick = { goTab(Routes.HOME) },
+                onCommunicationClick = { goTab(Routes.COMMUNICATION) },
+                onRecorridoClick = { goTab(Routes.ROUTE_DETAIL) },
                 onMapaClick = {},
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
                 onLogoutClick = {
