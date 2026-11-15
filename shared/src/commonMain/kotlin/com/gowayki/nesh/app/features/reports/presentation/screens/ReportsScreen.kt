@@ -406,14 +406,19 @@ private fun CircleBtn(
 
 @Composable
 private fun MapPin(type: OsmMarkerType, selected: Boolean) {
-    val pulse = rememberInfiniteTransition(label = "pin")
-    val haloScale by pulse.animateFloat(1f, if (selected) 1.4f else 1.12f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "s")
-    val haloAlpha by pulse.animateFloat(0.5f, if (selected) 0.1f else 0.22f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "a")
+    // Halo estático para evitar una transición infinita por cada pin.
+    val haloScale = if (selected) 1.25f else 1.08f
+    val haloAlpha = if (selected) 0.18f else 0.12f
     val glowSize = if (selected) 56.dp else 42.dp
     val coreSize = if (selected) 42.dp else 33.dp
     val coreIcon = if (selected) 22.dp else 18.dp
     Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
-        Box(Modifier.size(glowSize).scale(haloScale).background(AppColors.onBackground.copy(alpha = haloAlpha), CircleShape))
+        Box(
+            Modifier
+                .size(glowSize)
+                .scale(haloScale)
+                .background(AppColors.onBackground.copy(alpha = haloAlpha), CircleShape)
+        )
         val bg = when (type) {
             OsmMarkerType.UNIDAD -> AppColors.onBackground
             OsmMarkerType.EMERGENCIA -> AppColors.secondary

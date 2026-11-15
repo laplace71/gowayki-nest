@@ -6,6 +6,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -14,22 +15,39 @@ import org.jetbrains.compose.resources.ExperimentalResourceApi
 import gowaykinesh.shared.generated.resources.Res
 
 /**
- * Geometría de ruta. Fuente primaria: API/BD (polilínea desde puntos de control)
- * para no sobrecargar la app; fallback a asset local de trazados.
+ * Geometría de ruta. Fuente primaria: asset local de trazados (suavizados offline,
+ * 0ms de latencia, determinista); respaldo en API/BD para rutas no incluidas en el asset.
  */
 object RouteGeometryStore {
-    private var assetCache: Map<String, List<Pair<Double, Double>>>? = null
+    private var assetJson: JsonObject? = null
     private val assetMutex = Mutex()
+    private val localCache = mutableMapOf<String, List<Pair<Double, Double>>>()
     private val apiCache = mutableMapOf<String, List<Pair<Double, Double>>>()
     private val apiMutex = Mutex()
 
     suspend fun geometryFor(routeId: String): List<Pair<Double, Double>>? {
-        geometryFromApi(routeId)?.let { return it }
-        return loadAsset()[routeId]
+        apiMutex.withLock { apiCache[routeId] }?.let { return it }
+        localRoute(routeId)?.takeIf { it.isNotEmpty() }?.let { return it }
+        return geometryFromApi(routeId)
+    }
+
+    private suspend fun localRoute(routeId: String): List<Pair<Double, Double>>? {
+        localCache[routeId]?.let { return it }
+        val root = loadAssetJson()
+        val array = root[routeId]?.jsonArray ?: return null
+        val points = array.mapNotNull { value ->
+            runCatching {
+                val coords = value.jsonArray
+                Pair(coords[0].jsonPrimitive.double, coords[1].jsonPrimitive.double)
+            }.getOrNull()
+        }
+        if (points.isNotEmpty()) {
+            localCache[routeId] = points
+        }
+        return points
     }
 
     private suspend fun geometryFromApi(routeId: String): List<Pair<Double, Double>>? {
-        apiMutex.withLock { apiCache[routeId]?.let { return it } }
         val linea = runCatching { BackendLineasApi.lineaBySitId(routeId) }.getOrNull() ?: return null
         val pts = linea.paraderos?.takeIf { it.isNotEmpty() } ?: runCatching { BackendLineasApi.puntos(linea.id) }.getOrDefault(emptyList())
         val geom = pts.mapNotNull { p ->
@@ -43,21 +61,15 @@ object RouteGeometryStore {
     }
 
     @OptIn(ExperimentalResourceApi::class)
-    private suspend fun loadAsset(): Map<String, List<Pair<Double, Double>>> {
-        assetCache?.let { return it }
+    private suspend fun loadAssetJson(): JsonObject {
+        assetJson?.let { return it }
         return assetMutex.withLock {
-            assetCache ?: withContext(Dispatchers.Default) {
+            assetJson ?: withContext(Dispatchers.Default) {
                 runCatching {
                     val bytes = Res.readBytes("files/route_geometry.json")
-                    val root = Json.parseToJsonElement(bytes.decodeToString()).jsonObject
-                    root.mapValues { (_, value) ->
-                        value.jsonArray.map { point ->
-                            val coords = point.jsonArray
-                            Pair(coords[0].jsonPrimitive.double, coords[1].jsonPrimitive.double)
-                        }
-                    }
-                }.getOrDefault(emptyMap())
-            }.also { assetCache = it }
+                    Json.parseToJsonElement(bytes.decodeToString()).jsonObject
+                }.getOrDefault(JsonObject(emptyMap()))
+            }.also { assetJson = it }
         }
     }
 }

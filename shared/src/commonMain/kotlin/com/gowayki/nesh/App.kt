@@ -1,6 +1,7 @@
 package com.gowayki.nesh
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -15,6 +16,7 @@ import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
 import com.gowayki.nesh.app.router.AppRootHost
 import com.gowayki.nesh.core.theme.NeshTheme
 import com.gowayki.nesh.core.theme.ThemeManager
+import com.gowayki.nesh.core.theme.src.core.AppColors
 
 @Composable
 @Preview
@@ -28,7 +30,7 @@ fun App() {
         ThemeManager.sync()
     }
     NeshTheme {
-        Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().background(AppColors.appBackground)) {
             AppRootHost()
             ToastHost(Modifier.align(Alignment.TopCenter).padding(top = 64.dp))
         }

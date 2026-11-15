@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Fondo de arranque (API 24-30): color de la app + ícono de marca al centro.
+  Evita el flash blanco/negro entre el splash del sistema y Compose.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/wayki_splash_background" />
+    <item
+        android:width="120dp"
+        android:height="120dp"
+        android:drawable="@mipmap/ic_launcher"
+        android:gravity="center" />
+</layer-list>

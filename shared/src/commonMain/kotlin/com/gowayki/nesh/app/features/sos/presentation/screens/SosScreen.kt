@@ -411,6 +411,13 @@ private fun SosBleBar(vm: SosViewModel, activeCount: Int) {
                 SosBleDevices(vm = vm)
             }
         }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Activa la ubicación del teléfono: la conexión Bluetooth y el GPS la necesitan.",
+            style = AppTextStyles.waykiMini,
+            color = AppColors.slate,
+            maxLines = 2,
+        )
         ble.error?.let { error ->
             Spacer(Modifier.height(6.dp))
             Text(error, style = AppTextStyles.waykiMini, color = Color(0xFFC64049))

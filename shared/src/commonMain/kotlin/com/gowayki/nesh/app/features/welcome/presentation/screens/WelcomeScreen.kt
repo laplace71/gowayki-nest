@@ -13,18 +13,23 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,11 +70,25 @@ fun WelcomeScreen(
     onEnterClick: () -> Unit = {},
     onSupportClick: () -> Unit = {},
 ) {
-    // ── Animación de entrada: escala + opacidad, como si la app " respirara".
+    // ── Animación de entrada: escala + opacidad, como si la app "respirara".
+    // El estado arranca en 0 y se enciende en el primer frame: con
+    // `animateFloatAsState(targetValue = 1f)` la animación nunca corría.
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
     val appear by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = tween(durationMillis = 700, easing = LinearOutSlowInEasing),
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 620, easing = LinearOutSlowInEasing),
         label = "welcomeAppear"
+    )
+    val titleAppear by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 520, delayMillis = 140, easing = LinearOutSlowInEasing),
+        label = "welcomeTitle"
+    )
+    val subtitleAppear by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 520, delayMillis = 220, easing = LinearOutSlowInEasing),
+        label = "welcomeSubtitle"
     )
 
     // Ocupa todo el marco del celular de forma limpia y fluida (optimizado para Helio G99)
@@ -78,7 +97,11 @@ fun WelcomeScreen(
         // Contenido superior con scroll (hero + textos).
         // Se reserva padding inferior para no quedar bajo los botones anclados.
         Column(
-            Modifier.fillMaxSize()
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxHeight()
+                .widthIn(max = 560.dp)
+                .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .statusBarsPadding()
                 .padding(
@@ -121,8 +144,8 @@ fun WelcomeScreen(
                 color = AppColors.onBackground,
                 style = AppTextStyles.waykiTitle,
                 modifier = Modifier.graphicsLayer {
-                    translationY = 24.dp.toPx() * (1f - appear)
-                    alpha = appear
+                    translationY = 24.dp.toPx() * (1f - titleAppear)
+                    alpha = titleAppear
                 },
             )
             Text(
@@ -130,8 +153,8 @@ fun WelcomeScreen(
                 color = AppColors.onSurfaceMuted,
                 style = AppTextStyles.waykiSubtitle,
                 modifier = Modifier.graphicsLayer {
-                    translationY = 24.dp.toPx() * (1f - appear)
-                    alpha = appear
+                    translationY = 24.dp.toPx() * (1f - subtitleAppear)
+                    alpha = subtitleAppear
                 },
             )
 
@@ -143,6 +166,7 @@ fun WelcomeScreen(
         // Controles anclados abajo, como en el diseño original (y=685/874).
         Column(
             Modifier.align(Alignment.BottomCenter)
+                .widthIn(max = 420.dp)
                 .navigationBarsPadding()
                 .padding(
                     start = AppSpacing.xl,
