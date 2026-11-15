@@ -148,7 +148,7 @@ class SosViewModel(
                 ble.autoJoin = autoConnect
                 val s = ble.state.value
                 if (autoConnect && !s.connected && !s.scanning) {
-                    ui = ui.copy(info = "Buscando WAYKI_SOS por Bluetooth…")
+                    ui = ui.copy(info = "Buscando ESP32 por Bluetooth…")
                     runCatching { ble.startScan() }
                 }
                 delay(8_000)
@@ -166,7 +166,7 @@ class SosViewModel(
 
     fun connect() {
         autoConnect = true
-        ui = ui.copy(info = "Buscando WAYKI_SOS por Bluetooth…")
+        ui = ui.copy(info = "Buscando ESP32 por Bluetooth…")
         ble.startScan()
     }
 
@@ -223,6 +223,7 @@ class SosViewModel(
         when (pressType) {
             PressType.SINGLE -> handleSinglePress()
             PressType.TRIPLE -> handleTriplePress()
+            PressType.REMOTE -> handleRemoteAlert()
         }
     }
 
@@ -257,6 +258,18 @@ class SosViewModel(
                     com.gowayki.nesh.core.mqtt.MqttTopics.MSG_RECORDING
                 )
             }
+        }
+    }
+
+    private fun handleRemoteAlert() {
+        viewModelScope.launch {
+            // Alerta de OTRA unidad cercana (botón SOS). No marcamos punto aquí
+            // (no tenemos coordenadas de ese otro vehículo): mostramos aviso fuerte.
+            runCatching { audioRecorder.playTripleBeep() }
+            ToastManager.show("🚨 Unidad cercana en EMERGENCIA")
+            ui = ui.copy(
+                info = "🚨 EMERGENCIA: una unidad cercana activó su botón SOS. Notifica / atiende la unidad.",
+            )
         }
     }
 

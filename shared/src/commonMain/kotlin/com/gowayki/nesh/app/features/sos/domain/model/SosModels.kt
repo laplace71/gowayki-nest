@@ -10,11 +10,18 @@ import kotlinx.coroutines.flow.asStateFlow
 // Sin WiFi, sin tokens: solo BLE puro.
 object SosBleConfig {
     const val DEVICE_NAME = "WAYKI_SOS"
+    // Prefijo común de los ESP32 Wayki con firmware único (WAYKI_96E6, WAYKI_97C6, …).
+    const val DEVICE_NAME_PREFIX = "WAYKI_"
     // UUIDs generados para Wayki (cámbialos solo si cambias el .ino también).
     const val SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
     const val CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-    // Lo que manda el ESP32 al presionar GPIO14.
+    // Payloads que manda el ESP32 (deben coincidir con el firmware).
+    //   SOS!        -> 1 clic  -> grabar audio
+    //   SOS_TRIPLE  -> 3 clics -> punto GPS SOS + alerta
+    //   SOS_ALERT   -> unidad cercana en emergencia
     const val PRESS_PAYLOAD = "SOS!"
+    const val PAYLOAD_TRIPLE = "SOS_TRIPLE"
+    const val PAYLOAD_REMOTE = "SOS_ALERT"
 }
 
 // Estado visible en UI.
@@ -59,8 +66,9 @@ interface BleSosClient {
 }
 
 enum class PressType {
-    SINGLE,  // Una presión -> grabar audio
-    TRIPLE   // Tres presiones rápidas -> SOS
+    SINGLE,  // SOS! -> grabar audio
+    TRIPLE,  // SOS_TRIPLE -> punto GPS SOS
+    REMOTE   // SOS_ALERT -> unidad cercana en emergencia
 }
 
 // Contrato GPS — GPS real del teléfono (LocationManager / CoreLocation).

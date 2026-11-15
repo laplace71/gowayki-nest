@@ -529,7 +529,7 @@ fun SettingsScreen(
                                     Spacer(Modifier.height(2.dp))
                                     Text(
                                         text = if (sosVm.ui.ble.connected)
-                                            "WAYKI_SOS · ${sosVm.ui.ble.deviceAddress ?: "Conectado"}"
+                                            "${sosVm.ui.ble.deviceName ?: "WAYKI"} · ${sosVm.ui.ble.deviceAddress ?: "Conectado"}"
                                         else
                                             "Pulsa buscar para encontrar tu ESP32",
                                         style = AppTextStyles.waykiMini,
@@ -547,7 +547,22 @@ fun SettingsScreen(
                                 )
                             }
 
+                            Text(
+                                text = "El teléfono necesita la ubicación activada: el Bluetooth no encuentra nada sin ella.",
+                                style = AppTextStyles.waykiMini,
+                                color = AppColors.slate,
+                                maxLines = 2,
+                            )
                             SosBleDevices(vm = sosVm)
+
+                            if (sosVm.ui.ble.error != null) {
+                                Text(
+                                    text = sosVm.ui.ble.error.orEmpty(),
+                                    style = AppTextStyles.waykiMini,
+                                    color = AppColors.secondary,
+                                    maxLines = 3,
+                                )
+                            }
 
                             Box(
                                 modifier = Modifier
@@ -561,7 +576,7 @@ fun SettingsScreen(
                                             ToastManager.show("Desconectado del botón SOS")
                                         } else {
                                             sosVm.connect()
-                                            ToastManager.show("Buscando WAYKI_SOS…")
+                                            ToastManager.show("Buscando ESP32…")
                                         }
                                     }
                                     .padding(horizontal = 16.dp),

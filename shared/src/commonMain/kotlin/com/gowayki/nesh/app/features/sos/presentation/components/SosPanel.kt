@@ -97,7 +97,7 @@ fun SosPanel(
             Text(
                 when {
                     ble.connected -> "Conectado: ${ble.deviceName ?: "WAYKI_SOS"} · pulsaciones: ${ble.pressCount}"
-                    ble.scanning -> "Buscando WAYKI_SOS…"
+                    ble.scanning -> "Buscando ESP32…"
                     else -> "Desconectado"
                 },
                 color = AppColors.onSurfaceMuted,

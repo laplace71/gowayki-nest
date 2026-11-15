@@ -46,11 +46,6 @@ private class AndroidBleSosClient(
     private var scanTimeout: Job? = null
     override var autoJoin: Boolean = true
 
-    // Para detectar presiones múltiples: ventana de 1.5s para triple click
-    private var pressWindowJob: Job? = null
-    private val TRIPLE_PRESS_WINDOW_MS = 1500L
-    private val TRIPLE_PRESS_COUNT = 3
-
     // Dispositivos vistos en el scan actual (estilo WiFi).
     private val found = mutableMapOf<String, BleDevice>()
     private val _devices = MutableStateFlow(emptyList<BleDevice>())
@@ -71,7 +66,8 @@ private class AndroidBleSosClient(
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val address = result.device.address ?: return
             val name = result.device.name ?: result.scanRecord?.deviceName
-            val matchesName = name == SosBleConfig.DEVICE_NAME
+            val matchesName = (name == SosBleConfig.DEVICE_NAME) ||
+                name?.startsWith(SosBleConfig.DEVICE_NAME_PREFIX, ignoreCase = true) == true
             val matchesService = result.scanRecord?.serviceUuids?.any {
                 it.uuid.toString().equals(SosBleConfig.SERVICE_UUID, ignoreCase = true)
             } == true
@@ -172,54 +168,29 @@ private class AndroidBleSosClient(
 
     private fun handleBytes(bytes: ByteArray?) {
         val txt = runCatching { bytes?.toString(Charsets.UTF_8)?.trim() }.getOrNull() ?: return
-        // El ESP32 manda "SOS!" (o "1" como fallback). Cualquiera dispara el punto GPS.
-        if (txt == SosBleConfig.PRESS_PAYLOAD || txt == "1" || txt.contains("SOS")) {
-            val now = System.currentTimeMillis()
-            // Usamos un Mutex para evitar race conditions en el estado de presses
-            scope.launch {
-                // Capturamos el estado actual de forma atómica
-                val s = _state.value
-                val timeSinceLastPress = if (s.lastPressTime > 0) now - s.lastPressTime else Long.MAX_VALUE
-
-                // Si pasó más de la ventana, reseteamos el contador
-                val effectiveCount = if (timeSinceLastPress > TRIPLE_PRESS_WINDOW_MS) 1 else s.pendingPressCount + 1
-
-                _state.value = s.copy(
-                    lastPressAt = now,
-                    pressCount = s.pressCount + 1,
-                    pendingPressCount = effectiveCount,
-                    lastPressTime = now,
-                )
-
-                // Cancelamos cualquier ventana anterior de forma segura
-                pressWindowJob?.cancel()
-                pressWindowJob = null
-
-                if (effectiveCount >= TRIPLE_PRESS_COUNT) {
-                    // Triple presión detectada -> SOS
-                    _state.value = _state.value.copy(pendingPressCount = 0)
-                    // Llamamos onPress fuera del bloque de estado para evitar deadlocks
-                    try {
-                        onPress(PressType.TRIPLE)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                } else {
-                    // Programamos verificación de presión simple
-                    pressWindowJob = scope.launch {
-                        delay(TRIPLE_PRESS_WINDOW_MS)
-                        val currentState = _state.value
-                        // Verificamos que sigue siendo una presión simple válida
-                        if (currentState.pendingPressCount == 1 && currentState.lastPressTime == now) {
-                            _state.value = _state.value.copy(pendingPressCount = 0)
-                            try {
-                                onPress(PressType.SINGLE)
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                            }
-                        }
-                    }
-                }
+        // El firmware coalesce los clicks y manda un payload por gesto:
+        //   "SOS!"        -> 1 clic  -> grabar audio
+        //   "SOS_TRIPLE"  -> 3 clics -> punto GPS + alerta
+        //   "SOS_ALERT"   -> unidad cercana en emergencia
+        // Despachamos directo por payload (el conteo de triples vive en el firmware).
+        val press = when {
+            txt.equals(SosBleConfig.PAYLOAD_TRIPLE, ignoreCase = true) -> PressType.TRIPLE
+            txt.equals(SosBleConfig.PAYLOAD_REMOTE, ignoreCase = true) -> PressType.REMOTE
+            txt == SosBleConfig.PRESS_PAYLOAD || txt == "1" || txt.contains("SOS", ignoreCase = true) -> PressType.SINGLE
+            else -> return
+        }
+        val now = System.currentTimeMillis()
+        scope.launch {
+            val s = _state.value
+            _state.value = s.copy(
+                lastPressAt = now,
+                pressCount = s.pressCount + 1,
+                lastPressTime = now,
+            )
+            try {
+                onPress(press)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -261,8 +232,6 @@ private class AndroidBleSosClient(
     @SuppressLint("MissingPermission")
     override fun stop() {
         stopScan()
-        pressWindowJob?.cancel()
-        pressWindowJob = null
         try { gatt?.disconnect() } catch (_: SecurityException) {}
         try { gatt?.close() } catch (_: Exception) {}
         gatt = null
@@ -274,6 +243,10 @@ private class AndroidBleSosClient(
     // Conexión manual desde la lista estilo WiFi.
     @SuppressLint("MissingPermission")
     override fun connectDevice(address: String) {
+        // Si ya estás conectado a OTRA placa, desconéctala bien antes de cambiar.
+        if (_state.value.connected && _state.value.deviceAddress != address) {
+            try { gatt?.disconnect() } catch (_: SecurityException) {}
+        }
         if (_state.value.connected && _state.value.deviceAddress == address) return
         stopScan()
         scope.launch {
@@ -290,8 +263,14 @@ private class AndroidBleSosClient(
     private fun connect(address: String) {
         try {
             val device = btAdapter?.getRemoteDevice(address) ?: return
-            gatt?.close()
+            if (gatt != null) {
+                try { gatt?.disconnect() } catch (_: SecurityException) {}
+                try { gatt?.close() } catch (_: Exception) {}
+                gatt = null
+            }
             gatt = device.connectGatt(appContext, false, gattCb, BluetoothDeviceTransportSafe)
+            // Pide prioridad alta: notificaciones SOS más fiables y rápidas.
+            try { gatt?.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH) } catch (_: Exception) {}
         } catch (e: SecurityException) {
             _state.value = _state.value.copy(error = "Sin permiso BLUETOOTH_CONNECT")
         } catch (e: Exception) {
