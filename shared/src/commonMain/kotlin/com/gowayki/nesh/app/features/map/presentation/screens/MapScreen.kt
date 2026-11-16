@@ -286,32 +286,27 @@ fun MapScreen(
         )
     }
 
-    // Mientras navega, escucha el GPS real y recalcula la instrucción.
-    LaunchedEffect(navigating, navigationPath) {
-        if (!navigating) {
-            userLocation = null
+    LaunchedEffect(userLocation, navigating, navigationPath) {
+        val location = userLocation
+        if (!navigating || location == null) {
             navInstruction = null
             return@LaunchedEffect
         }
-        locationSource.locations().collect { location ->
-            userLocation = location
-            navInstruction = navigationPath.instruction(
-                lat = location.lat,
-                lon = location.lon,
-                deviceBearingDeg = location.bearingDeg,
-            )
-            // Solo notificar cuando realmente se detecta posición sobre el trazo.
-            val instruction = navInstruction
-            val onRoute = instruction != null && instruction.maneuver != com.gowayki.nesh.app.features.map.domain.NavManeuver.OFF_ROUTE
-            if (!controlPointNotified &&
-                com.gowayki.nesh.core.AppSettings.controlPointAlertsEnabled.value &&
-                com.gowayki.nesh.core.AppSettings.isOnRoute.value &&
-                onRoute
-            ) {
-                controlPointNotified = true
-                val dist = instruction?.distanceMeters?.toInt() ?: 0
-                com.gowayki.nesh.app.common.ui.shared.ToastManager.show("Próximo punto de control a $dist m")
-            }
+        navInstruction = navigationPath.instruction(
+            lat = location.lat,
+            lon = location.lon,
+            deviceBearingDeg = location.bearingDeg,
+        )
+        val instruction = navInstruction
+        val onRoute = instruction != null && instruction.maneuver != com.gowayki.nesh.app.features.map.domain.NavManeuver.OFF_ROUTE
+        if (!controlPointNotified &&
+            com.gowayki.nesh.core.AppSettings.controlPointAlertsEnabled.value &&
+            com.gowayki.nesh.core.AppSettings.isOnRoute.value &&
+            onRoute
+        ) {
+            controlPointNotified = true
+            val dist = instruction?.distanceMeters?.toInt() ?: 0
+            com.gowayki.nesh.app.common.ui.shared.ToastManager.show("Próximo punto de control a $dist m")
         }
     }
 
@@ -547,6 +542,7 @@ fun MapScreen(
                                         }
                                         if (fix != null) {
                                             userLocation = fix
+                                            centerOnUserTrigger++
                                         } else {
                                             com.gowayki.nesh.app.common.ui.shared.ToastManager.show("No se pudo obtener señal GPS. Verifica que el GPS esté activo.")
                                         }

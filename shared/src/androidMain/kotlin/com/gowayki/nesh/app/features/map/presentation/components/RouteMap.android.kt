@@ -62,16 +62,18 @@ private const val TERMINALS_LAYER = "gowayki-markers-terminals-layer"
 private const val ME_SRC = "gowayki-me-src"
 private const val ME_HALO = "gowayki-me-halo"
 private const val ME_PIN = "gowayki-me-pin"
+private const val ME_COMBI = "gowayki-me-combi"
 
 private const val DRIVERS_SRC = "gowayki-drivers-src"
-private const val DRIVERS_HALO = "gowayki-drivers-halo"
-private const val DRIVERS_PIN = "gowayki-drivers-pin"
+private const val DRIVERS_COMBI = "gowayki-drivers-combi"
 private const val DRIVERS_LABEL = "gowayki-drivers-label"
 
 private const val ICON_COMBI_START = "gowayki-marker-combi_start"
 private const val ICON_COMBI_END = "gowayki-marker-combi_end"
 private const val ICON_PEDESTRIAN_STOP = "gowayki-marker-pedestrian_stop"
 private const val ICON_ARROW = "gowayki-arrow"
+private const val ICON_COMBI_USER = "gowayki-marker-combi-user"
+private const val ICON_COMBI_DRIVER = "gowayki-marker-combi-driver"
 
 @Composable
 actual fun RouteMap(
@@ -126,15 +128,26 @@ actual fun RouteMap(
     val liveTerminalsSrc = remember { arrayOfNulls<GeoJsonSource>(1) }
     val liveMeSrc = remember { arrayOfNulls<GeoJsonSource>(1) }
     val liveDriversSrc = remember { arrayOfNulls<GeoJsonSource>(1) }
+    val liveMeHalo = remember { arrayOfNulls<CircleLayer>(1) }
+    val liveMePin = remember { arrayOfNulls<CircleLayer>(1) }
+    val liveMeCombi = remember { arrayOfNulls<SymbolLayer>(1) }
 
-    // Refs "vivas" a los puntos actuales, accesibles desde el callback de loadStyle
-    // sin capturar closures stale.
     val latestMatched = remember { arrayOf(matched) }
     val latestReturnMatched = remember { arrayOf(returnMatched) }
     val latestStops = remember { arrayOf(stops) }
+    val latestUserLocation = remember { arrayOf(userLocation) }
+    val latestOtherDrivers = remember { arrayOf(otherDrivers) }
+    val latestNavigating = remember { arrayOf(navigating) }
+    val latestCameraBearing = remember { arrayOf(cameraBearingDeg) }
     latestMatched[0] = matched
     latestReturnMatched[0] = returnMatched
     latestStops[0] = stops
+    latestUserLocation[0] = userLocation
+    latestOtherDrivers[0] = otherDrivers
+    latestNavigating[0] = navigating
+    latestCameraBearing[0] = cameraBearingDeg
+
+    var hasCenteredOnUser by remember(routePoints) { mutableStateOf(false) }
 
     fun fitRouteToScreen(currentMatched: List<Pair<Double, Double>>, currentReturnMatched: List<Pair<Double, Double>>) {
         val allPoints = currentMatched + currentReturnMatched
@@ -167,14 +180,29 @@ actual fun RouteMap(
         )
     }
 
-    // Reencuadra la cámara al trazado cuando llega (fuera de modo navegación).
-    // Se pasan los puntos actuales explícitamente para evitar closures stale.
-    LaunchedEffect(matched, returnMatched, navigating) {
-        if (!navigating) fitRouteToScreen(matched, returnMatched)
+    LaunchedEffect(matched, returnMatched) {
+        if (!hasCenteredOnUser && userLocation == null && !navigating) {
+            fitRouteToScreen(matched, returnMatched)
+        }
         onMatchedPointsChanged(matched, returnMatched)
     }
 
-    // Centra la cámara en la ubicación del usuario al pulsar "mi ubicación".
+    LaunchedEffect(userLocation?.lat, userLocation?.lon, navigating) {
+        val location = userLocation ?: return@LaunchedEffect
+        if (!hasCenteredOnUser && !navigating) {
+            hasCenteredOnUser = true
+            viewport.easeTo(
+                CameraOptions.Builder()
+                    .center(Point.fromLngLat(location.lon, location.lat))
+                    .zoom(16.0)
+                    .pitch(0.0)
+                    .bearing(0.0)
+                    .build(),
+                MapAnimationOptions.mapAnimationOptions { duration(800L) },
+            )
+        }
+    }
+
     LaunchedEffect(centerOnUserTrigger) {
         if (centerOnUserTrigger == 0) return@LaunchedEffect
         val location = userLocation ?: return@LaunchedEffect
@@ -396,42 +424,68 @@ actual fun RouteMap(
                     },
                 )
 
-                // 5. Punto de ubicación real: halo de precisión y pin blanco/azul
-                val meSrc = GeoJsonSource.Builder(ME_SRC).featureCollection(empty).build()
+                val initialUserFeatures = latestUserLocation[0]?.let { loc ->
+                    listOf(
+                        Feature.fromGeometry(Point.fromLngLat(loc.lon, loc.lat)).apply {
+                            val b = latestCameraBearing[0] ?: loc.bearingDeg?.toDouble() ?: 0.0
+                            addNumberProperty("bearing", b)
+                        }
+                    )
+                } ?: emptyList()
+                val meSrc = GeoJsonSource.Builder(ME_SRC).featureCollection(FeatureCollection.fromFeatures(initialUserFeatures)).build()
                 style.addSource(meSrc)
                 liveMeSrc[0] = meSrc
-                style.addLayer(
-                    CircleLayer(ME_HALO, ME_SRC).apply {
-                        circleRadius(24.0)
-                        circleColor("#1E88E5")
-                        circleOpacity(0.18)
-                    },
-                )
-                style.addLayer(
-                    CircleLayer(ME_PIN, ME_SRC).apply {
-                        circleRadius(9.5)
-                        circleColor("#1E88E5")
-                        circleStrokeColor("#FFFFFF")
-                        circleStrokeWidth(3.0)
-                    },
-                )
 
-                val driversSrc = GeoJsonSource.Builder(DRIVERS_SRC).featureCollection(empty).build()
+                val haloLayer = CircleLayer(ME_HALO, ME_SRC).apply {
+                    circleRadius(24.0)
+                    circleColor("#1E88E5")
+                    circleOpacity(if (latestNavigating[0]) 0.0 else 0.18)
+                }
+                style.addLayer(haloLayer)
+                liveMeHalo[0] = haloLayer
+
+                val pinLayer = CircleLayer(ME_PIN, ME_SRC).apply {
+                    circleRadius(9.5)
+                    circleColor("#1E88E5")
+                    circleStrokeColor("#FFFFFF")
+                    circleStrokeWidth(3.0)
+                    circleOpacity(if (latestNavigating[0]) 0.0 else 1.0)
+                    circleStrokeOpacity(if (latestNavigating[0]) 0.0 else 1.0)
+                }
+                style.addLayer(pinLayer)
+                liveMePin[0] = pinLayer
+
+                val combiLayer = SymbolLayer(ME_COMBI, ME_SRC).apply {
+                    iconImage(ICON_COMBI_USER)
+                    iconRotate(Expression.get("bearing"))
+                    iconRotationAlignment(IconRotationAlignment.MAP)
+                    iconAllowOverlap(true)
+                    iconIgnorePlacement(true)
+                    iconSize(0.60)
+                    iconOpacity(if (latestNavigating[0]) 1.0 else 0.0)
+                }
+                style.addLayer(combiLayer)
+                liveMeCombi[0] = combiLayer
+
+                val initialDriverFeatures = latestOtherDrivers[0].filter { !it.isSelf }.map { driver ->
+                    Feature.fromGeometry(Point.fromLngLat(driver.lon, driver.lat)).apply {
+                        val label = driver.numeroPadron?.let { "U-$it" } ?: driver.id
+                        addStringProperty("label", label)
+                        addNumberProperty("bearing", driver.bearingDeg)
+                    }
+                }
+                val driversSrc = GeoJsonSource.Builder(DRIVERS_SRC).featureCollection(FeatureCollection.fromFeatures(initialDriverFeatures)).build()
                 style.addSource(driversSrc)
                 liveDriversSrc[0] = driversSrc
+
                 style.addLayer(
-                    CircleLayer(DRIVERS_HALO, DRIVERS_SRC).apply {
-                        circleRadius(22.0)
-                        circleColor("#10B981")
-                        circleOpacity(0.22)
-                    },
-                )
-                style.addLayer(
-                    CircleLayer(DRIVERS_PIN, DRIVERS_SRC).apply {
-                        circleRadius(10.0)
-                        circleColor("#10B981")
-                        circleStrokeColor("#FFFFFF")
-                        circleStrokeWidth(2.5)
+                    SymbolLayer(DRIVERS_COMBI, DRIVERS_SRC).apply {
+                        iconImage(ICON_COMBI_DRIVER)
+                        iconRotate(Expression.get("bearing"))
+                        iconRotationAlignment(IconRotationAlignment.MAP)
+                        iconAllowOverlap(true)
+                        iconIgnorePlacement(true)
+                        iconSize(0.55)
                     },
                 )
                 style.addLayer(
@@ -441,7 +495,7 @@ actual fun RouteMap(
                         textColor("#0F172A")
                         textHaloColor("#FFFFFF")
                         textHaloWidth(2.0)
-                        textOffset(listOf(0.0, -1.8))
+                        textOffset(listOf(0.0, -2.2))
                         textAllowOverlap(true)
                         textIgnorePlacement(true)
                     },
@@ -458,19 +512,31 @@ actual fun RouteMap(
             liveTerminalsSrc[0]?.featureCollection(FeatureCollection.fromFeatures(terminalFeatures(matched, returnMatched)))
         }
 
-        // Actualiza la posición real del usuario (separado porque cambia más frecuentemente)
-        MapEffect(userLocation, navigating) { _ ->
+        MapEffect(userLocation, cameraBearingDeg) { _ ->
             val meSrc = liveMeSrc[0] ?: return@MapEffect
             val features = if (userLocation != null) {
                 listOf(
                     Feature.fromGeometry(
                         Point.fromLngLat(userLocation.lon, userLocation.lat)
-                    )
+                    ).apply {
+                        val b = cameraBearingDeg ?: userLocation.bearingDeg?.toDouble() ?: 0.0
+                        addNumberProperty("bearing", b)
+                    }
                 )
             } else {
                 emptyList()
             }
             meSrc.featureCollection(FeatureCollection.fromFeatures(features))
+        }
+
+        MapEffect(navigating) { _ ->
+            val isNav = navigating
+            liveMeHalo[0]?.circleOpacity(if (isNav) 0.0 else 0.18)
+            liveMePin[0]?.apply {
+                circleOpacity(if (isNav) 0.0 else 1.0)
+                circleStrokeOpacity(if (isNav) 0.0 else 1.0)
+            }
+            liveMeCombi[0]?.iconOpacity(if (isNav) 1.0 else 0.0)
         }
 
         MapEffect(otherDrivers) { _ ->
@@ -504,9 +570,14 @@ private fun loadAndRegisterMarkers(context: Context, style: Style) {
             ?: createFallbackPinBitmap(android.graphics.Color.parseColor("#3B82F6"))
         style.addImage(ICON_PEDESTRIAN_STOP, stopBm)
 
-        // Flecha de dirección (apunta al este; Mapbox la rota según el trazado).
         val arrowBm = createArrowBitmap(android.graphics.Color.WHITE)
         style.addImage(ICON_ARROW, arrowBm)
+
+        val userCombiBm = loadAssetBitmap(context, "markers/ic_combi_user.png")
+        if (userCombiBm != null) style.addImage(ICON_COMBI_USER, userCombiBm)
+
+        val driverCombiBm = loadAssetBitmap(context, "markers/ic_combi_driver.png")
+        if (driverCombiBm != null) style.addImage(ICON_COMBI_DRIVER, driverCombiBm)
     } catch (e: Exception) {
         Log.w("RouteMap", "Error registrando marcadores en estilo: ${e.message}")
     }
