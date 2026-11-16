@@ -9,7 +9,10 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -686,7 +689,6 @@ fun MapScreen(
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             Box(
                                 Modifier
@@ -697,22 +699,35 @@ fun MapScreen(
                             ) {
                                 Icon(SolidGroup.Bus, null, tint = AppColors.ink, modifier = Modifier.size(13.dp))
                             }
+                            Spacer(Modifier.width(6.dp))
                             Text(
-                                text = "Conductores en tu línea",
+                                text = "En tu línea",
                                 style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
                                 color = AppColors.ink,
+                                maxLines = 1,
                             )
-                            Spacer(Modifier.weight(1f))
-                            if (sameRouteOthers.isEmpty()) {
-                                MiniChip("Sin otros conductores")
-                            } else {
-                                sameRouteOthers.forEach { driver ->
-                                    val otherProgress = projectProgressMeters(activePoints.value, driver.lat, driver.lon)
-                                    val ahead = otherProgress > userProgress
-                                    val diffMeters = kotlin.math.abs(otherProgress - userProgress)
-                                    val minutes = (diffMeters / 500.0).toInt().coerceAtLeast(1)
-                                    val label = driver.numeroPadron?.let { "Unidad $it" } ?: driver.id
-                                    MiniChip("$label · $minutes min ${if (ahead) "adelante" else "atrás"}")
+                            Spacer(Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                if (sameRouteOthers.isEmpty()) {
+                                    MiniChip("Sin otros conductores")
+                                } else {
+                                    Row(
+                                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        sameRouteOthers.forEach { driver ->
+                                            val otherProgress = projectProgressMeters(activePoints.value, driver.lat, driver.lon)
+                                            val ahead = otherProgress > userProgress
+                                            val diffMeters = kotlin.math.abs(otherProgress - userProgress)
+                                            val minutes = (diffMeters / 500.0).toInt().coerceAtLeast(1)
+                                            val label = driver.numeroPadron?.let { "U-$it" } ?: driver.id
+                                            MiniChip("$label · $minutes min ${if (ahead) "adelante" else "atrás"}")
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1211,7 +1226,10 @@ private fun MiniChip(text: String) {
         Text(
             text = text,
             style = AppTextStyles.waykiMini.copy(fontSize = 10.sp, fontWeight = FontWeight.Medium),
-            color = AppColors.ink
+            color = AppColors.ink,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
