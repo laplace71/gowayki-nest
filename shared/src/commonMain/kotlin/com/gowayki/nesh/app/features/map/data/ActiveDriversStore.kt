@@ -16,12 +16,27 @@ data class ActiveDriver(
     val speedKmh: Double = 0.0,
     val numeroPadron: String? = null,
     val unidadId: Int? = null,
+    val lineaId: Int? = null,
     val isSelf: Boolean = false,
 )
 
 object ActiveDriversStore {
     private val _drivers = MutableStateFlow<List<ActiveDriver>>(emptyList())
     val drivers: StateFlow<List<ActiveDriver>> = _drivers.asStateFlow()
+
+    private fun parseRouteCode(lineaNombre: String?, lineaId: Int?): String {
+        if (!lineaNombre.isNullOrBlank()) {
+            val clean = lineaNombre.replace("Línea", "", ignoreCase = true)
+                .replace("Linea", "", ignoreCase = true)
+                .trim()
+                .split(" ")
+                .firstOrNull()
+                ?.trim()
+                ?.uppercase()
+            if (!clean.isNullOrBlank()) return clean
+        }
+        return lineaId?.let { "C$it" } ?: ""
+    }
 
     fun updateSelf(routeId: String, location: UserLocation) {
         val self = ActiveDriver(
@@ -41,7 +56,12 @@ object ActiveDriversStore {
         if (uId == myUnidadId) return
         val driverId = "u-$uId"
         val padron = dto.numeroPadron ?: uId.toString()
-        val routeCode = dto.lineaId?.let { "C$it" } ?: ""
+        val turno = com.gowayki.nesh.core.session.TurnoSession.turno
+        val routeCode = if (dto.lineaId != null && dto.lineaId == turno?.lineaId && !turno?.lineaNombre.isNullOrBlank()) {
+            parseRouteCode(turno?.lineaNombre, dto.lineaId)
+        } else {
+            dto.lineaId?.let { "C$it" } ?: ""
+        }
         val driver = ActiveDriver(
             id = driverId,
             routeId = routeCode,
@@ -51,6 +71,7 @@ object ActiveDriversStore {
             speedKmh = dto.velocidadKmh ?: 0.0,
             numeroPadron = padron,
             unidadId = uId,
+            lineaId = dto.lineaId,
             isSelf = false,
         )
         _drivers.value = _drivers.value.filterNot { it.id == driverId } + driver
@@ -60,7 +81,7 @@ object ActiveDriversStore {
         val remoteList = unidades.mapNotNull { u ->
             if (u.id == myUnidadId) return@mapNotNull null
             val pos = u.posicionActual ?: return@mapNotNull null
-            val routeCode = u.lineaId?.let { "C$it" } ?: ""
+            val routeCode = parseRouteCode(u.lineaNombre, u.lineaId)
             ActiveDriver(
                 id = "u-${u.id}",
                 routeId = routeCode,
@@ -70,6 +91,7 @@ object ActiveDriversStore {
                 speedKmh = pos.velocidadKmh ?: 0.0,
                 numeroPadron = u.numeroPadron ?: u.id.toString(),
                 unidadId = u.id,
+                lineaId = u.lineaId,
                 isSelf = false,
             )
         }

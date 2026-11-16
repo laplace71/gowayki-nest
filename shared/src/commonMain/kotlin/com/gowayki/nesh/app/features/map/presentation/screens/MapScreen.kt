@@ -242,10 +242,15 @@ fun MapScreen(
     var waitingForGps by remember { mutableStateOf(false) }
 
     val activeDrivers by com.gowayki.nesh.app.features.map.data.ActiveDriversStore.drivers.collectAsState()
-    val sameRouteOthers = remember(activeDrivers, route?.id, route?.parent) {
+    val currentLineaId = com.gowayki.nesh.core.session.TurnoSession.turno?.lineaId
+    val sameRouteOthers = remember(activeDrivers, route?.id, route?.parent, currentLineaId) {
         val rId = route?.id.orEmpty()
         val parent = route?.parent.orEmpty()
-        activeDrivers.filter { !it.isSelf && (it.routeId.isBlank() || it.routeId == rId || it.routeId == parent) }
+        activeDrivers.filter { driver ->
+            if (driver.isSelf) return@filter false
+            if (currentLineaId != null && driver.lineaId != null && driver.lineaId == currentLineaId) return@filter true
+            driver.routeId.isBlank() || driver.routeId == rId || driver.routeId == parent
+        }
     }
 
     // Captura la ubicación actual aunque no se esté navegando,
@@ -274,16 +279,19 @@ fun MapScreen(
     LaunchedEffect(route?.id) {
         navigating = false
         enteredRoute = false
-        val lineaId = com.gowayki.nesh.core.session.TurnoSession.turno?.lineaId
-        val unidades = if (lineaId != null) {
-            com.gowayki.nesh.data.repository.BackendTurnosApi.unidadesPorLinea(lineaId)
-        } else {
-            com.gowayki.nesh.data.repository.BackendTurnosApi.unidadesTodas()
+        while (true) {
+            val lineaId = com.gowayki.nesh.core.session.TurnoSession.turno?.lineaId
+            val unidades = if (lineaId != null) {
+                com.gowayki.nesh.data.repository.BackendTurnosApi.unidadesPorLinea(lineaId)
+            } else {
+                com.gowayki.nesh.data.repository.BackendTurnosApi.unidadesTodas()
+            }
+            com.gowayki.nesh.app.features.map.data.ActiveDriversStore.updateFromUnidades(
+                unidades,
+                com.gowayki.nesh.core.session.TurnoSession.turno?.unidadId
+            )
+            kotlinx.coroutines.delay(4000L)
         }
-        com.gowayki.nesh.app.features.map.data.ActiveDriversStore.updateFromUnidades(
-            unidades,
-            com.gowayki.nesh.core.session.TurnoSession.turno?.unidadId
-        )
     }
 
     LaunchedEffect(userLocation, navigating, navigationPath) {
