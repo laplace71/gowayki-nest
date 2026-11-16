@@ -461,7 +461,18 @@ actual fun RouteMap(
                     iconRotationAlignment(IconRotationAlignment.MAP)
                     iconAllowOverlap(true)
                     iconIgnorePlacement(true)
-                    iconSize(0.60)
+                    iconSize(
+                        Expression.interpolate(
+                            Expression.linear(),
+                            Expression.zoom(),
+                            Expression.literal(12.0),
+                            Expression.literal(0.70),
+                            Expression.literal(15.0),
+                            Expression.literal(1.05),
+                            Expression.literal(17.5),
+                            Expression.literal(1.35)
+                        )
+                    )
                     iconOpacity(if (latestNavigating[0]) 1.0 else 0.0)
                 }
                 style.addLayer(combiLayer)
@@ -485,17 +496,39 @@ actual fun RouteMap(
                         iconRotationAlignment(IconRotationAlignment.MAP)
                         iconAllowOverlap(true)
                         iconIgnorePlacement(true)
-                        iconSize(0.55)
+                        iconSize(
+                            Expression.interpolate(
+                                Expression.linear(),
+                                Expression.zoom(),
+                                Expression.literal(12.0),
+                                Expression.literal(0.65),
+                                Expression.literal(15.0),
+                                Expression.literal(1.00),
+                                Expression.literal(17.5),
+                                Expression.literal(1.30)
+                            )
+                        )
                     },
                 )
                 style.addLayer(
                     SymbolLayer(DRIVERS_LABEL, DRIVERS_SRC).apply {
                         textField(Expression.get("label"))
-                        textSize(11.0)
+                        textSize(
+                            Expression.interpolate(
+                                Expression.linear(),
+                                Expression.zoom(),
+                                Expression.literal(12.0),
+                                Expression.literal(10.0),
+                                Expression.literal(16.0),
+                                Expression.literal(12.5),
+                                Expression.literal(18.0),
+                                Expression.literal(14.0)
+                            )
+                        )
                         textColor("#0F172A")
                         textHaloColor("#FFFFFF")
                         textHaloWidth(2.0)
-                        textOffset(listOf(0.0, -2.2))
+                        textOffset(listOf(0.0, -2.6))
                         textAllowOverlap(true)
                         textIgnorePlacement(true)
                     },
