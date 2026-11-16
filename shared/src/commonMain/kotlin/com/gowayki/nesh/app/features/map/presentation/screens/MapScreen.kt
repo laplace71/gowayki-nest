@@ -9,7 +9,10 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -242,10 +245,15 @@ fun MapScreen(
     var waitingForGps by remember { mutableStateOf(false) }
 
     val activeDrivers by com.gowayki.nesh.app.features.map.data.ActiveDriversStore.drivers.collectAsState()
-    val sameRouteOthers = remember(activeDrivers, route?.id, route?.parent) {
+    val currentLineaId = com.gowayki.nesh.core.session.TurnoSession.turno?.lineaId
+    val sameRouteOthers = remember(activeDrivers, route?.id, route?.parent, currentLineaId) {
         val rId = route?.id.orEmpty()
         val parent = route?.parent.orEmpty()
-        activeDrivers.filter { !it.isSelf && (it.routeId.isBlank() || it.routeId == rId || it.routeId == parent) }
+        activeDrivers.filter { driver ->
+            if (driver.isSelf) return@filter false
+            if (currentLineaId != null && driver.lineaId != null && driver.lineaId == currentLineaId) return@filter true
+            driver.routeId.isBlank() || driver.routeId == rId || driver.routeId == parent
+        }
     }
 
     // Captura la ubicación actual aunque no se esté navegando,
@@ -274,44 +282,42 @@ fun MapScreen(
     LaunchedEffect(route?.id) {
         navigating = false
         enteredRoute = false
-        val lineaId = com.gowayki.nesh.core.session.TurnoSession.turno?.lineaId
-        val unidades = if (lineaId != null) {
-            com.gowayki.nesh.data.repository.BackendTurnosApi.unidadesPorLinea(lineaId)
-        } else {
-            com.gowayki.nesh.data.repository.BackendTurnosApi.unidadesTodas()
+        while (true) {
+            val lineaId = com.gowayki.nesh.core.session.TurnoSession.turno?.lineaId
+            val unidades = if (lineaId != null) {
+                com.gowayki.nesh.data.repository.BackendTurnosApi.unidadesPorLinea(lineaId)
+            } else {
+                com.gowayki.nesh.data.repository.BackendTurnosApi.unidadesTodas()
+            }
+            com.gowayki.nesh.app.features.map.data.ActiveDriversStore.updateFromUnidades(
+                unidades,
+                com.gowayki.nesh.core.session.TurnoSession.turno?.unidadId
+            )
+            kotlinx.coroutines.delay(4000L)
         }
-        com.gowayki.nesh.app.features.map.data.ActiveDriversStore.updateFromUnidades(
-            unidades,
-            com.gowayki.nesh.core.session.TurnoSession.turno?.unidadId
-        )
     }
 
-    // Mientras navega, escucha el GPS real y recalcula la instrucción.
-    LaunchedEffect(navigating, navigationPath) {
-        if (!navigating) {
-            userLocation = null
+    LaunchedEffect(userLocation, navigating, navigationPath) {
+        val location = userLocation
+        if (!navigating || location == null) {
             navInstruction = null
             return@LaunchedEffect
         }
-        locationSource.locations().collect { location ->
-            userLocation = location
-            navInstruction = navigationPath.instruction(
-                lat = location.lat,
-                lon = location.lon,
-                deviceBearingDeg = location.bearingDeg,
-            )
-            // Solo notificar cuando realmente se detecta posición sobre el trazo.
-            val instruction = navInstruction
-            val onRoute = instruction != null && instruction.maneuver != com.gowayki.nesh.app.features.map.domain.NavManeuver.OFF_ROUTE
-            if (!controlPointNotified &&
-                com.gowayki.nesh.core.AppSettings.controlPointAlertsEnabled.value &&
-                com.gowayki.nesh.core.AppSettings.isOnRoute.value &&
-                onRoute
-            ) {
-                controlPointNotified = true
-                val dist = instruction?.distanceMeters?.toInt() ?: 0
-                com.gowayki.nesh.app.common.ui.shared.ToastManager.show("Próximo punto de control a $dist m")
-            }
+        navInstruction = navigationPath.instruction(
+            lat = location.lat,
+            lon = location.lon,
+            deviceBearingDeg = location.bearingDeg,
+        )
+        val instruction = navInstruction
+        val onRoute = instruction != null && instruction.maneuver != com.gowayki.nesh.app.features.map.domain.NavManeuver.OFF_ROUTE
+        if (!controlPointNotified &&
+            com.gowayki.nesh.core.AppSettings.controlPointAlertsEnabled.value &&
+            com.gowayki.nesh.core.AppSettings.isOnRoute.value &&
+            onRoute
+        ) {
+            controlPointNotified = true
+            val dist = instruction?.distanceMeters?.toInt() ?: 0
+            com.gowayki.nesh.app.common.ui.shared.ToastManager.show("Próximo punto de control a $dist m")
         }
     }
 
@@ -547,6 +553,7 @@ fun MapScreen(
                                         }
                                         if (fix != null) {
                                             userLocation = fix
+                                            centerOnUserTrigger++
                                         } else {
                                             com.gowayki.nesh.app.common.ui.shared.ToastManager.show("No se pudo obtener señal GPS. Verifica que el GPS esté activo.")
                                         }
@@ -682,7 +689,6 @@ fun MapScreen(
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             Box(
                                 Modifier
@@ -693,22 +699,35 @@ fun MapScreen(
                             ) {
                                 Icon(SolidGroup.Bus, null, tint = AppColors.ink, modifier = Modifier.size(13.dp))
                             }
+                            Spacer(Modifier.width(6.dp))
                             Text(
-                                text = "Conductores en tu línea",
+                                text = "En tu línea",
                                 style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
                                 color = AppColors.ink,
+                                maxLines = 1,
                             )
-                            Spacer(Modifier.weight(1f))
-                            if (sameRouteOthers.isEmpty()) {
-                                MiniChip("Sin otros conductores")
-                            } else {
-                                sameRouteOthers.forEach { driver ->
-                                    val otherProgress = projectProgressMeters(activePoints.value, driver.lat, driver.lon)
-                                    val ahead = otherProgress > userProgress
-                                    val diffMeters = kotlin.math.abs(otherProgress - userProgress)
-                                    val minutes = (diffMeters / 500.0).toInt().coerceAtLeast(1)
-                                    val label = driver.numeroPadron?.let { "Unidad $it" } ?: driver.id
-                                    MiniChip("$label · $minutes min ${if (ahead) "adelante" else "atrás"}")
+                            Spacer(Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                if (sameRouteOthers.isEmpty()) {
+                                    MiniChip("Sin otros conductores")
+                                } else {
+                                    Row(
+                                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        sameRouteOthers.forEach { driver ->
+                                            val otherProgress = projectProgressMeters(activePoints.value, driver.lat, driver.lon)
+                                            val ahead = otherProgress > userProgress
+                                            val diffMeters = kotlin.math.abs(otherProgress - userProgress)
+                                            val minutes = (diffMeters / 500.0).toInt().coerceAtLeast(1)
+                                            val label = driver.numeroPadron?.let { "U-$it" } ?: driver.id
+                                            MiniChip("$label · $minutes min ${if (ahead) "adelante" else "atrás"}")
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1207,7 +1226,10 @@ private fun MiniChip(text: String) {
         Text(
             text = text,
             style = AppTextStyles.waykiMini.copy(fontSize = 10.sp, fontWeight = FontWeight.Medium),
-            color = AppColors.ink
+            color = AppColors.ink,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
