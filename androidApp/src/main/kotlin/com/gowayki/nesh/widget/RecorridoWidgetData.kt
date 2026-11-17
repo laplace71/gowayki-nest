@@ -56,9 +56,9 @@ object RecorridoWidgetData {
         // Si no hay routeIds nuevos (selección antigua), intenta usar el id guardado como routeId directo
         if (idaRouteId.isNullOrBlank() && returnRouteId.isNullOrBlank()) {
             val legacy = prefs.getString(KEY_ROUTE_ID, null) ?: return emptyList()
-            return readStopsForRoute(context, legacy).take(30)
+            return readStopsForRoute(context, legacy)
         }
-        return buildStopItems(context, idaRouteId, returnRouteId, direction).take(40)
+        return buildStopItems(context, idaRouteId, returnRouteId, direction)
     }
 
     private fun buildStopItems(
@@ -70,13 +70,14 @@ object RecorridoWidgetData {
         val ida = readStopsForRoute(context, idaRouteId)
         val ret = readStopsForRoute(context, returnRouteId)
 
-        // Muestra ida y vuelta cuando existen para que el widget refleje ambos recorridos.
+        // Muestra ida y vuelta completas: el widget debe reflejar todo el
+        // recorrido de la ruta, no un recorte.
         if (ida.isNotEmpty() && ret.isNotEmpty()) {
             val out = ArrayList<RecorridoStopItem>(ida.size + ret.size + 2)
             out.add(RecorridoStopItem(name = "Ida", district = "${ida.size} paraderos", isHeader = true))
-            out.addAll(ida.take(20))
+            out.addAll(ida)
             out.add(RecorridoStopItem(name = "Vuelta", district = "${ret.size} paraderos", isHeader = true))
-            out.addAll(ret.take(20))
+            out.addAll(ret)
             return out
         }
         if (direction == "RETORNO" && ret.isNotEmpty()) return ret
