@@ -5,6 +5,12 @@ package com.gowayki.nesh.app.features.map.data
  * aunque se cierre la app o se salga de la vista del mapa.
  */
 expect object RouteSelectionStore {
-    suspend fun save(routeId: String)
+    suspend fun save(
+        routeId: String,
+        routeName: String,
+        idaRouteId: String?,
+        returnRouteId: String?,
+        direction: String
+    )
     suspend fun load(): String?
 }
