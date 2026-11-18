@@ -15,9 +15,7 @@ Los tags `v*` generan una release propia (`v1.0.0`, `v1.1.0`, …). Los `.apk`
 nunca se commitean al repo: GitHub rechaza archivos de más de 100 MB.
 
 Las notas de la release se generan solas: changelog desde la beta anterior
-(commits de `main`), instrucciones de instalación y tabla con versión,
-`versionCode`, tamaño, commit, SHA-256 del APK y huella del certificado, para
-que cualquiera pueda verificar lo que descarga.
+(commits de `main`) e instrucciones de instalación.
 
 ### Quién puede publicar
 
@@ -45,10 +43,10 @@ firmadas con el mismo keystore. Se usa, en este orden:
 2. `androidApp/keystore/wayki-beta.jks`, el keystore beta del repo: alias
    `wayki`, contraseña `wayki-beta` (se puede sobreescribir con las variables
    `BETA_KEYSTORE_PASSWORD`, `BETA_KEY_ALIAS` y `BETA_KEY_PASSWORD`).
-   Su huella SHA-256 es
-   `01:59:18:B9:43:DC:5A:A8:2B:DF:05:81:B5:21:F6:1B:8A:F0:D5:63:C2:26:6E:21:D4:09:29:5E:5A:64:5D:3A`.
    Es público a propósito (builds de prueba): no usar para publicar en Play
    Store; para eso, genera un keystore privado y súbelo como secretos.
+   Si algún día cambia ese archivo, el certificado cambia y todos tendrán que
+   desinstalar una vez antes de instalar la beta nueva.
 3. Un keystore temporal: sirve para probar, pero obliga a desinstalar antes de
    instalar la siguiente beta.
 

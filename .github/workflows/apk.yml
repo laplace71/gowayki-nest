@@ -140,13 +140,8 @@ jobs:
             --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" \
             --ks-key-alias "$KEY_ALIAS" \
             --out "$salida" "$RUNNER_TEMP/alineado.apk"
-          "$build_tools/apksigner" verify --print-certs "$salida" | head -3
-          {
-            echo "apk=$salida"
-            echo "sha256=$(sha256sum "$salida" | cut -d' ' -f1)"
-            echo "bytes=$(stat -c%s "$salida")"
-            echo "cert=$("$build_tools/apksigner" verify --print-certs "$salida" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
-          } >> "$GITHUB_OUTPUT"
+          "$build_tools/apksigner" verify "$salida"
+          echo "apk=$salida" >> "$GITHUB_OUTPUT"
 
       - name: Generar notas de la release
         id: notas
@@ -154,23 +149,16 @@ jobs:
           PREV: ${{ steps.meta.outputs.prev }}
           VERSION: ${{ steps.meta.outputs.version }}
           ASSET: ${{ steps.meta.outputs.asset }}
-          CODE: ${{ steps.meta.outputs.code }}
-          SHA256: ${{ steps.firmar.outputs.sha256 }}
-          BYTES: ${{ steps.firmar.outputs.bytes }}
-          CERT: ${{ steps.firmar.outputs.cert }}
         run: |
           set -euo pipefail
-          short_sha=$(git rev-parse --short "$GITHUB_SHA")
 
           if [ -n "$PREV" ] && [ "$(git rev-list --count "$PREV..$GITHUB_SHA")" -gt 0 ]; then
-            cambios=$(git log --no-merges --pretty='- %s (`%h`)' "$PREV..$GITHUB_SHA" | head -40)
+            cambios=$(git log --no-merges --pretty='- %s' "$PREV..$GITHUB_SHA" | head -40)
             comparar="https://github.com/$GITHUB_REPOSITORY/compare/${PREV}...${GITHUB_SHA}"
           else
             cambios="- Sin cambios de código desde la beta anterior."
             comparar=""
           fi
-
-          tamano=$(awk -v b="$BYTES" 'BEGIN { printf "%.1f MB", b / 1048576 }')
 
           {
             echo "## Wayki Nest $VERSION"
@@ -190,22 +178,6 @@ jobs:
             echo "1. Descarga \`$ASSET\`."
             echo "2. Permite *instalar apps de origen desconocido* cuando Android lo pida."
             echo "3. Si ya tienes una beta instalada, se actualiza encima: no hace falta desinstalar."
-            echo
-            echo "| Dato | Valor |"
-            echo "| --- | --- |"
-            echo "| Versión | $VERSION (versionCode $CODE) |"
-            echo "| Tamaño | $tamano |"
-            echo "| Requisitos | Android 7.0 (API 24) o superior |"
-            echo "| Commit | [\`$short_sha\`](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA) |"
-            echo "| SHA-256 | \`$SHA256\` |"
-            echo "| Certificado | \`$CERT\` |"
-            echo
-            echo "### Verificar la descarga"
-            echo
-            echo '```bash'
-            echo "sha256sum $ASSET"
-            echo "# debe imprimir el SHA-256 de la tabla de arriba"
-            echo '```'
             echo
             echo "### Notas"
             echo

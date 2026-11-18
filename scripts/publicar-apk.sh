@@ -60,18 +60,12 @@ mkdir -p "$(dirname "$salida")"
 rm -f "$raiz/build/releases/alineado.apk"
 
 # --- Notas de la release ----------------------------------------------------
-short_sha=$(git rev-parse --short HEAD)
-sha256=$(sha256sum "$salida" | cut -d' ' -f1)
-bytes=$(stat -c%s "$salida")
-cert=$("$build_tools/apksigner" verify --print-certs "$salida" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-tamano=$(awk -v b="$bytes" 'BEGIN { printf "%.1f MB", b / 1048576 }')
-
 prev=$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null || true)
 if [ -z "$prev" ]; then
   prev=$(git ls-remote --tags origin "refs/tags/$TAG" 2>/dev/null | cut -f1 || true)
 fi
 if [ -n "$prev" ] && [ "$(git rev-list --count "$prev..HEAD" 2>/dev/null || echo 0)" -gt 0 ]; then
-  cambios=$(git log --no-merges --pretty='- %s (`%h`)' "$prev..HEAD" | head -40)
+  cambios=$(git log --no-merges --pretty='- %s' "$prev..HEAD" | head -40)
   comparar="https://github.com/$REPO/compare/${prev}...$(git rev-parse HEAD)"
 else
   cambios="- Sin cambios de código desde la publicación anterior."
@@ -97,22 +91,6 @@ notas="$raiz/build/releases/notas.md"
   echo "1. Descarga \`$asset\`."
   echo "2. Permite *instalar apps de origen desconocido* cuando Android lo pida."
   echo "3. Si ya tienes una beta instalada, se actualiza encima: no hace falta desinstalar."
-  echo
-  echo "| Dato | Valor |"
-  echo "| --- | --- |"
-  echo "| Versión | $version (versionCode $version_code) |"
-  echo "| Tamaño | $tamano |"
-  echo "| Requisitos | Android 7.0 (API 24) o superior |"
-  echo "| Commit | [\`$short_sha\`](https://github.com/$REPO/commit/$(git rev-parse HEAD)) |"
-  echo "| SHA-256 | \`$sha256\` |"
-  echo "| Certificado | \`$cert\` |"
-  echo
-  echo "### Verificar la descarga"
-  echo
-  echo '```bash'
-  echo "sha256sum $asset"
-  echo "# debe imprimir el SHA-256 de la tabla de arriba"
-  echo '```'
   echo
   echo "### Notas"
   echo
