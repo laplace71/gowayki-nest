@@ -19,6 +19,22 @@ Las notas de la release se generan solas: changelog desde la beta anterior
 `versionCode`, tamaño, commit, SHA-256 del APK y huella del certificado, para
 que cualquiera pueda verificar lo que descarga.
 
+### Quién puede publicar
+
+Cualquier colaborador con permiso de escritura en el repo, sin configurar nada:
+
+- **Merge a `main`** (o push directo): el CI publica solo. No hace falta que tu
+  máquina esté encendida ni tener secretos configurados: usa el `GITHUB_TOKEN`
+  del repo y el keystore beta commiteado.
+- **A mano**: *Actions > APK beta > Run workflow*, eligiendo la rama. Ojo:
+  publica el código de esa rama tal cual, aunque no esté mergeado.
+- **Desde local**: `./scripts/publicar-apk.sh` (requiere `gh` autenticado con
+  permiso de escritura y el SDK de Android).
+
+Si entran dos merges seguidos, el run anterior se cancela y solo se publica el
+último commit. El `versionCode` sale de `1000 + número de run`, así que siempre
+sube y cada beta se instala encima de la anterior.
+
 ### Firma
 
 Para que Android instale una beta encima de la anterior, todas deben estar
