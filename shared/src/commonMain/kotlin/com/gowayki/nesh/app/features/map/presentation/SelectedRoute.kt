@@ -33,19 +33,34 @@ object SelectedRouteHolder {
 
     fun setDirection(direction: RouteDirection) {
         _direction.value = direction
+        persistSelection()
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var restored = false
     private var userSelected = false
 
+    private fun persistSelection() {
+        val route = _selected.value ?: return
+        val dir = _direction.value.name
+        scope.launch {
+            RouteSelectionStore.save(
+                routeId = route.id,
+                routeName = route.name,
+                idaRouteId = route.routeId,
+                returnRouteId = route.returnRouteId,
+                direction = dir
+            )
+        }
+    }
+
     fun select(route: CombiRoute?) {
         userSelected = true
         // Resetea el sentido al cambiar de ruta.
         _direction.value = RouteDirection.IDA
         _selected.value = route
-        route?.id?.let { id ->
-            scope.launch { RouteSelectionStore.save(id) }
+        if (route != null) {
+            persistSelection()
         }
     }
 
@@ -57,10 +72,40 @@ object SelectedRouteHolder {
     /**
      * Selecciona la línea del turno a partir de su nombre del backend
      * ("Línea C2", "Línea C3", ...). Si no coincide con el catálogo, no cambia.
+     * No reemplaza una subruta ya elegida de la misma línea.
      */
     fun selectLineByName(nombre: String?) {
-        val clean = nombre?.trim() ?: return
-        val code = clean
+        val code = lineCode(nombre) ?: return
+        val current = _selected.value
+        if (current != null) {
+            val currentCode = if (current.isSub) current.parent else current.id
+            if (currentCode == code && current.isSub) return
+        }
+        val route = routeForLineName(nombre) ?: return
+        select(route)
+    }
+
+    /**
+     * Como [selectLineByName], pero no reemplaza la subruta que el usuario ya
+     * eligió si pertenece a la misma línea (evita volver a "líneas en general").
+     */
+    fun selectLineByNameIfNeeded(nombre: String?) {
+        val code = lineCode(nombre) ?: return
+        val current = _selected.value
+        if (current != null) {
+            val currentCode = if (current.isSub) current.parent else current.id
+            // Ya hay una subruta concreta de esta línea: no la pises.
+            if (currentCode == code && current.isSub) return
+            // Misma línea general ya seleccionada: nada que cambiar.
+            if (currentCode == code && current.routeId != null) return
+        }
+        val route = routeForLineName(nombre) ?: return
+        select(route)
+    }
+
+    private fun lineCode(nombre: String?): String? {
+        val clean = nombre?.trim() ?: return null
+        return clean
             .removePrefix("Línea")
             .removePrefix("Linea")
             .trim()
@@ -69,9 +114,13 @@ object SelectedRouteHolder {
             ?.trim()
             ?.uppercase()
             ?.takeIf { it.isNotBlank() }
-            ?: return
-        val route = ArequipaRoutes.byId(code) ?: return
-        select(route)
+    }
+
+    private fun routeForLineName(nombre: String?): CombiRoute? {
+        val code = lineCode(nombre) ?: return null
+        // Preferir una subruta concreta (con trazado real) antes que la línea general.
+        return ArequipaRoutes.all.firstOrNull { it.isSub && it.parent == code && it.routeId != null }
+            ?: ArequipaRoutes.byId(code)
     }
 
     /** Restaura la última ruta guardada. Idempotente. */

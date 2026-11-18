@@ -24,3 +24,15 @@ node_modules/
 
 # OpenSpec: planificación local, no commitear
 openspec/
+
+# APKs: no commitearlos (GitHub rechaza archivos >100 MB). Se publican en
+# GitHub Releases mediante .github/workflows/apk.yml
+*.apk
+*.aab
+apks/
+
+# Keystores de firma: secretos. Excepción: el keystore beta del repo, que debe
+# ser estable para que las betas se instalen una encima de otra.
+*.jks
+*.keystore
+!androidApp/keystore/wayki-beta.jks
