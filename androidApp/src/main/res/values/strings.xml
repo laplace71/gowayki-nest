@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Gowayki Nesh</string>
+    <string name="widget_recorrido_description">Muestra la lista de paraderos de tu recorrido seleccionado.</string>
 </resources>
