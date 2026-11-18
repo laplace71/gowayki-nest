@@ -75,6 +75,8 @@ data class Conversation(
     val avatarText: String,
     /** Fondo oscuro del avatar (estilo del diseño actual). */
     val avatarDark: Boolean = false,
+    /** Id del último mensaje conocido, para detectar actividad nueva al refrescar. */
+    val lastMessageId: String? = null,
     val members: List<GroupMember> = emptyList(),
     val photoPath: String? = null,
     /**

@@ -15,6 +15,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -82,9 +83,12 @@ import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.Bell
+import compose.icons.feathericons.Check
+import compose.icons.feathericons.CheckSquare
 import compose.icons.feathericons.Menu
 import compose.icons.feathericons.Plus
 import compose.icons.feathericons.Search
+import compose.icons.feathericons.Trash2
 import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -106,7 +110,6 @@ fun CommunicationScreen(
     onSupportClick: () -> Unit = {},
     onLogoutClick: () -> Unit = {}
 ) {
-    BackHandler(true) { onInicioClick() }
     val drawerState = androidx.compose.material3.rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -121,6 +124,23 @@ fun CommunicationScreen(
     var deleteGroupTarget by remember { mutableStateOf<Conversation?>(null) }
     var clearTarget by remember { mutableStateOf<Conversation?>(null) }
     var selectedTab by rememberSaveable { mutableStateOf(0) } // 0 Todos, 1 No leídos, 2 Grupos, 3 Archivados
+
+    // Modo selección múltiple: se eligen varios chats y se borran de una vez.
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var confirmBulkDelete by remember { mutableStateOf(false) }
+
+    fun exitSelection() {
+        selectionMode = false
+        selectedIds = emptySet()
+    }
+
+    fun toggleSelection(id: String) {
+        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+    }
+
+    // Atrás: primero sale del modo selección, después navega al inicio.
+    BackHandler(true) { if (selectionMode) exitSelection() else onInicioClick() }
 
     // Al cambiar de pestaña se vuelve arriba y el FAB reaparece.
     LaunchedEffect(selectedTab) {
@@ -193,16 +213,34 @@ fun CommunicationScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         TopAction(icon = FeatherIcons.Menu, description = "Menú", onClick = { coroutineScope.launch { drawerState.open() } })
-                        Text(
-                            text = "Comunicación",
-                            style = AppTextStyles.waykiHeader.copy(fontSize = 20.sp),
-                            color = AppColors.cream,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TopAction(icon = FeatherIcons.Bell, description = "Notificaciones", onClick = onNotificationsClick)
+                        if (selectionMode) {
+                            Text(
+                                text = if (selectedIds.isEmpty()) "Selecciona chats" else "${selectedIds.size} seleccionado${if (selectedIds.size == 1) "" else "s"}",
+                                style = AppTextStyles.waykiHeader.copy(fontSize = 20.sp),
+                                color = AppColors.cream,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TopAction(
+                                icon = FeatherIcons.Trash2,
+                                description = "Eliminar seleccionados",
+                                onClick = { if (selectedIds.isNotEmpty()) confirmBulkDelete = true }
+                            )
+                        } else {
+                            Text(
+                                text = "Comunicación",
+                                style = AppTextStyles.waykiHeader.copy(fontSize = 20.sp),
+                                color = AppColors.cream,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TopAction(icon = FeatherIcons.CheckSquare, description = "Seleccionar chats", onClick = { selectionMode = true })
+                            TopAction(icon = FeatherIcons.Bell, description = "Notificaciones", onClick = onNotificationsClick)
+                        }
                     }
                 }
 
@@ -323,8 +361,14 @@ fun CommunicationScreen(
                                     Column(Modifier.animateItem()) {
                                         ConversationRow(
                                             conv = conv,
-                                            onClick = { onConversationClick(conv.id) },
-                                            onLongClick = { longPressedConv = conv }
+                                            selectionMode = selectionMode,
+                                            selected = conv.id in selectedIds,
+                                            onClick = {
+                                                if (selectionMode) toggleSelection(conv.id) else onConversationClick(conv.id)
+                                            },
+                                            onLongClick = {
+                                                if (selectionMode) toggleSelection(conv.id) else longPressedConv = conv
+                                            }
                                         )
                                         HorizontalDivider(
                                             thickness = 0.5.dp,
@@ -347,6 +391,10 @@ fun CommunicationScreen(
                     containerColor = AppColors.cream
                 ) {
                     Text(conv.title, style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold), color = AppColors.ink, modifier = Modifier.padding(16.dp))
+                    SheetActionRow(
+                        label = "Seleccionar chats",
+                        onClick = { selectionMode = true; selectedIds = setOf(conv.id); longPressedConv = null }
+                    )
                     SheetActionRow(
                         label = if (selectedTab == 3) "Desarchivar" else "Archivar",
                         onClick = {
@@ -423,6 +471,36 @@ fun CommunicationScreen(
                 )
             }
 
+            if (confirmBulkDelete) {
+                val elegidos = conversations.filter { it.id in selectedIds }
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { confirmBulkDelete = false },
+                    title = {
+                        Text(if (elegidos.size == 1) "¿Eliminar 1 chat?" else "¿Eliminar ${elegidos.size} chats?")
+                    },
+                    text = {
+                        Text(
+                            "Se eliminarán de tu lista con sus mensajes y audios. " +
+                                "Los grupos se borran por completo y no vuelven a aparecer."
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(onClick = {
+                            elegidos.forEach { conv ->
+                                if (conv.isGroup) onDeleteGroup(conv.id) else onDeleteChat(conv.id)
+                            }
+                            confirmBulkDelete = false
+                            exitSelection()
+                        }) {
+                            Text("Eliminar", color = AppColors.error)
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { confirmBulkDelete = false }) { Text("Cancelar") }
+                    }
+                )
+            }
+
             // ---------- FAB ----------
             // Se eleva por encima de la barra flotante (76dp + 12dp de margen)
             // más el inset de la barra de navegación del sistema. Se oculta al
@@ -430,12 +508,14 @@ fun CommunicationScreen(
             val navInset = androidx.compose.foundation.layout.WindowInsets.navigationBars
                 .asPaddingValues()
                 .calculateBottomPadding()
-            NewChatFab(
-                modifier = Modifier.align(Alignment.BottomEnd),
-                listState = listState,
-                bottomPadding = 76.dp + 12.dp + navInset + 16.dp,
-                onClick = onNewGroupClick
-            )
+            if (!selectionMode) {
+                NewChatFab(
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                    listState = listState,
+                    bottomPadding = 76.dp + 12.dp + navInset + 16.dp,
+                    onClick = onNewGroupClick
+                )
+            }
 
             // ---------- Bottom nav ----------
             WaykiBottomNav(
@@ -497,15 +577,46 @@ private fun TopAction(icon: androidx.compose.ui.graphics.vector.ImageVector, des
 }
 
 @Composable
-private fun ConversationRow(conv: Conversation, onClick: () -> Unit, onLongClick: () -> Unit = {}) {
+private fun ConversationRow(
+    conv: Conversation,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
+    selectionMode: Boolean = false,
+    selected: Boolean = false
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(if (selected) AppColors.primary.copy(alpha = 0.10f) else androidx.compose.ui.graphics.Color.Transparent)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .heightIn(min = 72.dp)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (selectionMode) {
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(if (selected) AppColors.primary else androidx.compose.ui.graphics.Color.Transparent)
+                    .border(
+                        width = 2.dp,
+                        color = if (selected) AppColors.primary else AppColors.slate,
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (selected) {
+                    Icon(
+                        FeatherIcons.Check,
+                        contentDescription = "Seleccionado",
+                        tint = AppColors.cream,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+        }
         WaykiAvatar(text = conv.avatarText, size = 52.dp, dark = conv.avatarDark, photoPath = conv.photoPath)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {

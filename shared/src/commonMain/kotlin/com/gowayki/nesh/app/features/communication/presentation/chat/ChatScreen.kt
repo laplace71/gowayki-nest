@@ -57,6 +57,7 @@ import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
 import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import com.gowayki.nesh.app.common.ui.shared.WaykiAvatar
 import com.gowayki.nesh.app.common.ui.shared.ToastManager
+import com.gowayki.nesh.app.common.util.formatTime
 import com.gowayki.nesh.app.features.sos.domain.model.createAudioRecorder
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -805,13 +806,6 @@ private fun AudioBubbleContent(
 }
 
 /** "14:32" a partir del timestamp. */
-private fun formatTime(millis: Long): String {
-    val totalMinutes = (millis / 60000) % (24 * 60)
-    val hour = (totalMinutes / 60).toInt()
-    val minute = (totalMinutes % 60).toInt()
-    return "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
-}
-
 /** "18" segundos -> "0:18". */
 private fun formatDuration(seconds: Int): String {
     val m = seconds / 60

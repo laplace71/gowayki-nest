@@ -46,6 +46,15 @@ class KtorChatRepository : ChatRepository {
     private val _archived = MutableStateFlow<List<Conversation>>(emptyList())
     private val _messages = MutableStateFlow<Map<String, List<Message>>>(emptyMap())
 
+    /**
+     * Conversaciones que el usuario eliminó. El backend todavía no expone un
+     * DELETE de conversaciones, así que se guardan como "tombstones": se
+     * filtran en cada refresco y quedan persistidas. Sin esto, el polling
+     * (45 s), un evento del WebSocket o volver a abrir la pantalla
+     * reconstruían la lista desde el servidor y el grupo borrado reaparecía.
+     */
+    private val _deleted = MutableStateFlow<Set<String>>(emptySet())
+
     private val _colleagues = MutableStateFlow<List<GroupMember>>(emptyList())
     val colleaguesFlow: Flow<List<GroupMember>> = _colleagues.asStateFlow()
 
@@ -138,13 +147,14 @@ class KtorChatRepository : ChatRepository {
     }
 
     private fun filterAndEmitConversations(list: List<ConversacionResponseDto>, activeTitle: String) {
+        val deleted = _deleted.value
         val filtered = list.filter { dto ->
-            if (!dto.esGrupo) {
-                true
-            } else if (dto.titulo.startsWith("GRUPO · ")) {
-                dto.titulo == activeTitle
-            } else {
-                true
+            when {
+                // Grupos que el usuario eliminó: no vuelven aunque sigan en el backend.
+                dto.id in deleted -> false
+                !dto.esGrupo -> true
+                dto.titulo.startsWith("GRUPO · ") -> dto.titulo == activeTitle
+                else -> true
             }
         }
         val existingById = (_conversations.value + _archived.value).associateBy { it.id }
@@ -152,15 +162,25 @@ class KtorChatRepository : ChatRepository {
             val fresh = mapDtoToConversation(dto)
             val existing = existingById[dto.id]
             if (existing != null) {
-                val lastLocal = _messages.value[dto.id]?.lastOrNull()?.sentAtMillis ?: existing.lastMessageAtMillis
+                val lastLocal = _messages.value[dto.id]?.lastOrNull()?.sentAtMillis ?: 0L
+                // Actividad nueva = el backend tiene otro último mensaje que el
+                // que ya conocíamos. Solo entonces el chat sube en la lista.
+                val hayActividadNueva = dto.ultimoMensaje?.id != null &&
+                    dto.ultimoMensaje.id != existing.lastMessageId
+                val marcaTiempo = when {
+                    lastLocal > existing.lastMessageAtMillis -> lastLocal
+                    hayActividadNueva -> currentTimeMillis()
+                    else -> existing.lastMessageAtMillis
+                }
                 fresh.copy(
                     photoPath = existing.photoPath,
                     hiddenFromAll = existing.hiddenFromAll,
                     unreadCount = existing.unreadCount,
-                    lastMessageAtMillis = if (lastLocal > 0L) lastLocal else existing.lastMessageAtMillis
+                    lastMessageAtMillis = marcaTiempo,
+                    lastMessageId = dto.ultimoMensaje?.id ?: existing.lastMessageId
                 )
             } else fresh
-        }
+        }.sortedByDescending { it.lastMessageAtMillis }
         val prev = _conversations.value
         if (mapped != prev) {
             _conversations.value = mapped
@@ -350,6 +370,7 @@ class KtorChatRepository : ChatRepository {
 
         return BackendChatApi.crearConversacion(request).map { dto ->
             val group = mapDtoToConversation(dto)
+            _deleted.update { it - group.id }
             _conversations.update { listOf(group) + it }
             _messages.update { it + (group.id to emptyList()) }
             persist()
@@ -372,6 +393,7 @@ class KtorChatRepository : ChatRepository {
 
         return BackendChatApi.crearConversacion(request).map { dto ->
             val chat = mapDtoToConversation(dto)
+            _deleted.update { it - chat.id }
             _conversations.update { listOf(chat) + it }
             _messages.update { it + (chat.id to emptyList()) }
             persist()
@@ -417,6 +439,8 @@ class KtorChatRepository : ChatRepository {
                 }
             }
         } else {
+            // Chat privado: se elimina de verdad (también del refresco del backend).
+            _deleted.update { it + conversationId }
             _conversations.update { list -> list.filterNot { it.id == conversationId } }
             _archived.update { list -> list.filterNot { it.id == conversationId } }
             _messages.update { all -> all - conversationId }
@@ -470,6 +494,7 @@ class KtorChatRepository : ChatRepository {
     }
 
     override suspend fun deleteGroup(conversationId: String): Result<Unit> {
+        _deleted.update { it + conversationId }
         _conversations.update { list -> list.filterNot { it.id == conversationId } }
         _archived.update { list -> list.filterNot { it.id == conversationId } }
         _messages.update { all -> all - conversationId }
@@ -525,6 +550,7 @@ class KtorChatRepository : ChatRepository {
             unreadCount = 0,
             avatarText = dto.titulo.take(2).uppercase(),
             avatarDark = dto.esGrupo,
+            lastMessageId = dto.ultimoMensaje?.id,
             members = membersList,
             hiddenFromAll = false
         )
@@ -537,6 +563,7 @@ class KtorChatRepository : ChatRepository {
                 else c.copy(
                     preview = if (message.kind == MessageKind.AUDIO) "Audio" else message.text,
                     lastMessageAtMillis = message.sentAtMillis,
+                    lastMessageId = message.id,
                     hiddenFromAll = false
                 )
             }
@@ -622,6 +649,7 @@ class KtorChatRepository : ChatRepository {
         _conversations.value = saved.conversations
         _archived.value = saved.archived
         _messages.value = saved.messages
+        _deleted.value = saved.deleted
         true
     }.getOrDefault(false)
 
@@ -639,7 +667,8 @@ class KtorChatRepository : ChatRepository {
                         PersistedChatState(
                             _conversations.value,
                             _archived.value,
-                            _messages.value
+                            _messages.value,
+                            _deleted.value
                         )
                     )
                 )
@@ -651,7 +680,9 @@ class KtorChatRepository : ChatRepository {
     private data class PersistedChatState(
         val conversations: List<Conversation>,
         val archived: List<Conversation> = emptyList(),
-        val messages: Map<String, List<Message>>
+        val messages: Map<String, List<Message>>,
+        /** Conversaciones eliminadas: el backend no las borra, se filtran aquí. */
+        val deleted: Set<String> = emptySet()
     )
 }
 
