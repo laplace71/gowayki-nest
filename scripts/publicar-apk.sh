@@ -59,18 +59,75 @@ mkdir -p "$(dirname "$salida")"
   --out "$salida" "$raiz/build/releases/alineado.apk"
 rm -f "$raiz/build/releases/alineado.apk"
 
+# --- Notas de la release ----------------------------------------------------
+short_sha=$(git rev-parse --short HEAD)
+sha256=$(sha256sum "$salida" | cut -d' ' -f1)
+bytes=$(stat -c%s "$salida")
+cert=$("$build_tools/apksigner" verify --print-certs "$salida" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+tamano=$(awk -v b="$bytes" 'BEGIN { printf "%.1f MB", b / 1048576 }')
+
+prev=$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null || true)
+if [ -z "$prev" ]; then
+  prev=$(git ls-remote --tags origin "refs/tags/$TAG" 2>/dev/null | cut -f1 || true)
+fi
+if [ -n "$prev" ] && [ "$(git rev-list --count "$prev..HEAD" 2>/dev/null || echo 0)" -gt 0 ]; then
+  cambios=$(git log --no-merges --pretty='- %s (`%h`)' "$prev..HEAD" | head -40)
+  comparar="https://github.com/$REPO/compare/${prev}...$(git rev-parse HEAD)"
+else
+  cambios="- Sin cambios de código desde la publicación anterior."
+  comparar=""
+fi
+
+notas="$raiz/build/releases/notas.md"
+{
+  echo "## Wayki Nest $version"
+  echo
+  echo "APK beta firmada y compilada localmente con \`scripts/publicar-apk.sh\`."
+  echo
+  echo "### Cambios"
+  echo
+  echo "$cambios"
+  if [ -n "$comparar" ]; then
+    echo
+    echo "[Ver comparación completa]($comparar)"
+  fi
+  echo
+  echo "### Instalación"
+  echo
+  echo "1. Descarga \`$asset\`."
+  echo "2. Permite *instalar apps de origen desconocido* cuando Android lo pida."
+  echo "3. Si ya tienes una beta instalada, se actualiza encima: no hace falta desinstalar."
+  echo
+  echo "| Dato | Valor |"
+  echo "| --- | --- |"
+  echo "| Versión | $version (versionCode $version_code) |"
+  echo "| Tamaño | $tamano |"
+  echo "| Requisitos | Android 7.0 (API 24) o superior |"
+  echo "| Commit | [\`$short_sha\`](https://github.com/$REPO/commit/$(git rev-parse HEAD)) |"
+  echo "| SHA-256 | \`$sha256\` |"
+  echo "| Certificado | \`$cert\` |"
+  echo
+  echo "### Verificar la descarga"
+  echo
+  echo '```bash'
+  echo "sha256sum $asset"
+  echo "# debe imprimir el SHA-256 de la tabla de arriba"
+  echo '```'
+  echo
+  echo "### Notas"
+  echo
+  echo "- Build de pruebas (canal *beta*): no usar en producción ni publicar en Play Store."
+  echo "- Este asset se reemplaza en cada publicación de la misma release."
+} > "$notas"
+
 # --- Release ----------------------------------------------------------------
-notas="APK de release de Wayki Nest, versión $version.
-
-Commit: $(git rev-parse --short HEAD)
-Compilado localmente con \`scripts/publicar-apk.sh\`."
-
 if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
   gh release upload "$TAG" "$salida" -R "$REPO" --clobber
+  gh release edit "$TAG" -R "$REPO" --title "Wayki Nest $version" --notes-file "$notas"
 else
   gh release create "$TAG" "$salida" -R "$REPO" \
     --title "Wayki Nest $version" \
-    --notes "$notas" \
+    --notes-file "$notas" \
     --prerelease \
     --target main
 fi

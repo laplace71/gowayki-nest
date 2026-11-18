@@ -14,6 +14,11 @@ Para publicar sin esperar al CI: `./scripts/publicar-apk.sh`.
 Los tags `v*` generan una release propia (`v1.0.0`, `v1.1.0`, …). Los `.apk`
 nunca se commitean al repo: GitHub rechaza archivos de más de 100 MB.
 
+Las notas de la release se generan solas: changelog desde la beta anterior
+(commits de `main`), instrucciones de instalación y tabla con versión,
+`versionCode`, tamaño, commit, SHA-256 del APK y huella del certificado, para
+que cualquiera pueda verificar lo que descarga.
+
 ### Firma
 
 Para que Android instale una beta encima de la anterior, todas deben estar

@@ -37,6 +37,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # historial completo: el changelog sale de los commits
 
       - name: JDK 17
         uses: actions/setup-java@v4
@@ -77,6 +79,13 @@ jobs:
             echo "code=$((1000 + GITHUB_RUN_NUMBER))"
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
+
+          # Commit de la beta anterior: de ahí sale el changelog.
+          prev=""
+          if git rev-parse -q --verify "refs/tags/$BETA_TAG" >/dev/null 2>&1; then
+            prev=$(git rev-parse "refs/tags/$BETA_TAG")
+          fi
+          echo "prev=$prev" >> "$GITHUB_OUTPUT"
 
       - name: Construir APK de release
         run: >
@@ -126,7 +135,79 @@ jobs:
             --ks-key-alias "$KEY_ALIAS" \
             --out "$salida" "$RUNNER_TEMP/alineado.apk"
           "$build_tools/apksigner" verify --print-certs "$salida" | head -3
-          echo "apk=$salida" >> "$GITHUB_OUTPUT"
+          {
+            echo "apk=$salida"
+            echo "sha256=$(sha256sum "$salida" | cut -d' ' -f1)"
+            echo "bytes=$(stat -c%s "$salida")"
+            echo "cert=$("$build_tools/apksigner" verify --print-certs "$salida" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generar notas de la release
+        id: notas
+        env:
+          PREV: ${{ steps.meta.outputs.prev }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          ASSET: ${{ steps.meta.outputs.asset }}
+          CODE: ${{ steps.meta.outputs.code }}
+          SHA256: ${{ steps.firmar.outputs.sha256 }}
+          BYTES: ${{ steps.firmar.outputs.bytes }}
+          CERT: ${{ steps.firmar.outputs.cert }}
+        run: |
+          set -euo pipefail
+          short_sha=$(git rev-parse --short "$GITHUB_SHA")
+
+          if [ -n "$PREV" ] && [ "$(git rev-list --count "$PREV..$GITHUB_SHA")" -gt 0 ]; then
+            cambios=$(git log --no-merges --pretty='- %s (`%h`)' "$PREV..$GITHUB_SHA" | head -40)
+            comparar="https://github.com/$GITHUB_REPOSITORY/compare/${PREV}...${GITHUB_SHA}"
+          else
+            cambios="- Sin cambios de código desde la beta anterior."
+            comparar=""
+          fi
+
+          tamano=$(awk -v b="$BYTES" 'BEGIN { printf "%.1f MB", b / 1048576 }')
+
+          {
+            echo "## Wayki Nest $VERSION"
+            echo
+            echo "APK beta compilada y firmada automáticamente desde \`main\`."
+            echo
+            echo "### Cambios"
+            echo
+            echo "$cambios"
+            if [ -n "$comparar" ]; then
+              echo
+              echo "[Ver comparación completa]($comparar)"
+            fi
+            echo
+            echo "### Instalación"
+            echo
+            echo "1. Descarga \`$ASSET\`."
+            echo "2. Permite *instalar apps de origen desconocido* cuando Android lo pida."
+            echo "3. Si ya tienes una beta instalada, se actualiza encima: no hace falta desinstalar."
+            echo
+            echo "| Dato | Valor |"
+            echo "| --- | --- |"
+            echo "| Versión | $VERSION (versionCode $CODE) |"
+            echo "| Tamaño | $tamano |"
+            echo "| Requisitos | Android 7.0 (API 24) o superior |"
+            echo "| Commit | [\`$short_sha\`](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA) |"
+            echo "| SHA-256 | \`$SHA256\` |"
+            echo "| Certificado | \`$CERT\` |"
+            echo
+            echo "### Verificar la descarga"
+            echo
+            echo '```bash'
+            echo "sha256sum $ASSET"
+            echo "# debe imprimir el SHA-256 de la tabla de arriba"
+            echo '```'
+            echo
+            echo "### Notas"
+            echo
+            echo "- Build de pruebas (canal *beta*): no usar en producción ni publicar en Play Store."
+            echo "- Este asset se reemplaza en cada push a \`main\`; el histórico queda en [Actions](https://github.com/$GITHUB_REPOSITORY/actions/workflows/apk.yml)."
+          } > "$RUNNER_TEMP/notas.md"
+
+          echo "body=$RUNNER_TEMP/notas.md" >> "$GITHUB_OUTPUT"
 
       - name: Mover el tag beta al commit actual
         if: github.ref_type != 'tag'
@@ -138,16 +219,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
-          name: ${{ github.ref_type == 'tag' && github.ref_name || format('Wayki Nest beta (build {0})', github.run_number) }}
+          name: Wayki Nest ${{ steps.meta.outputs.version }}
           prerelease: ${{ steps.meta.outputs.prerelease }}
-          body: |
-            APK de release de Wayki Nest, versión **${{ steps.meta.outputs.version }}**.
-
-            Commit: `${{ github.sha }}`
-            Workflow: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-            **Instalación:** descarga el `.apk` y ábrelo en el teléfono
-            (hay que permitir "instalar apps de origen desconocido").
-
-            Este asset se reemplaza automáticamente en cada push a `main`.
+          body_path: ${{ steps.notas.outputs.body }}
           files: ${{ steps.firmar.outputs.apk }}
