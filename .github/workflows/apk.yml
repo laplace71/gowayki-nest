@@ -1,0 +1,153 @@
+name: APK beta
+
+# Construye el APK de release y lo publica como asset de GitHub Releases, que es
+# el bloque "Releases" que aparece al final de la página del repositorio.
+#
+# - Push a main (o sea, cuando se mergea tu PR): reemplaza el APK de la release
+#   rodante "beta". La URL de descarga nunca cambia:
+#   https://github.com/laplace71/gowayki-nest/releases/download/beta/wayki-nest-beta.apk
+# - Push de un tag v*: crea una release propia (v1.0.0, v1.1.0, ...).
+# - Manual: pestaña Actions > "APK beta" > Run workflow.
+#
+# Firma (opcional): si existen los secretos RELEASE_KEYSTORE_* se usa ese
+# keystore. Si no, se usa androidApp/keystore/wayki-beta.jks cuando está en el
+# repo, y como último recurso un keystore temporal (la firma cambia en cada
+# build y Android no deja instalar encima; solo sirve para probar).
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  BETA_TAG: beta
+  BETA_ASSET: wayki-nest-beta.apk
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Node.js (conversión de iconos SVG)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cache de Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Calcular versión y destino
+        id: meta
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="$GITHUB_REF_NAME"
+            version="${tag#v}"
+            asset="wayki-nest-${version}.apk"
+            case "$version" in
+              *-*) prerelease=true ;;
+              *)   prerelease=false ;;
+            esac
+          else
+            tag="$BETA_TAG"
+            version="1.0.0-beta.${GITHUB_RUN_NUMBER}"
+            asset="$BETA_ASSET"
+            prerelease=true
+          fi
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "asset=$asset"
+            echo "code=$((1000 + GITHUB_RUN_NUMBER))"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Construir APK de release
+        run: >
+          ./gradlew :androidApp:assembleRelease --no-daemon --stacktrace
+          -Pwayki.versionName=${{ steps.meta.outputs.version }}
+          -Pwayki.versionCode=${{ steps.meta.outputs.code }}
+
+      - name: Firmar y alinear el APK
+        id: firmar
+        env:
+          KS_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          apk_origen=$(find androidApp/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)
+          [ -n "$apk_origen" ] || { echo "::error::No se generó ningún APK"; exit 1; }
+          build_tools=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)
+          salida="$RUNNER_TEMP/${{ steps.meta.outputs.asset }}"
+          keystore="$RUNNER_TEMP/wayki.keystore"
+
+          if [ -n "${KS_BASE64:-}" ]; then
+            printf '%s' "$KS_BASE64" | base64 -d > "$keystore"
+            echo "Firmando con RELEASE_KEYSTORE_BASE64 (firma estable)."
+          elif [ -f androidApp/keystore/wayki-beta.jks ]; then
+            cp androidApp/keystore/wayki-beta.jks "$keystore"
+            KS_PASS="${BETA_KEYSTORE_PASSWORD:-wayki-beta}"
+            KEY_ALIAS="${BETA_KEY_ALIAS:-wayki}"
+            KEY_PASS="${BETA_KEY_PASSWORD:-wayki-beta}"
+            echo "Firmando con el keystore beta del repo (firma estable)."
+          else
+            keytool -genkeypair -v -keystore "$keystore" \
+              -storepass wayki-beta -keypass wayki-beta -alias wayki \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Wayki Nest, OU=Wayki, O=Wayki, L=Arequipa, ST=Arequipa, C=PE"
+            KS_PASS=wayki-beta
+            KEY_ALIAS=wayki
+            KEY_PASS=wayki-beta
+            echo "::warning::Sin keystore fijo: la firma cambia en cada build y Android no dejará instalar la beta encima de la anterior. Configura RELEASE_KEYSTORE_BASE64 o añade androidApp/keystore/wayki-beta.jks."
+          fi
+
+          "$build_tools/zipalign" -f -p 4 "$apk_origen" "$RUNNER_TEMP/alineado.apk"
+          "$build_tools/apksigner" sign \
+            --ks "$keystore" \
+            --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --out "$salida" "$RUNNER_TEMP/alineado.apk"
+          "$build_tools/apksigner" verify --print-certs "$salida" | head -3
+          echo "apk=$salida" >> "$GITHUB_OUTPUT"
+
+      - name: Mover el tag beta al commit actual
+        if: github.ref_type != 'tag'
+        run: |
+          git tag -f "$BETA_TAG" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$BETA_TAG"
+
+      - name: Publicar en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ github.ref_type == 'tag' && github.ref_name || format('Wayki Nest beta (build {0})', github.run_number) }}
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          body: |
+            APK de release de Wayki Nest, versión **${{ steps.meta.outputs.version }}**.
+
+            Commit: `${{ github.sha }}`
+            Workflow: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            **Instalación:** descarga el `.apk` y ábrelo en el teléfono
+            (hay que permitir "instalar apps de origen desconocido").
+
+            Este asset se reemplaza automáticamente en cada push a `main`.
+          files: ${{ steps.firmar.outputs.apk }}

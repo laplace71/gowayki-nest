@@ -103,6 +103,10 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
             }
         }
 
+        // En CI no existe .env (está gitignoreado): las variables de entorno
+        // permiten inyectar la misma configuración sin tocar el repo.
+        fun envOr(key: String): String = envMap[key] ?: System.getenv(key) ?: ""
+
         // Si no existe .env o faltan variables, usar valores por defecto del AppConfig.kt actual
         val existingConfig = if (configFile.exists()) configFile.readText() else ""
         
@@ -111,16 +115,18 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
             return pattern.find(existingConfig)?.groupValues?.get(1) ?: ""
         }
         
-        val supabaseUrl = envMap.getOrElse("SUPABASE_URL") { extractValue("SUPABASE_URL") }
-        val supabaseAnonKey = envMap.getOrElse("SUPABASE_ANON_KEY") { extractValue("SUPABASE_ANON_KEY") }
-        val googleWebClientId = envMap.getOrElse("GOOGLE_WEB_CLIENT_ID") { extractValue("GOOGLE_WEB_CLIENT_ID") }
-        val backendUrl = envMap.getOrElse("BACKEND_URL") { extractValue("BACKEND_URL") }
+        val supabaseUrl = envOr("SUPABASE_URL").ifBlank { extractValue("SUPABASE_URL") }
+        val supabaseAnonKey = envOr("SUPABASE_ANON_KEY").ifBlank { extractValue("SUPABASE_ANON_KEY") }
+        val googleWebClientId = envOr("GOOGLE_WEB_CLIENT_ID").ifBlank { extractValue("GOOGLE_WEB_CLIENT_ID") }
+        val backendUrl = envOr("BACKEND_URL").ifBlank { extractValue("BACKEND_URL") }
 
         // Si aún faltan, usar defaults hardcodeados
         val finalSupabaseUrl = supabaseUrl.ifBlank { "https://bvxgdlawivdoiornfigo.supabase.co" }
         val finalSupabaseAnonKey = supabaseAnonKey.ifBlank { "sb_publishable_-_Vc3gCY-q48pGHTjmFaog_zYFLbf8c" }
         val finalGoogleWebClientId = googleWebClientId.ifBlank { "21304726166-16dakb4a1qfjl6d4qpsifnlr3m1q4sl3.apps.googleusercontent.com" }
-        val finalBackendUrl = backendUrl.ifBlank { "http://localhost:8080/api" }
+        // VPS de producción: las Releases se compilan sin .env, así que este
+        // default es el backend que queda embebido en el APK publicado.
+        val finalBackendUrl = backendUrl.ifBlank { "http://31.220.72.2:8080/api" }
 
         val content = """
             |package com.gowayki.nesh.core.config

@@ -1,5 +1,10 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+// El CI inyecta la versión con -Pwayki.versionName=... -Pwayki.versionCode=...
+// (ver .github/workflows/apk.yml). En local se usan estos valores por defecto.
+val waykiVersionName = providers.gradleProperty("wayki.versionName").getOrElse("1.0.0-beta2")
+val waykiVersionCode = providers.gradleProperty("wayki.versionCode").getOrElse("2").toInt()
+
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeCompiler)
@@ -30,8 +35,8 @@ android {
         applicationId = "com.gowayki.nesh"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = waykiVersionCode
+        versionName = waykiVersionName
         manifestPlaceholders["supabaseAuthScheme"] = "com.gowayki.nesh"
         manifestPlaceholders["supabaseAuthHost"] = "login-callback"
     }
