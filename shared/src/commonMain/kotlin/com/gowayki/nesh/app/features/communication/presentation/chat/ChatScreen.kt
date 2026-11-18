@@ -77,6 +77,7 @@ import compose.icons.feathericons.CheckSquare
 import compose.icons.feathericons.Mic
 import compose.icons.feathericons.Archive
 import compose.icons.feathericons.Inbox
+import compose.icons.feathericons.LogOut
 import compose.icons.feathericons.MessageCircle
 import compose.icons.feathericons.MoreVertical
 import compose.icons.feathericons.Send
@@ -105,10 +106,16 @@ fun ChatScreen(
     onUnarchive: () -> Unit = {},
     onClearChat: () -> Unit = {},
     onDeleteChat: () -> Unit = {},
+    onLeaveGroup: () -> Unit = {},
+    onDeleteGroup: () -> Unit = {},
+    miRol: String? = null,
+    hasLeft: Boolean = false,
 ) {
     var showInfo by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var longPressedMessage by remember { mutableStateOf<Message?>(null) }
+    var confirmLeaveGroup by remember { mutableStateOf(false) }
+    var confirmDeleteGroup by remember { mutableStateOf(false) }
     var confirmDeleteChat by remember { mutableStateOf(false) }
     var confirmClearChat by remember { mutableStateOf(false) }
     BackHandler(true) { if (showInfo) showInfo = false else onBack() }
@@ -278,92 +285,111 @@ fun ChatScreen(
         }
 
         // ── Campo de escritura (o barra de voz como WhatsApp) ────────────
-        val voiceUi = voiceVm.ui
-        val hasVoiceState = voiceUi.isRecording ||
-            voiceUi.isPlaying ||
-            voiceUi.lastRecordedFilePath != null ||
-            voiceUi.audioError != null
-        if (hasVoiceState) {
-            RecordingComposer(
-                voiceVm = voiceVm,
-                voiceUi = voiceUi,
+        if (hasLeft) {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(AppColors.cream)
                     .navigationBarsPadding()
-                    .imePadding(),
-            )
-        } else {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(AppColors.cream)
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(horizontal = 12.dp)
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            BasicTextField(
-                value = draft,
-                onValueChange = onDraftChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(AppColors.mauve.copy(alpha = 0.35f))
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
-                textStyle = TextStyle(
-                    fontSize = 15.sp,
-                    color = AppColors.ink
-                ),
-                cursorBrush = SolidColor(AppColors.ink),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                maxLines = 4,
-                decorationBox = { inner ->
-                    if (draft.isEmpty()) {
-                        Text(
-                            text = "Escribe un mensaje",
-                            style = AppTextStyles.waykiMini.copy(fontSize = 14.sp),
-                            color = AppColors.slate,
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        )
-                    }
-                    inner()
-                }
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Botón de envío o de nota de voz.
-            val hasText = draft.isNotBlank()
-            if (hasText) {
-                val sendSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                Box(
-                    modifier = Modifier
-                        .size(46.dp)
-                        .background(AppColors.primary, CircleShape)
-                        .clickable(
-                            interactionSource = sendSource,
-                            indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
-                            enabled = !sending,
-                            onClick = onSend,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = compose.icons.FeatherIcons.Send,
-                        contentDescription = "Enviar",
-                        tint = AppColors.cream,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            } else {
-                VoiceRecordingButton(
-                    voiceVm = voiceVm,
-                    conversationId = conversationId,
+                    .imePadding()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Ya no participas en este grupo. Puedes leer los mensajes y, si quieres, eliminar el chat de tu dispositivo.",
+                    style = AppTextStyles.waykiMini.copy(fontSize = 13.sp),
+                    color = AppColors.slate,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
-        }
+        } else {
+            val voiceUi = voiceVm.ui
+            val hasVoiceState = voiceUi.isRecording ||
+                voiceUi.isPlaying ||
+                voiceUi.lastRecordedFilePath != null ||
+                voiceUi.audioError != null
+            if (hasVoiceState) {
+                RecordingComposer(
+                    voiceVm = voiceVm,
+                    voiceUi = voiceUi,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(AppColors.cream)
+                        .navigationBarsPadding()
+                        .imePadding(),
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(AppColors.cream)
+                        .navigationBarsPadding()
+                        .imePadding()
+                        .padding(horizontal = 12.dp)
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = onDraftChange,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(AppColors.mauve.copy(alpha = 0.35f))
+                            .padding(horizontal = 18.dp, vertical = 12.dp),
+                        textStyle = TextStyle(
+                            fontSize = 15.sp,
+                            color = AppColors.ink
+                        ),
+                        cursorBrush = SolidColor(AppColors.ink),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        maxLines = 4,
+                        decorationBox = { inner ->
+                            if (draft.isEmpty()) {
+                                Text(
+                                    text = "Escribe un mensaje",
+                                    style = AppTextStyles.waykiMini.copy(fontSize = 14.sp),
+                                    color = AppColors.slate,
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                )
+                            }
+                            inner()
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Botón de envío o de nota de voz.
+                    val hasText = draft.isNotBlank()
+                    if (hasText) {
+                        val sendSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                        Box(
+                            modifier = Modifier
+                                .size(46.dp)
+                                .background(AppColors.primary, CircleShape)
+                                .clickable(
+                                    interactionSource = sendSource,
+                                    indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
+                                    enabled = !sending,
+                                    onClick = onSend,
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = compose.icons.FeatherIcons.Send,
+                                contentDescription = "Enviar",
+                                tint = AppColors.cream,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    } else {
+                        VoiceRecordingButton(
+                            voiceVm = voiceVm,
+                            conversationId = conversationId,
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -402,12 +428,37 @@ fun ChatScreen(
                     label = "Vaciar chat",
                     onClick = { showMenu = false; confirmClearChat = true }
                 )
-                ChatMenuRow(
-                    icon = compose.icons.FeatherIcons.Trash2,
-                    label = "Eliminar chat",
-                    destructive = true,
-                    onClick = { showMenu = false; confirmDeleteChat = true }
-                )
+                if (isGroup) {
+                    if (hasLeft) {
+                        ChatMenuRow(
+                            icon = compose.icons.FeatherIcons.Trash2,
+                            label = "Eliminar chat",
+                            destructive = true,
+                            onClick = { showMenu = false; confirmDeleteChat = true }
+                        )
+                    } else {
+                        ChatMenuRow(
+                            icon = compose.icons.FeatherIcons.LogOut,
+                            label = "Salir del grupo",
+                            onClick = { showMenu = false; confirmLeaveGroup = true }
+                        )
+                        if (miRol == "ADMIN") {
+                            ChatMenuRow(
+                                icon = compose.icons.FeatherIcons.Trash2,
+                                label = "Eliminar grupo",
+                                destructive = true,
+                                onClick = { showMenu = false; confirmDeleteGroup = true }
+                            )
+                        }
+                    }
+                } else {
+                    ChatMenuRow(
+                        icon = compose.icons.FeatherIcons.Trash2,
+                        label = "Eliminar chat",
+                        destructive = true,
+                        onClick = { showMenu = false; confirmDeleteChat = true }
+                    )
+                }
             }
         }
     }
@@ -455,6 +506,76 @@ fun ChatScreen(
         }
     }
 
+    if (confirmLeaveGroup) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmLeaveGroup = false },
+            containerColor = AppColors.cream,
+            shape = RoundedCornerShape(28.dp),
+            title = {
+                Text(
+                    text = "¿Salir del grupo?",
+                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
+                    color = AppColors.ink
+                )
+            },
+            text = {
+                Text(
+                    text = "Dejarás de ver \"$title\" en tu lista. El grupo y sus mensajes siguen existiendo para los demás.",
+                    style = AppTextStyles.waykiMini,
+                    color = AppColors.slate
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    confirmLeaveGroup = false
+                    onLeaveGroup()
+                }) {
+                    Text("Salir", color = AppColors.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmLeaveGroup = false }) {
+                    Text("Cancelar", color = AppColors.primary)
+                }
+            }
+        )
+    }
+
+    if (confirmDeleteGroup) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDeleteGroup = false },
+            containerColor = AppColors.cream,
+            shape = RoundedCornerShape(28.dp),
+            title = {
+                Text(
+                    text = "¿Eliminar grupo?",
+                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
+                    color = AppColors.ink
+                )
+            },
+            text = {
+                Text(
+                    text = "\"$title\" se eliminará por completo con todos sus mensajes y audios para todos.",
+                    style = AppTextStyles.waykiMini,
+                    color = AppColors.slate
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    confirmDeleteGroup = false
+                    onDeleteGroup()
+                }) {
+                    Text("Eliminar", color = AppColors.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmDeleteGroup = false }) {
+                    Text("Cancelar", color = AppColors.primary)
+                }
+            }
+        )
+    }
+
     if (confirmDeleteChat) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirmDeleteChat = false },
@@ -469,8 +590,14 @@ fun ChatScreen(
             },
             text = {
                 Text(
-                    text = if (isGroup) "Se eliminará esta conversación de tu lista de chats. El grupo seguirá disponible en la sección Grupos y podrás volver a abrirlo."
-                    else "Se borrará \"$title\" con sus mensajes y audios.",
+                    text = when {
+                        isGroup && hasLeft ->
+                            "Se borrará \"$title\" de tu dispositivo con sus mensajes. Los demás siguen en el grupo y conservan todo."
+                        isGroup ->
+                            "Se eliminará esta conversación de tu lista de chats. El grupo seguirá disponible en la sección Grupos y podrás volver a abrirlo."
+                        else ->
+                            "Se borrará \"$title\" con sus mensajes y audios."
+                    },
                     style = AppTextStyles.waykiMini,
                     color = AppColors.slate
                 )

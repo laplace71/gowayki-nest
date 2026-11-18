@@ -84,5 +84,16 @@ data class Conversation(
      * pero sigue disponible en la pestaña "Grupos" hasta borrarlo por
      * completo con `deleteGroup`. Vuelve a "Todos" al recibir un mensaje.
      */
-    val hiddenFromAll: Boolean = false
+    val hiddenFromAll: Boolean = false,
+    /**
+     * Rol del usuario actual dentro del grupo, según el backend. Si es
+     * "ADMIN" puede eliminarlo; si no, solo puede salirse.
+     */
+    val miRol: String? = null,
+    /**
+     * El usuario salió del grupo: ya no es participante. El chat se conserva en
+     * su dispositivo (solo lectura) hasta que lo elimine; los demás siguen en el
+     * grupo con todo el contenido.
+     */
+    val hasLeft: Boolean = false
 )

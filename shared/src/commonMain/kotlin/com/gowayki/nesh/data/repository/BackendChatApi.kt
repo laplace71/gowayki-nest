@@ -9,6 +9,7 @@ import io.ktor.client.call.body
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.get
+import io.ktor.client.request.delete
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -49,6 +50,29 @@ object BackendChatApi {
             response.body<ConversacionResponseDto>()
         } else {
             throw Exception("Error al crear conversación: ${response.status.value}")
+        }
+    }
+
+    /**
+     * Saca al usuario de la conversación (POST .../salir). El grupo y sus
+     * mensajes siguen existiendo para los demás.
+     */
+    suspend fun salirConversacion(conversacionId: String, usuarioId: String): Result<Unit> = runCatching {
+        val response = client.post("$baseUrl/chat/conversaciones/$conversacionId/salir?usuarioId=$usuarioId")
+        if (!response.status.isSuccess()) {
+            throw Exception("Error al salir del grupo: ${response.status.value}")
+        }
+    }
+
+    /**
+     * Borra la conversación de verdad en el backend (y con ella sus mensajes y
+     * participantes). Si falla (sin red, sin permiso, el grupo ya no existe) se
+     * devuelve el error: la app no debe fingir que lo borró.
+     */
+    suspend fun eliminarConversacion(conversacionId: String, usuarioId: String): Result<Unit> = runCatching {
+        val response = client.delete("$baseUrl/chat/conversaciones/$conversacionId?usuarioId=$usuarioId")
+        if (!response.status.isSuccess()) {
+            throw Exception("Error al eliminar la conversación: ${response.status.value}")
         }
     }
 

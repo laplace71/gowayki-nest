@@ -185,27 +185,32 @@ class FakeChatRepository(
     }
 
     override suspend fun deleteConversation(conversationId: String): Result<Unit> {
-        // Un grupo no se elimina al borrar el chat: se oculta de "Todos",
-        // se vacía su historial y sigue disponible en "Grupos". Para quitarlo
-        // por completo se usa deleteGroup.
-        val isGroup = (_conversations.value.firstOrNull { it.id == conversationId }
-            ?: _archived.value.firstOrNull { it.id == conversationId })?.isGroup == true
-        if (isGroup) {
-            _messages.update { all -> all + (conversationId to emptyList()) }
-            fun reset(list: List<Conversation>): List<Conversation> = list.map { c ->
-                if (c.id == conversationId) {
-                    c.copy(
-                        preview = "Sin mensajes",
-                        lastMessageAtMillis = 0L,
-                        unreadCount = 0,
-                        hiddenFromAll = true
-                    )
-                } else {
-                    c
+        val conv = _conversations.value.firstOrNull { it.id == conversationId }
+            ?: _archived.value.firstOrNull { it.id == conversationId }
+        if (conv?.isGroup == true) {
+            if (conv.hasLeft) {
+                // Ya saliste: borrar es solo quitar tu copia local.
+                _conversations.update { list -> list.filterNot { it.id == conversationId } }
+                _archived.update { list -> list.filterNot { it.id == conversationId } }
+                _messages.update { all -> all - conversationId }
+            } else {
+                // Un grupo activo se oculta de "Todos", se vacía su historial y
+                // sigue disponible en "Grupos". Para quitarlo por completo
+                // (para todos) se usa deleteGroup si eres admin.
+                _messages.update { all -> all + (conversationId to emptyList()) }
+                fun reset(list: List<Conversation>): List<Conversation> = list.map { c ->
+                    if (c.id == conversationId) {
+                        c.copy(
+                            preview = "Sin mensajes",
+                            lastMessageAtMillis = 0L,
+                            unreadCount = 0,
+                            hiddenFromAll = true
+                        )
+                    } else c
                 }
+                _conversations.update { reset(it) }
+                _archived.update { reset(it) }
             }
-            _conversations.update { reset(it) }
-            _archived.update { reset(it) }
         } else {
             _conversations.update { list -> list.filterNot { it.id == conversationId } }
             _archived.update { list -> list.filterNot { it.id == conversationId } }
@@ -264,6 +269,19 @@ class FakeChatRepository(
         _conversations.update { list -> list.filterNot { it.id == conversationId } }
         _archived.update { list -> list.filterNot { it.id == conversationId } }
         _messages.update { all -> all - conversationId }
+        persist()
+        return Result.success(Unit)
+    }
+
+    override suspend fun leaveGroup(conversationId: String): Result<Unit> {
+        // Como en el backend: sales del grupo, pero el chat queda en tu lista para
+        // que puedas leerlo y borrarlo cuando quieras.
+        _conversations.update { list ->
+            list.map { if (it.id == conversationId) it.copy(hasLeft = true, unreadCount = 0, miRol = null) else it }
+        }
+        _archived.update { list ->
+            list.map { if (it.id == conversationId) it.copy(hasLeft = true, unreadCount = 0, miRol = null) else it }
+        }
         persist()
         return Result.success(Unit)
     }

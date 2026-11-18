@@ -102,6 +102,7 @@ fun CommunicationScreen(
     onClearChat: (String) -> Unit = {},
     onDeleteChat: (String) -> Unit = {},
     onDeleteGroup: (String) -> Unit = {},
+    onLeaveGroup: (String) -> Unit = {},
     onSosClick: () -> Unit = {},
     onInicioClick: () -> Unit = {},
     onRecorridoClick: () -> Unit = {},
@@ -122,6 +123,7 @@ fun CommunicationScreen(
     var longPressedConv by remember { mutableStateOf<Conversation?>(null) }
     var deleteTarget by remember { mutableStateOf<Conversation?>(null) }
     var deleteGroupTarget by remember { mutableStateOf<Conversation?>(null) }
+    var leaveGroupTarget by remember { mutableStateOf<Conversation?>(null) }
     var clearTarget by remember { mutableStateOf<Conversation?>(null) }
     var selectedTab by rememberSaveable { mutableStateOf(0) } // 0 Todos, 1 No leídos, 2 Grupos, 3 Archivados
 
@@ -405,13 +407,28 @@ fun CommunicationScreen(
                     )
                     SheetActionRow("Vaciar chat", onClick = { clearTarget = conv; longPressedConv = null })
                     if (conv.isGroup) {
-                        SheetActionRow(
-                            label = "Eliminar grupo",
-                            onClick = { deleteGroupTarget = conv; longPressedConv = null },
-                            color = AppColors.error
-                        )
+                        if (conv.hasLeft) {
+                            SheetActionRow(
+                                label = "Eliminar chat",
+                                onClick = { deleteTarget = conv; longPressedConv = null },
+                                color = AppColors.error
+                            )
+                        } else {
+                            SheetActionRow(
+                                label = "Salir del grupo",
+                                onClick = { leaveGroupTarget = conv; longPressedConv = null }
+                            )
+                            if (conv.miRol == "ADMIN") {
+                                SheetActionRow(
+                                    label = "Eliminar grupo",
+                                    onClick = { deleteGroupTarget = conv; longPressedConv = null },
+                                    color = AppColors.error
+                                )
+                            }
+                        }
+                    } else {
+                        SheetActionRow("Eliminar chat", onClick = { deleteTarget = conv; longPressedConv = null }, color = AppColors.error)
                     }
-                    SheetActionRow("Eliminar chat", onClick = { deleteTarget = conv; longPressedConv = null }, color = AppColors.error)
                     Spacer(Modifier.height(8.dp))
                 }
             }
@@ -422,8 +439,14 @@ fun CommunicationScreen(
                     title = { Text("¿Eliminar este chat?") },
                     text = {
                         Text(
-                            if (target.isGroup) "Se eliminará esta conversación de tu lista de chats. El grupo seguirá disponible en la sección Grupos y podrás volver a abrirlo."
-                            else "Se borrará \"${target.title}\" con sus mensajes y audios."
+                            when {
+                                target.isGroup && target.hasLeft ->
+                                    "Se borrará \"${target.title}\" de tu dispositivo con sus mensajes. Los demás siguen en el grupo y conservan todo."
+                                target.isGroup ->
+                                    "Se eliminará esta conversación de tu lista de chats. El grupo seguirá disponible en la sección Grupos y podrás volver a abrirlo."
+                                else ->
+                                    "Se borrará \"${target.title}\" con sus mensajes y audios."
+                            }
                         )
                     },
                     confirmButton = {
@@ -455,6 +478,24 @@ fun CommunicationScreen(
                 )
             }
 
+            leaveGroupTarget?.let { target ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { leaveGroupTarget = null },
+                    title = { Text("¿Salir del grupo?") },
+                    text = {
+                        Text("Dejarás de ver \"${target.title}\" en tu lista. El grupo y sus mensajes siguen existiendo para los demás.")
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(onClick = { onLeaveGroup(target.id); leaveGroupTarget = null }) {
+                            Text("Salir", color = AppColors.error)
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { leaveGroupTarget = null }) { Text("Cancelar") }
+                    }
+                )
+            }
+
             deleteGroupTarget?.let { target ->
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { deleteGroupTarget = null },
@@ -480,14 +521,19 @@ fun CommunicationScreen(
                     },
                     text = {
                         Text(
-                            "Se eliminarán de tu lista con sus mensajes y audios. " +
-                                "Los grupos se borran por completo y no vuelven a aparecer."
+                            "Se quitarán de tu lista. Si ya saliste de un grupo, se borra solo de tu dispositivo; " +
+                                "si sigues dentro y eres admin se elimina para todos, y si no, sales del grupo."
                         )
                     },
                     confirmButton = {
                         androidx.compose.material3.TextButton(onClick = {
                             elegidos.forEach { conv ->
-                                if (conv.isGroup) onDeleteGroup(conv.id) else onDeleteChat(conv.id)
+                                when {
+                                    conv.isGroup && conv.hasLeft -> onDeleteChat(conv.id)
+                                    conv.isGroup && conv.miRol == "ADMIN" -> onDeleteGroup(conv.id)
+                                    conv.isGroup -> onLeaveGroup(conv.id)
+                                    else -> onDeleteChat(conv.id)
+                                }
                             }
                             confirmBulkDelete = false
                             exitSelection()

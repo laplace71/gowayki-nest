@@ -36,12 +36,13 @@ import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
 import compose.icons.FeatherIcons
+import compose.icons.feathericons.LogOut
 import compose.icons.feathericons.MessageCircle
 import compose.icons.feathericons.Trash2
 import compose.icons.feathericons.Users
 
 /** Qué acción eligió el usuario. */
-enum class ConversationAction { CLEAR, DELETE_GROUP, DELETE_CHAT }
+enum class ConversationAction { CLEAR, LEAVE_GROUP, DELETE_GROUP, DELETE_CHAT }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -123,28 +124,39 @@ fun ConversationMenuSheet(
             Spacer(modifier = Modifier.height(8.dp))
 
             MenuAction(
-                icon = compose.icons.FeatherIcons.MessageCircle,
+                icon = FeatherIcons.MessageCircle,
                 title = "Vaciar chat",
-                subtitle = "Borra los mensajes, el grupo se conserva",
+                subtitle = "Borra los mensajes, la conversación se conserva",
                 onClick = { onAction(ConversationAction.CLEAR) }
             )
 
             if (conversation.isGroup) {
                 MenuAction(
-                    icon = compose.icons.FeatherIcons.Users,
-                    title = "Eliminar grupo",
-                    subtitle = "Se va la conversación y todos sus miembros",
-                    onClick = { onAction(ConversationAction.DELETE_GROUP) }
+                    icon = FeatherIcons.LogOut,
+                    title = "Salir del grupo",
+                    subtitle = "Dejas de verlo, pero el grupo sigue para los demás",
+                    onClick = { onAction(ConversationAction.LEAVE_GROUP) }
                 )
+                if (conversation.miRol == "ADMIN") {
+                    MenuAction(
+                        icon = FeatherIcons.Trash2,
+                        title = "Eliminar grupo",
+                        subtitle = "Lo borra para todos, con mensajes y audios",
+                        destructive = true,
+                        onClick = { onAction(ConversationAction.DELETE_GROUP) }
+                    )
+                }
             }
 
-            MenuAction(
-                icon = compose.icons.FeatherIcons.Trash2,
-                title = "Eliminar chat",
-                subtitle = "Quita esta conversación de tu lista",
-                destructive = true,
-                onClick = { onAction(ConversationAction.DELETE_CHAT) }
-            )
+            if (!conversation.isGroup) {
+                MenuAction(
+                    icon = FeatherIcons.Trash2,
+                    title = "Eliminar chat",
+                    subtitle = "Quita esta conversación de tu lista",
+                    destructive = true,
+                    onClick = { onAction(ConversationAction.DELETE_CHAT) }
+                )
+            }
         }
     }
 }

@@ -25,7 +25,9 @@ data class ConversacionResponseDto(
     val createdAt: String? = null,
     val totalMensajes: Int = 0,
     val ultimoMensaje: MensajeResponseDto? = null,
-    val totalParticipantes: Int? = null
+    val totalParticipantes: Int? = null,
+    /** Rol del usuario que pidió la lista en esta conversación (ADMIN, MIEMBRO o null). */
+    val miRol: String? = null
 )
 
 @Serializable

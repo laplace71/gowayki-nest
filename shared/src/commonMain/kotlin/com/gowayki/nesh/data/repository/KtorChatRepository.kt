@@ -36,6 +36,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class KtorChatRepository : ChatRepository {
 
@@ -47,11 +49,10 @@ class KtorChatRepository : ChatRepository {
     private val _messages = MutableStateFlow<Map<String, List<Message>>>(emptyMap())
 
     /**
-     * Conversaciones que el usuario eliminó. El backend todavía no expone un
-     * DELETE de conversaciones, así que se guardan como "tombstones": se
-     * filtran en cada refresco y quedan persistidas. Sin esto, el polling
-     * (45 s), un evento del WebSocket o volver a abrir la pantalla
-     * reconstruían la lista desde el servidor y el grupo borrado reaparecía.
+     * Conversaciones que el usuario eliminó. El backend las borra de verdad, así
+     * que el refresco ya no las trae; esta lista solo evita que reaparezcan en
+     * los segundos que tarda en llegar el primer refresco o el evento del
+     * WebSocket, y queda persistida por si el borrado fue offline.
      */
     private val _deleted = MutableStateFlow<Set<String>>(emptySet())
 
@@ -177,13 +178,22 @@ class KtorChatRepository : ChatRepository {
                     hiddenFromAll = existing.hiddenFromAll,
                     unreadCount = existing.unreadCount,
                     lastMessageAtMillis = marcaTiempo,
-                    lastMessageId = dto.ultimoMensaje?.id ?: existing.lastMessageId
+                    lastMessageId = dto.ultimoMensaje?.id ?: existing.lastMessageId,
+                    hasLeft = existing.hasLeft
                 )
             } else fresh
         }.sortedByDescending { it.lastMessageAtMillis }
+
+        // Los grupos de los que saliste ya no los devuelve el servidor (no eres
+        // participante), pero deben seguir visibles en tu dispositivo hasta que
+        // los borres tú. Se conservan tal cual estaban guardados localmente.
+        val serverIds = mapped.map { it.id }.toSet()
+        val keptLeft = _conversations.value.filter { it.hasLeft && it.id !in serverIds && it.id !in deleted }
+        val merged = (mapped + keptLeft).sortedByDescending { it.lastMessageAtMillis }
+
         val prev = _conversations.value
-        if (mapped != prev) {
-            _conversations.value = mapped
+        if (merged != prev) {
+            _conversations.value = merged
             persist()
         }
     }
@@ -421,25 +431,40 @@ class KtorChatRepository : ChatRepository {
     }
 
     override suspend fun deleteConversation(conversationId: String): Result<Unit> {
-        val isGroup = (_conversations.value.firstOrNull { it.id == conversationId }
-            ?: _archived.value.firstOrNull { it.id == conversationId })?.isGroup == true
+        val conv = _conversations.value.firstOrNull { it.id == conversationId }
+            ?: _archived.value.firstOrNull { it.id == conversationId }
 
-        if (isGroup) {
-            _messages.update { all -> all + (conversationId to emptyList()) }
-            _conversations.update { list ->
-                list.map { c ->
-                    if (c.id == conversationId) c.copy(preview = "Sin mensajes", lastMessageAtMillis = 0L, unreadCount = 0, hiddenFromAll = true)
-                    else c
+        if (conv?.isGroup == true) {
+            if (conv.hasLeft) {
+                // Ya saliste del grupo: el servidor ya no te tiene como participante.
+                // Borrar aquí es solo quitar la copia local (para ti), sin afectar a nadie.
+                _deleted.update { it + conversationId }
+                _conversations.update { list -> list.filterNot { it.id == conversationId } }
+                _archived.update { list -> list.filterNot { it.id == conversationId } }
+                _messages.update { all -> all - conversationId }
+            } else {
+                // Grupo activo: "eliminar chat" lo oculta de "Todos" pero sigue
+                // disponible en "Grupos" (el grupo y sus miembros no se tocan).
+                _messages.update { all -> all + (conversationId to emptyList()) }
+                _conversations.update { list ->
+                    list.map { c ->
+                        if (c.id == conversationId) c.copy(preview = "Sin mensajes", lastMessageAtMillis = 0L, unreadCount = 0, hiddenFromAll = true)
+                        else c
+                    }
                 }
-            }
-            _archived.update { list ->
-                list.map { c ->
-                    if (c.id == conversationId) c.copy(preview = "Sin mensajes", lastMessageAtMillis = 0L, unreadCount = 0, hiddenFromAll = true)
-                    else c
+                _archived.update { list ->
+                    list.map { c ->
+                        if (c.id == conversationId) c.copy(preview = "Sin mensajes", lastMessageAtMillis = 0L, unreadCount = 0, hiddenFromAll = true)
+                        else c
+                    }
                 }
             }
         } else {
-            // Chat privado: se elimina de verdad (también del refresco del backend).
+            // Chat privado: se elimina de verdad en el backend, no solo en el teléfono.
+            val myId = UserSession.currentUserId
+                ?: return Result.failure(IllegalStateException("Sesión sin usuario"))
+            BackendChatApi.eliminarConversacion(conversationId, myId).getOrElse { return Result.failure(it) }
+
             _deleted.update { it + conversationId }
             _conversations.update { list -> list.filterNot { it.id == conversationId } }
             _archived.update { list -> list.filterNot { it.id == conversationId } }
@@ -493,7 +518,32 @@ class KtorChatRepository : ChatRepository {
         return Result.success(Unit)
     }
 
+    override suspend fun leaveGroup(conversationId: String): Result<Unit> {
+        // El backend solo quita mi fila de participante: el grupo sigue existiendo
+        // para los demás. Si falla, no se toca la lista.
+        val myId = UserSession.currentUserId
+            ?: return Result.failure(IllegalStateException("Sesión sin usuario"))
+        BackendChatApi.salirConversacion(conversationId, myId).getOrElse { return Result.failure(it) }
+
+        // Como en WhatsApp: al salir sigues viendo el chat (solo lectura) hasta
+        // que lo borres tú. Los demás conservan todo porque siguen en el grupo.
+        _conversations.update { list ->
+            list.map { if (it.id == conversationId) it.copy(hasLeft = true, unreadCount = 0, miRol = null) else it }
+        }
+        _archived.update { list ->
+            list.map { if (it.id == conversationId) it.copy(hasLeft = true, unreadCount = 0, miRol = null) else it }
+        }
+        persist()
+        return Result.success(Unit)
+    }
+
     override suspend fun deleteGroup(conversationId: String): Result<Unit> {
+        // Se pide el borrado real al backend. Si falla, no se toca la lista:
+        // el grupo sigue visible antes que parecer borrado y no estarlo.
+        val myId = UserSession.currentUserId
+            ?: return Result.failure(IllegalStateException("Sesión sin usuario"))
+        BackendChatApi.eliminarConversacion(conversationId, myId).getOrElse { return Result.failure(it) }
+
         _deleted.update { it + conversationId }
         _conversations.update { list -> list.filterNot { it.id == conversationId } }
         _archived.update { list -> list.filterNot { it.id == conversationId } }
@@ -552,7 +602,8 @@ class KtorChatRepository : ChatRepository {
             avatarDark = dto.esGrupo,
             lastMessageId = dto.ultimoMensaje?.id,
             members = membersList,
-            hiddenFromAll = false
+            hiddenFromAll = false,
+            miRol = dto.miRol
         )
     }
 
@@ -592,6 +643,20 @@ class KtorChatRepository : ChatRepository {
     }
 
     private fun handleIncomingWebSocketMessage(text: String) {
+        // El backend avisa cuando otro dispositivo eliminó una conversación.
+        val evento = runCatching { chatJson.parseToJsonElement(text).jsonObject }.getOrNull()
+        val tipo = evento?.get("tipo")?.jsonPrimitive?.content
+        if (tipo == "CONVERSACION_ELIMINADA") {
+            val id = evento["conversacionId"]?.jsonPrimitive?.content
+            if (!id.isNullOrBlank()) {
+                _deleted.update { it + id }
+                _conversations.update { list -> list.filterNot { it.id == id } }
+                _archived.update { list -> list.filterNot { it.id == id } }
+                _messages.update { all -> all - id }
+            }
+            return
+        }
+
         val dto = runCatching { chatJson.decodeFromString<MensajeResponseDto>(text) }.getOrNull()
         if (dto != null) {
             val myId = UserSession.currentUserId ?: ""

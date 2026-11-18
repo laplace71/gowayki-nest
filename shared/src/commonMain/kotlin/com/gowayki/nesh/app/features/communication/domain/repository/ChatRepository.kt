@@ -65,4 +65,7 @@ interface ChatRepository {
 
     /** Elimina un grupo (y sus mensajes). */
     suspend fun deleteGroup(conversationId: String): Result<Unit>
+
+    /** Sale de un grupo: el grupo sigue existiendo, pero ya no lo ve el usuario. */
+    suspend fun leaveGroup(conversationId: String): Result<Unit>
 }

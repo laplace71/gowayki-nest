@@ -254,7 +254,16 @@ fun WaykiNav(
                     scope.launch { chatRepo.deleteConversation(id) }
                 },
                 onDeleteGroup = { id ->
-                    scope.launch { chatRepo.deleteGroup(id) }
+                    scope.launch {
+                        val result = chatRepo.deleteGroup(id)
+                        if (result.isFailure) ToastManager.show("No se pudo eliminar el grupo")
+                    }
+                },
+                onLeaveGroup = { id ->
+                    scope.launch {
+                        val result = chatRepo.leaveGroup(id)
+                        if (result.isFailure) ToastManager.show("No se pudo salir del grupo")
+                    }
                 },
                 onTabSelected = { tab ->
                     when (tab) {
@@ -356,9 +365,28 @@ fun WaykiNav(
                     scope.launch { chatRepo.clearMessages(conversationId) }
                 },
                 onDeleteChat = {
-                    scope.launch { chatRepo.deleteConversation(conversationId) }
-                    nav.popBackStack()
+                    scope.launch {
+                        val result = chatRepo.deleteConversation(conversationId)
+                        if (result.isSuccess) nav.popBackStack()
+                        else ToastManager.show("No se pudo eliminar el chat")
+                    }
                 },
+                onLeaveGroup = {
+                    scope.launch {
+                        val result = chatRepo.leaveGroup(conversationId)
+                        if (result.isSuccess) nav.popBackStack()
+                        else ToastManager.show("No se pudo salir del grupo")
+                    }
+                },
+                onDeleteGroup = {
+                    scope.launch {
+                        val result = chatRepo.deleteGroup(conversationId)
+                        if (result.isSuccess) nav.popBackStack()
+                        else ToastManager.show("No se pudo eliminar el grupo")
+                    }
+                },
+                miRol = conversation?.miRol,
+                hasLeft = conversation?.hasLeft ?: false,
                 onBack = { nav.popBackStack() }
             )
         }
