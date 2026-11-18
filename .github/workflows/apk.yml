@@ -9,10 +9,16 @@ name: APK beta
 # - Push de un tag v*: crea una release propia (v1.0.0, v1.1.0, ...).
 # - Manual: pestaña Actions > "APK beta" > Run workflow.
 #
-# Firma (opcional): si existen los secretos RELEASE_KEYSTORE_* se usa ese
-# keystore. Si no, se usa androidApp/keystore/wayki-beta.jks cuando está en el
-# repo, y como último recurso un keystore temporal (la firma cambia en cada
-# build y Android no deja instalar encima; solo sirve para probar).
+# Firma: NO es opcional. Android no instala un APK sin firma, así que el step
+# "Firmar y alinear el APK" corre siempre. Lo que puede variar es el keystore,
+# en este orden:
+#   1. secretos RELEASE_KEYSTORE_* -> firma privada, para publicar en serio
+#      (Play Store). Requiere ser admin del repo para cargarlos.
+#   2. androidApp/keystore/wayki-beta.jks -> firma estable y pública, la que se
+#      usa hoy: cada beta se instala encima de la anterior sin desinstalar.
+#   3. keystore temporal -> solo si no existe ninguno de los dos. El APK se
+#      instala, pero cada build tiene firma distinta y Android rechaza la
+#      actualización encima: hay que desinstalar antes de instalar la nueva.
 
 on:
   push:
