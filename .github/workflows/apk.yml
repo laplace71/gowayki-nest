@@ -1,13 +1,18 @@
-name: APK beta
+name: APK y release
 
-# Construye el APK de release y lo publica como asset de GitHub Releases, que es
-# el bloque "Releases" que aparece al final de la página del repositorio.
+# Construye el APK de release y lo publica en GitHub Releases: es el bloque
+# "Releases" de la barra lateral del repo, con la tarjeta "Latest" arriba y la
+# lista de versiones debajo.
 #
-# - Push a main (o sea, cuando se mergea tu PR): reemplaza el APK de la release
-#   rodante "beta". La URL de descarga nunca cambia:
-#   https://github.com/laplace71/gowayki-nest/releases/download/beta/wayki-nest-beta.apk
-# - Push de un tag v*: crea una release propia (v1.0.0, v1.1.0, ...).
-# - Manual: pestaña Actions > "APK beta" > Run workflow.
+# - Push a main (o sea, cuando se mergea tu PR): crea una release NUEVA con su
+#   propio tag v1.0.<n>, publicada como estable para que GitHub le ponga el
+#   sello "Latest". La lista de releases crece sola, una por merge.
+#   La URL de descarga no cambia nunca porque apunta a la última release:
+#   https://github.com/laplace71/gowayki-nest/releases/latest/download/wayki-nest-beta.apk
+# - Push de un tag v*: crea esa release tal cual (v1.1.0, v2.0.0, ...). Si el
+#   tag lleva guion (v1.1.0-beta.1) se publica como pre-release y no se lleva
+#   el sello "Latest".
+# - Manual: pestaña Actions > "APK y release" > Run workflow.
 #
 # Firma: NO es opcional. Android no instala un APK sin firma, así que el step
 # "Firmar y alinear el APK" corre siempre. Lo que puede variar es el keystore,
@@ -34,8 +39,9 @@ permissions:
   contents: write
 
 env:
-  BETA_TAG: beta
-  BETA_ASSET: wayki-nest-beta.apk
+  # Nombre fijo del asset: así /releases/latest/download/wayki-nest-beta.apk
+  # siempre sirve el APK más reciente sin importar el tag de turno.
+  ASSET: wayki-nest-beta.apk
 
 jobs:
   publicar:
@@ -67,17 +73,18 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             tag="$GITHUB_REF_NAME"
             version="${tag#v}"
-            asset="wayki-nest-${version}.apk"
             case "$version" in
               *-*) prerelease=true ;;
               *)   prerelease=false ;;
             esac
           else
-            tag="$BETA_TAG"
-            version="1.0.0-beta.${GITHUB_RUN_NUMBER}"
-            asset="$BETA_ASSET"
-            prerelease=true
+            # Cada push a main = una versión nueva. GITHUB_RUN_NUMBER nunca se
+            # repite, así que el tag es único y la lista de releases crece.
+            version="1.0.${GITHUB_RUN_NUMBER}"
+            tag="v${version}"
+            prerelease=false
           fi
+          asset="$ASSET"
           {
             echo "tag=$tag"
             echo "version=$version"
@@ -86,10 +93,12 @@ jobs:
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
 
-          # Commit de la beta anterior: de ahí sale el changelog.
+          # Release anterior (el tag v* más nuevo, sin contar el de este run):
+          # de ahí sale el changelog.
           prev=""
-          if git rev-parse -q --verify "refs/tags/$BETA_TAG" >/dev/null 2>&1; then
-            prev=$(git rev-parse "refs/tags/$BETA_TAG")
+          candidato=$(git tag --list 'v*' --sort=-v:refname | grep -vx "$tag" | head -1 || true)
+          if [ -n "$candidato" ]; then
+            prev=$(git rev-parse "$candidato")
           fi
           echo "prev=$prev" >> "$GITHUB_OUTPUT"
 
@@ -155,15 +164,20 @@ jobs:
           if [ -n "$PREV" ] && [ "$(git rev-list --count "$PREV..$GITHUB_SHA")" -gt 0 ]; then
             cambios=$(git log --no-merges --pretty='- %s' "$PREV..$GITHUB_SHA" | head -40)
             comparar="https://github.com/$GITHUB_REPOSITORY/compare/${PREV}...${GITHUB_SHA}"
+          elif [ -z "$PREV" ]; then
+            # Primera release del esquema nuevo: no hay versión anterior contra
+            # la cual comparar, así que se listan los últimos commits.
+            cambios=$(git log --no-merges --pretty='- %s' -15 "$GITHUB_SHA")
+            comparar=""
           else
-            cambios="- Sin cambios de código desde la beta anterior."
+            cambios="- Sin cambios de código desde la versión anterior."
             comparar=""
           fi
 
           {
             echo "## Wayki Nest $VERSION"
             echo
-            echo "APK beta compilada y firmada automáticamente desde \`main\`."
+            echo "APK compilada y firmada automáticamente desde \`main\`."
             echo
             echo "### Cambios"
             echo
@@ -177,21 +191,15 @@ jobs:
             echo
             echo "1. Descarga \`$ASSET\`."
             echo "2. Permite *instalar apps de origen desconocido* cuando Android lo pida."
-            echo "3. Si ya tienes una beta instalada, se actualiza encima: no hace falta desinstalar."
+            echo "3. Si ya tienes una versión instalada, se actualiza encima: no hace falta desinstalar."
             echo
             echo "### Notas"
             echo
-            echo "- Build de pruebas (canal *beta*): no usar en producción ni publicar en Play Store."
-            echo "- Este asset se reemplaza en cada push a \`main\`; el histórico queda en [Actions](https://github.com/$GITHUB_REPOSITORY/actions/workflows/apk.yml)."
+            echo "- Cada push a \`main\` publica una versión nueva; esta es la **$VERSION**."
+            echo "- Descarga siempre la última: [releases/latest](https://github.com/$GITHUB_REPOSITORY/releases/latest)."
           } > "$RUNNER_TEMP/notas.md"
 
           echo "body=$RUNNER_TEMP/notas.md" >> "$GITHUB_OUTPUT"
-
-      - name: Mover el tag beta al commit actual
-        if: github.ref_type != 'tag'
-        run: |
-          git tag -f "$BETA_TAG" "$GITHUB_SHA"
-          git push -f origin "refs/tags/$BETA_TAG"
 
       - name: Publicar en Releases
         uses: softprops/action-gh-release@v2
@@ -199,5 +207,6 @@ jobs:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: Wayki Nest ${{ steps.meta.outputs.version }}
           prerelease: ${{ steps.meta.outputs.prerelease }}
+          make_latest: "true"
           body_path: ${{ steps.notas.outputs.body }}
           files: ${{ steps.firmar.outputs.apk }}

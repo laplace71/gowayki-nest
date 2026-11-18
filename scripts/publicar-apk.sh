@@ -2,8 +2,13 @@
 # Publica el APK en la sección Releases del repo, igual que el CI
 # (.github/workflows/apk.yml), pero desde tu máquina.
 #
-#   ./scripts/publicar-apk.sh              # publica/actualiza la release "beta"
-#   ./scripts/publicar-apk.sh v1.0.0-beta3 # publica una release con ese tag
+#   ./scripts/publicar-apk.sh           # crea una release nueva (v1.0.<fecha>)
+#   ./scripts/publicar-apk.sh v1.1.0    # publica una release con ese tag
+#
+# Cada release lleva su propio tag, así la lista de Releases crece como en
+# cualquier proyecto publicado. El APK se sube siempre con el mismo nombre, así
+# que esta URL sigue sirviendo la última versión:
+#   https://github.com/laplace71/gowayki-nest/releases/latest/download/wayki-nest-beta.apk
 #
 # Requisitos: JDK 17, Android SDK, gh autenticado con permiso de escritura.
 # La primera vez crea un keystore estable en ~/.wayki/wayki-beta.jks (o usa
@@ -12,18 +17,23 @@
 set -euo pipefail
 
 REPO="${REPO:-laplace71/gowayki-nest}"
-TAG="${1:-beta}"
+TAG="${1:-}"
 
 raiz="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$raiz"
 
-if [[ "$TAG" == "beta" ]]; then
-  version="1.0.0-beta.$(date +%Y%m%d%H%M)"
-  asset="wayki-nest-beta.apk"
+if [[ -z "$TAG" ]]; then
+  version="1.0.$(date +%Y%m%d%H%M)"
+  tag="v${version}"
 else
+  tag="$TAG"
   version="${TAG#v}"
-  asset="wayki-nest-${version}.apk"
 fi
+asset="wayki-nest-beta.apk"
+
+prerelease=false
+case "$version" in *-*) prerelease=true ;; esac
+
 version_code="$(( $(date +%s) / 100 ))"
 
 # --- Keystore estable -------------------------------------------------------
@@ -60,9 +70,12 @@ mkdir -p "$(dirname "$salida")"
 rm -f "$raiz/build/releases/alineado.apk"
 
 # --- Notas de la release ----------------------------------------------------
-prev=$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null || true)
+prev=$(git tag --list 'v*' --sort=-v:refname | grep -vx "$tag" | head -1 || true)
 if [ -z "$prev" ]; then
-  prev=$(git ls-remote --tags origin "refs/tags/$TAG" 2>/dev/null | cut -f1 || true)
+  prev=$(git ls-remote --tags origin 'refs/tags/v*' 2>/dev/null | awk '{print $2}' | sed 's#refs/tags/##' | grep -vx "$tag" | sort -rV | head -1 || true)
+fi
+if [ -n "$prev" ]; then
+  prev=$(git rev-parse -q --verify "$prev^{commit}" 2>/dev/null || echo "$prev")
 fi
 if [ -n "$prev" ] && [ "$(git rev-list --count "$prev..HEAD" 2>/dev/null || echo 0)" -gt 0 ]; then
   cambios=$(git log --no-merges --pretty='- %s' "$prev..HEAD" | head -40)
@@ -76,7 +89,7 @@ notas="$raiz/build/releases/notas.md"
 {
   echo "## Wayki Nest $version"
   echo
-  echo "APK beta firmada y compilada localmente con \`scripts/publicar-apk.sh\`."
+  echo "APK firmada y compilada localmente con \`scripts/publicar-apk.sh\`."
   echo
   echo "### Cambios"
   echo
@@ -90,25 +103,30 @@ notas="$raiz/build/releases/notas.md"
   echo
   echo "1. Descarga \`$asset\`."
   echo "2. Permite *instalar apps de origen desconocido* cuando Android lo pida."
-  echo "3. Si ya tienes una beta instalada, se actualiza encima: no hace falta desinstalar."
+  echo "3. Si ya tienes una versión instalada, se actualiza encima: no hace falta desinstalar."
   echo
   echo "### Notas"
   echo
-  echo "- Build de pruebas (canal *beta*): no usar en producción ni publicar en Play Store."
-  echo "- Este asset se reemplaza en cada publicación de la misma release."
+  echo "- Versión **$version**. Descarga siempre la última en [releases/latest](https://github.com/$REPO/releases/latest)."
 } > "$notas"
 
 # --- Release ----------------------------------------------------------------
-if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
-  gh release upload "$TAG" "$salida" -R "$REPO" --clobber
-  gh release edit "$TAG" -R "$REPO" --title "Wayki Nest $version" --notes-file "$notas"
-else
-  gh release create "$TAG" "$salida" -R "$REPO" \
+if gh release view "$tag" -R "$REPO" >/dev/null 2>&1; then
+  gh release upload "$tag" "$salida" -R "$REPO" --clobber
+  gh release edit "$tag" -R "$REPO" --title "Wayki Nest $version" --notes-file "$notas"
+elif [[ "$prerelease" == true ]]; then
+  gh release create "$tag" "$salida" -R "$REPO" \
     --title "Wayki Nest $version" \
     --notes-file "$notas" \
     --prerelease \
     --target main
+else
+  gh release create "$tag" "$salida" -R "$REPO" \
+    --title "Wayki Nest $version" \
+    --notes-file "$notas" \
+    --latest \
+    --target main
 fi
 
 echo
-echo "Listo: https://github.com/$REPO/releases/tag/$TAG"
+echo "Listo: https://github.com/$REPO/releases/tag/$tag"
