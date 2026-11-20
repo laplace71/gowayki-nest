@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -56,6 +57,7 @@ import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppRadius
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
+import com.gowayki.nesh.domain.model.AuthPolicy
 
 enum class LoginStatus {
     NORMAL, ERROR, BLOCKED
@@ -64,8 +66,10 @@ enum class LoginStatus {
 data class LoginUiState(
     val pin: String = "",
     val status: LoginStatus = LoginStatus.NORMAL,
-    val attemptsLeft: Int = 3,
+    val attemptsLeft: Int = AuthPolicy.MAX_INTENTOS,
     val blockTimerSeconds: Int = 0,
+    /** Motivo legible del fallo (PIN incorrecto, cuenta bloqueada, sin internet…). */
+    val errorMessage: String? = null,
 )
 
 @Composable
@@ -335,24 +339,28 @@ private fun LoginStatusBanner(state: LoginUiState) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .heightIn(min = 56.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(container)
-            .padding(horizontal = AppSpacing.md),
+            .padding(horizontal = AppSpacing.md, vertical = AppSpacing.xs),
         contentAlignment = Alignment.Center,
     ) {
         when {
             isError -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "PIN incorrecto • Te quedan ${state.attemptsLeft} intentos",
+                    text = state.errorMessage
+                        ?: "PIN incorrecto • Te quedan ${state.attemptsLeft} intentos",
                     style = AppTextStyles.waykiLabelMedium,
                     color = AppColors.onBackground,
+                    textAlign = TextAlign.Center,
                 )
-                Text(
-                    text = "Revisa tu código antes de continuar.",
-                    style = AppTextStyles.waykiMini,
-                    color = AppColors.onSurfaceMuted,
-                )
+                if (state.errorMessage == null) {
+                    Text(
+                        text = "Revisa tu código antes de continuar.",
+                        style = AppTextStyles.waykiMini,
+                        color = AppColors.onSurfaceMuted,
+                    )
+                }
             }
 
             isBlocked -> {
@@ -366,9 +374,10 @@ private fun LoginStatusBanner(state: LoginUiState) {
                         color = AppColors.onBackground,
                     )
                     Text(
-                        text = "El teclado se habilitará automáticamente.",
+                        text = state.errorMessage ?: "El teclado se habilitará automáticamente.",
                         style = AppTextStyles.waykiMini,
                         color = AppColors.onSurfaceMuted,
+                        textAlign = TextAlign.Center,
                     )
                 }
             }
