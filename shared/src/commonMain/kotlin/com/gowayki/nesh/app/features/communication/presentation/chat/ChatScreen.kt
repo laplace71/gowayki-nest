@@ -142,6 +142,54 @@ fun ChatScreen(
     var playingPath by remember { mutableStateOf<String?>(null) }
     var playerIsPlaying by remember { mutableStateOf(false) }
 
+    // Aviso de mensajes nuevos mientras el usuario está scrolleando arriba.
+    var ultimoVistoId by remember { mutableStateOf<String?>(null) }
+    var mensajesNuevos by remember { mutableStateOf(0) }
+    var previewNueva by remember { mutableStateOf("") }
+    val cercaDelFinal by remember {
+        derivedStateOf {
+            val ultimoVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            messages.isEmpty() || ultimoVisible >= messages.lastIndex - 1
+        }
+    }
+
+    val ultimoMensaje = messages.lastOrNull()
+    LaunchedEffect(ultimoMensaje?.id) {
+        val id = ultimoMensaje?.id ?: return@LaunchedEffect
+        if (ultimoVistoId == null) {
+            ultimoVistoId = id
+            return@LaunchedEffect
+        }
+        if (id == ultimoVistoId) return@LaunchedEffect
+
+        val desde = messages.indexOfLast { it.id == ultimoVistoId }
+        val cantidad = (messages.lastIndex - desde).coerceAtLeast(1)
+        val ultimo = messages.last()
+        val texto = when (ultimo.kind) {
+            MessageKind.AUDIO -> "Audio · ${formatVoiceTime(ultimo.audioDurationSeconds * 1000L)}"
+            else -> ultimo.text
+        }
+        val autor = if (ultimo.isMine) "Tú" else ultimo.senderName
+
+        if (cercaDelFinal) {
+            listState.animateScrollToItem(messages.lastIndex)
+            mensajesNuevos = 0
+            previewNueva = ""
+        } else {
+            mensajesNuevos += cantidad
+            previewNueva = "$autor: $texto"
+        }
+        ultimoVistoId = id
+    }
+
+    LaunchedEffect(cercaDelFinal) {
+        if (cercaDelFinal) {
+            mensajesNuevos = 0
+            previewNueva = ""
+            ultimoVistoId = messages.lastOrNull()?.id
+        }
+    }
+
     // La reproducción se observa directamente. Antes había un efecto que
     // limpiaba `playingPath` 120 ms después de pulsar play; como MediaPlayer
     // tarda un poco en arrancar, ese retardo apagaba el estado antes de que
@@ -195,6 +243,7 @@ fun ChatScreen(
         return
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -422,6 +471,51 @@ fun ChatScreen(
                 )
             }
         }
+    }
+
+    // Aviso flotante: puntito + contador + vista previa del último mensaje.
+    if (mensajesNuevos > 0) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 104.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(AppColors.primary)
+                .clickable {
+                    audioScope.launch { listState.animateScrollToItem(messages.lastIndex) }
+                    mensajesNuevos = 0
+                    previewNueva = ""
+                    ultimoVistoId = messages.lastOrNull()?.id
+                }
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(AppColors.cream),
+                )
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = "$mensajesNuevos mensaje${if (mensajesNuevos == 1) "" else "s"} nuevo${if (mensajesNuevos == 1) "" else "s"}",
+                        style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                        color = AppColors.cream,
+                        maxLines = 1,
+                    )
+                    if (previewNueva.isNotBlank()) {
+                        Text(
+                            text = previewNueva,
+                            style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
+                            color = AppColors.cream.copy(alpha = 0.85f),
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
+    }
     }
 
     // ── Acciones de un mensaje (mantener presionado) ─────────────────────

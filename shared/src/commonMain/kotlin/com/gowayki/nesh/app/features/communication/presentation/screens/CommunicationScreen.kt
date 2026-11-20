@@ -788,6 +788,15 @@ private fun ConversationRow(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                if (conv.unreadCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(AppColors.primary),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
                 Text(
                     conv.title,
                     style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
