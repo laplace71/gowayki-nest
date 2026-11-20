@@ -1,18 +1,17 @@
 package com.gowayki.nesh.core.session
 
-import platform.Foundation.NSUserDefaults
-
+/**
+ * En iOS el token NO se escribe en NSUserDefaults: ese almacenamiento es
+ * legible por backups y por cualquier código con acceso al contenedor de la
+ * app. Hasta integrar Keychain con interop nativo, el bearer token vive solo
+ * en memoria, así que cerrar la app obliga a volver a entrar.
+ */
 actual object AuthTokenStore {
-    private const val KEY = "wayki_session_auth_token"
+    private var token: String? = null
 
-    actual fun read(): String? =
-        NSUserDefaults.standardUserDefaults.stringForKey(KEY)?.takeIf { it.isNotBlank() }
+    actual fun read(): String? = token?.takeIf { it.isNotBlank() }
 
     actual fun write(token: String?) {
-        if (token.isNullOrBlank()) {
-            NSUserDefaults.standardUserDefaults.removeObjectForKey(KEY)
-        } else {
-            NSUserDefaults.standardUserDefaults.setObject(token, KEY)
-        }
+        this.token = token?.takeIf { it.isNotBlank() }
     }
 }

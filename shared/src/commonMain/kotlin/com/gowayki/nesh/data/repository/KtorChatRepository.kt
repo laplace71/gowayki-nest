@@ -20,7 +20,10 @@ import com.gowayki.nesh.data.entities.backend.MensajeResponseDto
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.header
 import io.ktor.http.HttpHeaders
+import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
+import io.ktor.websocket.WebSocketSession
+import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
@@ -62,6 +65,13 @@ class KtorChatRepository : ChatRepository {
      * hay que recordar aquí su título. Ocultar no borra mensajes ni adhesivos.
      */
     private val _hidden = MutableStateFlow<List<Conversation>>(emptyList())
+
+    /**
+     * Grupos con eliminación pedida: desaparecen de las listas normales, pero
+     * se conservan aquí para poder cancelar la purga antes de las 72 horas.
+     */
+    private val _eliminacionesPendientes = MutableStateFlow<List<Conversation>>(emptyList())
+    override fun eliminacionesPendientes(): Flow<List<Conversation>> = _eliminacionesPendientes.asStateFlow()
 
     private val _colleagues = MutableStateFlow<List<GroupMember>>(emptyList())
     val colleaguesFlow: Flow<List<GroupMember>> = _colleagues.asStateFlow()
@@ -527,7 +537,15 @@ class KtorChatRepository : ChatRepository {
                         if (existing == null) mapped
                         else mapped.copy(
                             sentAtMillis = parseIsoToMillis(dto.createdAt) ?: existing.sentAtMillis,
-                            status = existing.status
+                            // El estado LEIDO nunca debe retroceder a ENTREGADO
+                            // aunque el servidor reenvíe el mensaje cacheado.
+                            status = if (existing.status == MessageStatus.READ ||
+                                mapped.status == MessageStatus.READ
+                            ) {
+                                MessageStatus.READ
+                            } else {
+                                mapped.status
+                            }
                         )
                     }.let { todos ->
                         // Regla 1: en un chat limpiado solo se ven los mensajes
@@ -845,12 +863,12 @@ class KtorChatRepository : ChatRepository {
         if (UserSession.currentUserId == null) {
             return Result.failure(IllegalStateException("Sesión sin usuario"))
         }
-        BackendChatApi.solicitarEliminacionGrupo(conversationId)
+        val respuesta = BackendChatApi.solicitarEliminacionGrupo(conversationId)
             .getOrElse { return Result.failure(it) }
 
-        // El grupo desaparece AHORA de todas las interfaces (el backend avisa
-        // por WebSocket). En BD queda marcado 72 h antes de la purga física.
-        quitarConversacionLocal(conversationId)
+        // El grupo desaparece AHORA de las listas normales, pero conservamos una
+        // copia con rol y fecha para poder cancelar la purga antes de las 72 h.
+        moverAPendientes(conversationId, respuesta.seEliminaraEn)
         persist()
         return Result.success(Unit)
     }
@@ -861,8 +879,11 @@ class KtorChatRepository : ChatRepository {
         }
         BackendChatApi.cancelarEliminacionGrupo(conversationId).getOrElse { return Result.failure(it) }
 
+        // La cancelación hecha por este dispositivo devuelve el grupo a la lista.
+        restaurarDePendientes(conversationId)
         limpiarPendienteEliminacion(conversationId)
         persist()
+        refreshConversations()
         return Result.success(Unit)
     }
 
@@ -888,6 +909,28 @@ class KtorChatRepository : ChatRepository {
         _conversations.update { limpiar(it) }
         _archived.update { limpiar(it) }
         _hidden.update { limpiar(it) }
+    }
+
+    /** Mueve un grupo a la lista de eliminaciones pendientes (conserva rol y fecha). */
+    private fun moverAPendientes(conversationId: String, cuando: String?) {
+        val actual = (_conversations.value + _archived.value + _hidden.value + _eliminacionesPendientes.value)
+            .firstOrNull { it.id == conversationId } ?: return
+        val conv = actual.copy(
+            eliminacionPendiente = true,
+            eliminacionProgramadaPara = cuando ?: actual.eliminacionProgramadaPara,
+        )
+        _eliminacionesPendientes.update { list ->
+            list.filterNot { it.id == conversationId } + conv
+        }
+        quitarConversacionLocal(conversationId)
+    }
+
+    /** Devuelve un grupo cancelado desde la lista de pendientes a Archivados. */
+    private fun restaurarDePendientes(conversationId: String) {
+        val conv = _eliminacionesPendientes.value.firstOrNull { it.id == conversationId } ?: return
+        _eliminacionesPendientes.update { list -> list.filterNot { it.id == conversationId } }
+        val restaurada = conv.copy(eliminacionPendiente = false, eliminacionProgramadaPara = null)
+        _archived.update { list -> listOf(restaurada) + list.filterNot { c -> c.id == conversationId } }
     }
 
     private fun quitarConversacionLocal(conversationId: String) {
@@ -1120,6 +1163,33 @@ class KtorChatRepository : ChatRepository {
         }
     }
 
+    @Volatile
+    private var activeSocket: WebSocketSession? = null
+
+    /**
+     * Cierra el socket y vacía la caché al cerrar sesión o cambiar de cuenta.
+     * Sin esto, el socket del usuario anterior seguía metiendo mensajes en el
+     * repositorio compartido bajo la sesión nueva.
+     */
+    fun cerrarSesion() {
+        scope.launch {
+            runCatching {
+                activeSocket?.close(CloseReason(CloseReason.Codes.NORMAL, "logout"))
+            }
+            activeSocket = null
+            _messages.value = emptyMap()
+            _conversations.value = emptyList()
+            _archived.value = emptyList()
+            _hidden.value = emptyList()
+            _eliminacionesPendientes.value = emptyList()
+            mensajesBorrados.clear()
+            chatsLimpiados.clear()
+            manualGroupSubroutes.clear()
+            watchedConversations.value = emptySet()
+            persist()
+        }
+    }
+
     private fun startWebSocketListener() {
         scope.launch {
             while (true) {
@@ -1131,15 +1201,25 @@ class KtorChatRepository : ChatRepository {
                         delay(5000)
                         continue
                     }
+                    val tokenConexion = token
                     client.webSocket(
                         urlString = wsUrl,
-                        request = { header(HttpHeaders.Authorization, token) }
+                        request = { header(HttpHeaders.Authorization, tokenConexion) }
                     ) {
-                        for (frame in incoming) {
-                            if (frame is Frame.Text) {
-                                val text = frame.readText()
-                                handleIncomingWebSocketMessage(text)
+                        activeSocket = this
+                        try {
+                            for (frame in incoming) {
+                                // Si el token cambió (logout o cambio de cuenta),
+                                // cortamos esta conexión antes de seguir leyendo.
+                                if (com.gowayki.nesh.core.session.AuthTokenState.authorizationHeader != tokenConexion) {
+                                    break
+                                }
+                                if (frame is Frame.Text) {
+                                    handleIncomingWebSocketMessage(frame.readText())
+                                }
                             }
+                        } finally {
+                            if (activeSocket === this) activeSocket = null
                         }
                     }
                 } catch (_: Throwable) {
@@ -1184,12 +1264,13 @@ class KtorChatRepository : ChatRepository {
             "GRUPO_ELIMINACION_PENDIENTE" -> {
                 val id = evento["conversacionId"]?.jsonPrimitive?.content ?: return
                 val cuando = evento["ejecutarDespues"]?.jsonPrimitive?.content
-                marcarPendienteEliminacion(id, cuando)
+                moverAPendientes(id, cuando)
                 persist()
                 return
             }
             "GRUPO_ELIMINACION_CANCELADA" -> {
                 val id = evento["conversacionId"]?.jsonPrimitive?.content ?: return
+                restaurarDePendientes(id)
                 limpiarPendienteEliminacion(id)
                 // Se deshizo el soft delete en BD: traer el grupo de vuelta.
                 refreshConversations()
@@ -1199,6 +1280,7 @@ class KtorChatRepository : ChatRepository {
             // Purga definitiva cumplidas las 72 horas (aviso a los participantes).
             "CONVERSACION_ELIMINADA" -> {
                 val id = evento["conversacionId"]?.jsonPrimitive?.content ?: return
+                _eliminacionesPendientes.update { list -> list.filterNot { it.id == id } }
                 quitarConversacionLocal(id)
                 persist()
                 return
@@ -1234,7 +1316,16 @@ class KtorChatRepository : ChatRepository {
             _messages.update { all ->
                 val existing = all[message.conversationId].orEmpty()
                 if (existing.any { it.id == message.id }) {
-                    all
+                    // Un ack de lectura puede llegar por WebSocket después del
+                    // eco del envío: nunca lo dejamos volver a ENTREGADO.
+                    val actual = existing.first { it.id == message.id }
+                    if (actual.status != MessageStatus.READ && message.status == MessageStatus.READ) {
+                        all + (message.conversationId to existing.map { m ->
+                            if (m.id == message.id) m.copy(status = MessageStatus.READ) else m
+                        })
+                    } else {
+                        all
+                    }
                 } else {
                     appended = true
                     all + (message.conversationId to (existing + message))
@@ -1284,6 +1375,7 @@ class KtorChatRepository : ChatRepository {
         _conversations.value = saved.conversations.distinctBy { it.id }
         _archived.value = saved.archived.distinctBy { it.id }
         _hidden.value = saved.hidden.distinctBy { it.id }
+        _eliminacionesPendientes.value = saved.eliminacionesPendientes.distinctBy { it.id }
         _messages.value = saved.messages.mapValues { (_, list) -> list.distinctBy { it.id } }
         manualGroupSubroutes.clear()
         manualGroupSubroutes.putAll(saved.manualGroupSubroutes)
@@ -1314,6 +1406,7 @@ class KtorChatRepository : ChatRepository {
                             conversations = _conversations.value,
                             archived = _archived.value,
                             hidden = _hidden.value,
+                            eliminacionesPendientes = _eliminacionesPendientes.value,
                             messages = cappedMessages,
                             manualGroupSubroutes = manualGroupSubroutes.toMap(),
                             chatsLimpiados = chatsLimpiados.toMap(),
@@ -1331,6 +1424,8 @@ class KtorChatRepository : ChatRepository {
         val archived: List<Conversation> = emptyList(),
         /** Conversaciones que el usuario ocultó: se guardan para poder restaurarlas. */
         val hidden: List<Conversation> = emptyList(),
+        /** Grupos con purga pendiente: se conservan para poder cancelarla. */
+        val eliminacionesPendientes: List<Conversation> = emptyList(),
         val messages: Map<String, List<Message>> = emptyMap(),
         /** Subruta anclada a cada grupo manual, para no mostrarlo en todas partes. */
         val manualGroupSubroutes: Map<String, String> = emptyMap(),

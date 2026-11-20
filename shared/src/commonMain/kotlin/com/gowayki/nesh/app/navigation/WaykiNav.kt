@@ -85,6 +85,18 @@ fun WaykiNav(
     val communicationVoiceVm: CommunicationVoiceViewModel = viewModel {
         CommunicationVoiceViewModel(chatRepository = AppDi.getOrNull<ChatRepository>())
     }
+    val sesionRepo = remember { AppDi.get<ChatRepository>() }
+
+    /** Cierra sesión de verdad: token, socket y todo el historial del back stack. */
+    fun cerrarSesion() {
+        UserSession.clear()
+        (sesionRepo as? KtorChatRepository)?.cerrarSesion()
+        nav.navigate(Routes.WELCOME) {
+            popUpTo(0) { inclusive = true }
+            launchSingleTop = true
+        }
+    }
+
     // Triple clic desde cualquier módulo lleva al SOS. Se observa en su propio
     // alcance: si se leyera directo aquí, cada cambio de estado del SOS
     // recompondría el NavHost completo (scroll y cambios de módulo con lag).
@@ -213,10 +225,7 @@ fun WaykiNav(
                 onSosClick = { /* TODO: SOS */ },
                 onMapClick = { /* ya ests en reportes */ },
                 onSettingsClick = { /* TODO: ajustes */ },
-                onLogoutClick = {
-                    UserSession.clear()
-                    nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
-                },
+                onLogoutClick = { cerrarSesion() },
                 sosVm = sosVm,
             )
         }
@@ -230,19 +239,16 @@ fun WaykiNav(
                 onRecorridoClick = { goTab(Routes.ROUTE_DETAIL) },
                 onMapaClick = { goTab(Routes.MAP) },
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
-                onLogoutClick = {
-                    UserSession.clear()
-                    nav.navigate(Routes.WELCOME) {
-                        popUpTo(Routes.WELCOME) { inclusive = true }
-                    }
-                }
+                onLogoutClick = { cerrarSesion() }
             )
         }
         
         composable(Routes.COMMUNICATION) {
             val chatRepo = remember { AppDi.get<ChatRepository>() }
             val scope = rememberCoroutineScope()
+            val pendingDeletions by chatRepo.eliminacionesPendientes().collectAsState(initial = emptyList())
             com.gowayki.nesh.app.features.communication.presentation.screens.CommunicationScreen(
+                pendingDeletions = pendingDeletions,
                 onConversationClick = { conversationId ->
                     scope.launch { chatRepo.markAsRead(conversationId) }
                     nav.navigate(Routes.chat(conversationId))
@@ -304,12 +310,7 @@ fun WaykiNav(
                 onRecorridoClick = { goTab(Routes.ROUTE_DETAIL) },
                 onMapaClick = { goTab(Routes.MAP) },
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
-                onLogoutClick = {
-                    UserSession.clear()
-                    nav.navigate(Routes.WELCOME) {
-                        popUpTo(Routes.WELCOME) { inclusive = true }
-                    }
-                }
+                onLogoutClick = { cerrarSesion() }
             )
         }
         
@@ -324,10 +325,7 @@ fun WaykiNav(
                 onRecorridoClick = {},
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
                 onMapaClick = { goTab(Routes.MAP) },
-                onLogoutClick = {
-                    UserSession.clear()
-                    nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
-                },
+                onLogoutClick = { cerrarSesion() },
                 onTabSelected = { tab ->
                     when (tab) {
                         0 -> goTab(Routes.HOME)
@@ -357,8 +355,13 @@ fun WaykiNav(
                 .collectAsState(initial = emptyList())
             val archivedConversations by remember { chatRepo.archived() }
                 .collectAsState(initial = emptyList())
+            // Los chats abiertos desde "Ocultos" también deben conservar su
+            // identidad de grupo, rol y estado de salida.
+            val hiddenConversations by remember { chatRepo.hiddenConversations() }
+                .collectAsState(initial = emptyList())
             val conversation = conversations.firstOrNull { it.id == conversationId }
                 ?: archivedConversations.firstOrNull { it.id == conversationId }
+                ?: hiddenConversations.firstOrNull { it.id == conversationId }
             val isArchived = archivedConversations.any { it.id == conversationId }
 
             ChatScreen(
@@ -526,9 +529,7 @@ fun WaykiNav(
                 onRecorridoClick = { goTab(Routes.ROUTE_DETAIL) },
                 onMapaClick = {},
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
-                onLogoutClick = {
-                    nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
-                }
+                onLogoutClick = { cerrarSesion() }
             )
         }
 
