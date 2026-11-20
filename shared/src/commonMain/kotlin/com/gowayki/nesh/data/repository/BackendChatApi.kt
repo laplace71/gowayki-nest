@@ -7,6 +7,7 @@ import com.gowayki.nesh.data.entities.backend.CrearConversacionRequestDto
 import com.gowayki.nesh.data.entities.backend.EliminacionGrupoResponseDto
 import com.gowayki.nesh.data.entities.backend.EnviarMensajeTextoRequestDto
 import com.gowayki.nesh.data.entities.backend.MensajeResponseDto
+import com.gowayki.nesh.data.entities.backend.TotalNoLeidosDto
 import io.ktor.client.call.body
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
@@ -167,6 +168,18 @@ object BackendChatApi {
                 response.body<List<MensajeResponseDto>>()
             } else {
                 throw errorDeRespuesta(response, "No se pudieron cargar los mensajes")
+            }
+        }
+    }
+
+    /** Total de no leídos para el badge, sin descargar conversaciones. */
+    suspend fun totalNoLeidos(): Result<Int> = runCatching {
+        withContext(Dispatchers.Default) {
+            val response = client.get("$baseUrl/chat/no-leidos")
+            if (response.status.isSuccess()) {
+                response.body<TotalNoLeidosDto>().total
+            } else {
+                throw errorDeRespuesta(response, "No se pudo consultar los mensajes nuevos")
             }
         }
     }

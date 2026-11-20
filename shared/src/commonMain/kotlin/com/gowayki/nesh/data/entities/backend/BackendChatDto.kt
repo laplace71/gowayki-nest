@@ -64,6 +64,11 @@ data class EliminacionGrupoResponseDto(
 )
 
 @Serializable
+data class TotalNoLeidosDto(
+    val total: Int = 0
+)
+
+@Serializable
 data class AgregarParticipantesRequestDto(
     val usuarioIds: List<String> = emptyList()
 )

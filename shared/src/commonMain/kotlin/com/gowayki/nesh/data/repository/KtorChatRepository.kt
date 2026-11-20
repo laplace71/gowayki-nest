@@ -664,6 +664,18 @@ class KtorChatRepository : ChatRepository {
                 }
             }
         }
+        // El badge del bottom nav se actualiza aunque no estés en Comunicación
+        // y aunque el WebSocket esté caído: el backend es la fuente del total.
+        scope.launch {
+            while (true) {
+                delay(5_000)
+                if (UserSession.currentUserId != null) {
+                    BackendChatApi.totalNoLeidos().onSuccess { total ->
+                        com.gowayki.nesh.app.common.ui.shared.ChatUnreadBadge.total = maxOf(0, total)
+                    }
+                }
+            }
+        }
     }
 
     override suspend fun sendMessage(
