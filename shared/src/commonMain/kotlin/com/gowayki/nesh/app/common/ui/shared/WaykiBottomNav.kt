@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -360,16 +361,24 @@ private fun BottomNavItem(
                         scaleY = iconScale
                     }
             )
-            // Punto de mensajes nuevos en Comunicación, visible desde cualquier módulo.
+            // Contador de mensajes nuevos en Comunicación, visible desde cualquier módulo.
             if (tabIndex == 1 && ChatUnreadBadge.total > 0) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(end = 2.dp, top = 2.dp)
-                        .size(7.dp)
+                        .defaultMinSize(16.dp, 16.dp)
                         .clip(CircleShape)
-                        .background(AppColors.error),
-                )
+                        .background(AppColors.error)
+                        .padding(horizontal = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = if (ChatUnreadBadge.total > 99) "99+" else "${ChatUnreadBadge.total}",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                    )
+                }
             }
         }
         Spacer(Modifier.height(2.dp))

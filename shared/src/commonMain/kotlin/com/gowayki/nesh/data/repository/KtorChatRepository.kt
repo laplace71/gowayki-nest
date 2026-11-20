@@ -495,9 +495,19 @@ class KtorChatRepository : ChatRepository {
                     hayActividadNueva -> currentTimeMillis()
                     else -> existing.lastMessageAtMillis
                 }
+                // El backend es la fuente de verdad del no leído por usuario.
+                // Si es una versión antigua que no envía el campo, caemos al
+                // heurístico: actividad nueva y el emisor no soy yo.
+                val noLeido = when {
+                    dto.noLeidos != null -> dto.noLeidos!!.coerceAtLeast(0)
+                    hayActividadNueva &&
+                        dto.ultimoMensaje?.emisorId != com.gowayki.nesh.core.session.UserSession.currentUserId ->
+                        existing.unreadCount + 1
+                    else -> existing.unreadCount
+                }
                 fresh.copy(
                     photoPath = existing.photoPath,
-                    unreadCount = existing.unreadCount,
+                    unreadCount = noLeido,
                     lastMessageAtMillis = marcaTiempo,
                     lastMessageId = dto.ultimoMensaje?.id ?: existing.lastMessageId,
                     // Si el servidor devuelve la conversación es porque sigues participando;
@@ -544,7 +554,17 @@ class KtorChatRepository : ChatRepository {
         return _messages
             .map { all -> all[conversationId].orEmpty() }
             .distinctUntilChanged()
-            .onStart { watchedConversations.update { it + conversationId } }
+            .onStart {
+                watchedConversations.update { it + conversationId }
+                // Al abrir el chat, ese contador pasa a cero y el punto del
+                // bottom nav se recalcula en el momento.
+                _conversations.update { list ->
+                    list.map { c ->
+                        if (c.id == conversationId) c.copy(unreadCount = 0) else c
+                    }
+                }
+                actualizarBadgeNoLeidos()
+            }
             .onCompletion { watchedConversations.update { it - conversationId } }
     }
 
@@ -1181,7 +1201,7 @@ class KtorChatRepository : ChatRepository {
             isGroup = dto.esGrupo,
             preview = previewText,
             lastMessageAtMillis = parseIsoToMillis(dto.ultimoMensaje?.createdAt) ?: currentTimeMillis(),
-            unreadCount = 0,
+            unreadCount = dto.noLeidos?.coerceAtLeast(0) ?: 0,
             avatarText = dto.titulo.take(2).uppercase(),
             avatarDark = dto.esGrupo,
             lastMessageId = dto.ultimoMensaje?.id,

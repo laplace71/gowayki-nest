@@ -28,6 +28,8 @@ data class ConversacionResponseDto(
     val createdBy: String? = null,
     val createdAt: String? = null,
     val totalMensajes: Int = 0,
+    /** Lo calcula el backend por usuario; si no viene, se mantiene el conteo local. */
+    val noLeidos: Int? = null,
     val ultimoMensaje: MensajeResponseDto? = null,
     val totalParticipantes: Int? = null,
     /** Rol del usuario que pidió la lista en esta conversación (ADMIN, MIEMBRO o null). */

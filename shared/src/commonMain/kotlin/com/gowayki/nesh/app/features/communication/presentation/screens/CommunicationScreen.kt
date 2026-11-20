@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -875,18 +876,32 @@ private fun ConversationRow(
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
-            Text(
-                text = formatTime(conv.lastMessageAtMillis),
-                style = AppTextStyles.labelSmall,
-                color = if (conv.unreadCount > 0) AppColors.primary else AppColors.slate
-            )
-            Spacer(Modifier.height(6.dp))
-            if (conv.unreadCount > 0) {
-                Box(Modifier.size(22.dp).background(AppColors.primary, CircleShape), contentAlignment = Alignment.Center) {
-                    Text(conv.unreadCount.toString(), style = AppTextStyles.labelSmall.copy(fontSize = 11.sp), color = AppColors.cream)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = formatTime(conv.lastMessageAtMillis),
+                    style = AppTextStyles.labelSmall,
+                    color = if (conv.unreadCount > 0) AppColors.primary else AppColors.slate,
+                )
+                if (conv.unreadCount > 0) {
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        Modifier
+                            .defaultMinSize(20.dp, 20.dp)
+                            .background(AppColors.primary, CircleShape)
+                            .padding(horizontal = 5.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (conv.unreadCount > 99) "99+" else "${conv.unreadCount}",
+                            style = AppTextStyles.labelSmall.copy(fontSize = 11.sp),
+                            color = AppColors.cream,
+                        )
+                    }
                 }
-            } else {
-                Spacer(Modifier.height(22.dp))
+            }
+            Spacer(Modifier.height(6.dp))
+            if (conv.unreadCount <= 0) {
+                Spacer(Modifier.height(20.dp))
             }
         }
     }
