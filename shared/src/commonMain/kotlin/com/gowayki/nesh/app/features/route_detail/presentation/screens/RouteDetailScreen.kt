@@ -107,6 +107,9 @@ fun RouteDetailScreen(
     var idaStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
     var loadingStops by remember { mutableStateOf(true) }
     var returnStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
+    // Ruta cuyos paraderos se están mostrando. Si hay fallback, debe ser la
+    // misma que se muestra en la cabecera para no mezclar identidades.
+    var effectiveRoute by remember { mutableStateOf(selectedRoute) }
 
     LaunchedEffect(selectedRoute?.id, selectedRoute?.routeId, selectedRoute?.returnRouteId) {
         loadingStops = true
@@ -132,6 +135,7 @@ fun RouteDetailScreen(
 
         idaStops = ida
         returnStops = effective?.returnRouteId?.let { RouteStopsStore.stopsFor(it) }.orEmpty()
+        effectiveRoute = effective
         loadingStops = false
     }
 
@@ -281,14 +285,14 @@ fun RouteDetailScreen(
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.md)) {
                                 Text(
-                                    text = selectedRoute?.name ?: "Selecciona una ruta",
+                                    text = effectiveRoute?.name ?: "Selecciona una ruta",
                                     style = AppTextStyles.waykiTitle.copy(fontSize = 24.sp),
                                     color = directionColor,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = selectedRoute?.routeId ?: "Ruta sin nombre",
+                                    text = effectiveRoute?.routeId ?: "Ruta sin nombre",
                                     style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
                                     color = AppColors.slate
                                 )

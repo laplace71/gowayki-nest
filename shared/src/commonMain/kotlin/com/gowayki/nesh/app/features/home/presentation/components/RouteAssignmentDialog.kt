@@ -100,12 +100,17 @@ fun RouteAssignmentDialog(
     var loading by remember { mutableStateOf(false) }
     var assigning by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // Elección explícita del chofer dentro de este diálogo. La selección global
+    // de SelectedRouteHolder puede venir de una pantalla anterior y no significa
+    // que el chofer haya elegido esa subruta para la unidad actual.
+    var subrutaElegida by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(visible) {
         if (!visible) return@LaunchedEffect
         step = 0
         query = ""
         unidadSeleccionada = null
+        subrutaElegida = null
         error = null
         loading = true
         TurnoSession.refresh()
@@ -398,7 +403,10 @@ fun RouteAssignmentDialog(
                                 when (fila) {
                                     is FilaRuta.Empresa -> EmpresaHeader(fila.nombre)
                                     is FilaRuta.Linea -> LineaHeader(fila.nombre, fila.color)
-                                    is FilaRuta.Subrutas -> SubrutasRow(fila.rutas)
+                                    is FilaRuta.Subrutas -> SubrutasRow(
+                                        rutas = fila.rutas,
+                                        onSelect = { subrutaElegida = it.id },
+                                    )
                                     is FilaRuta.Unidad -> UnidadCard(
                                         unidad = fila.data,
                                         ocupada = fila.ocupada,
@@ -435,15 +443,24 @@ fun RouteAssignmentDialog(
                         scope.launch {
                             assigning = true
                             error = null
-                            val selectedSub = SelectedRouteHolder.selected.value
                             val lineCode = unidad.lineaNombre?.trim()
                                 ?.removePrefix("Línea")?.removePrefix("Linea")?.trim()
                                 ?.split(" ")?.firstOrNull()?.uppercase()
-                            val subrutaForTurno = selectedSub?.takeIf { it.isSub && (lineCode == null || it.parent.equals(lineCode, true)) }
-                                ?: unidad.subrutaCodigo?.let { code ->
-                                    SelectedRouteHolder.catalog.value.firstOrNull { it.id.equals(code, true) || it.id.equals("SB-$code", true) }
-                                }
-                                ?: lineCode?.let { SelectedRouteHolder.subrutasForLine(it).firstOrNull() }
+                            val catalogo = SelectedRouteHolder.catalog.value
+                            val elegida = subrutaElegida?.let { id ->
+                                catalogo.firstOrNull { it.id.equals(id, true) }
+                            }
+                            // Primero la elección explícita (si es de la línea de
+                            // la unidad), luego la subruta asignada al vehículo y
+                            // solo al final un default de la línea.
+                            val subrutaForTurno = when {
+                                elegida != null && (lineCode == null || elegida.parent.equals(lineCode, true)) -> elegida
+                                else -> unidad.subrutaCodigo?.let { code ->
+                                    catalogo.firstOrNull {
+                                        it.id.equals(code, true) || it.id.equals("SB-$code", true)
+                                    }
+                                } ?: lineCode?.let { SelectedRouteHolder.subrutasForLine(it).firstOrNull() }
+                            }
                             BackendTurnosApi.asignar(
                                 choferId = choferId,
                                 unidadId = unidad.id,
@@ -491,7 +508,7 @@ private fun EmpresaHeader(nombre: String) {
 }
 
 @Composable
-private fun SubrutasRow(rutas: List<CombiRoute>) {
+private fun SubrutasRow(rutas: List<CombiRoute>, onSelect: (CombiRoute) -> Unit) {
     val selected by SelectedRouteHolder.selected.collectAsState()
     Row(
         modifier = Modifier
@@ -510,6 +527,7 @@ private fun SubrutasRow(rutas: List<CombiRoute>) {
                     .background(fondo)
                     .clickable {
                         SelectedRouteHolder.select(ruta)
+                        onSelect(ruta)
                         ToastManager.show("Ruta seleccionada: ${ruta.name}")
                     }
                     .padding(horizontal = 12.dp, vertical = 6.dp)

@@ -38,6 +38,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -105,6 +107,7 @@ fun CommunicationScreen(
     onRestoreChat: (String) -> Unit = {},
     onRequestGroupDeletion: (String) -> Unit = {},
     onCancelGroupDeletion: (String) -> Unit = {},
+    pendingDeletions: List<Conversation> = emptyList(),
     onLeaveGroup: (String) -> Unit = {},
     onSosClick: () -> Unit = {},
     onInicioClick: () -> Unit = {},
@@ -129,6 +132,7 @@ fun CommunicationScreen(
     var cancelDeleteTarget by remember { mutableStateOf<Conversation?>(null) }
     var leaveGroupTarget by remember { mutableStateOf<Conversation?>(null) }
     var clearTarget by remember { mutableStateOf<Conversation?>(null) }
+    var showPendingDeletions by remember { mutableStateOf(false) }
     var selectedTab by rememberSaveable { mutableStateOf(0) } // 0 Todos, 1 No leídos, 2 Grupos, 3 Archivados, 4 Ocultos
 
     // Modo selección múltiple: se eligen varios chats y se ocultan de una vez.
@@ -253,6 +257,13 @@ fun CommunicationScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             TopAction(icon = FeatherIcons.CheckSquare, description = "Seleccionar chats", onClick = { selectionMode = true })
+                            if (pendingDeletions.isNotEmpty()) {
+                                TopAction(
+                                    icon = FeatherIcons.Trash2,
+                                    description = "Eliminaciones pendientes",
+                                    onClick = { showPendingDeletions = true }
+                                )
+                            }
                             TopAction(icon = FeatherIcons.Bell, description = "Notificaciones", onClick = onNotificationsClick)
                         }
                     }
@@ -395,6 +406,57 @@ fun CommunicationScreen(
                         }
                     }
                 }
+            }
+
+            if (showPendingDeletions) {
+                AlertDialog(
+                    onDismissRequest = { showPendingDeletions = false },
+                    title = {
+                        Text(
+                            text = "Eliminaciones pendientes",
+                            style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = AppColors.ink,
+                        )
+                    },
+                    text = {
+                        LazyColumn {
+                            items(pendingDeletions, key = { it.id }) { conv ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = conv.title,
+                                            style = AppTextStyles.waykiLabelMedium,
+                                            color = AppColors.ink,
+                                            maxLines = 1,
+                                        )
+                                        conv.eliminacionProgramadaPara?.let { fecha ->
+                                            Text(
+                                                text = "Se elimina: $fecha",
+                                                style = AppTextStyles.waykiMini,
+                                                color = AppColors.slate,
+                                                maxLines = 1,
+                                            )
+                                        }
+                                    }
+                                    TextButton(onClick = {
+                                        onCancelGroupDeletion(conv.id)
+                                        showPendingDeletions = false
+                                    }) {
+                                        Text("Cancelar", color = AppColors.primary)
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showPendingDeletions = false }) {
+                            Text("Cerrar", color = AppColors.primary)
+                        }
+                    },
+                )
             }
 
             longPressedConv?.let { conv ->

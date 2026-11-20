@@ -78,6 +78,10 @@ interface ChatRepository {
     /** Cancela la eliminación definitiva antes de que se cumplan las 72 horas. */
     suspend fun cancelarEliminacionGrupo(conversationId: String): Result<Unit>
 
+    /** Grupos con purga pendiente, para poder cancelarla antes de las 72 h. */
+    fun eliminacionesPendientes(): Flow<List<Conversation>> =
+        kotlinx.coroutines.flow.flowOf(emptyList())
+
     /** Archiva una conversación. */
     suspend fun archiveConversation(conversationId: String): Result<Unit>
 

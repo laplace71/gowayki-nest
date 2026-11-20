@@ -103,7 +103,14 @@ object TurnoSession {
                 runCatching { holder.refreshCatalog() }
                 turno = BackendTurnosApi.turnoActivo(choferId)
                 val subrutaId = turno?.subrutaCodigo?.takeIf { it.isNotBlank() }
-                if (subrutaId != null) {
+                val seleccionActual = holder.selected.value
+                val yaSeleccionada = subrutaId != null && (
+                    seleccionActual?.id.equals(subrutaId, ignoreCase = true) ||
+                        seleccionActual?.routeId.equals(subrutaId, ignoreCase = true)
+                    )
+                // `selectById` reinicia el sentido a IDA: solo se llama cuando
+                // la subruta asignada cambia de verdad, no en cada refresco.
+                if (subrutaId != null && !yaSeleccionada) {
                     holder.selectById(subrutaId)
                 }
                 activeTurnos = BackendTurnosApi.turnosActivos()
