@@ -15,6 +15,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -83,6 +85,8 @@ fun VoiceNotePanel(
     onCancel: () -> Unit = {},
     onStop: () -> Unit = {},
     onPlayPause: () -> Unit = {},
+    /** Posición absoluta en milisegundos al tocar la onda. */
+    onSeek: (Long) -> Unit = {},
     onSend: () -> Unit = {},
     onDiscard: () -> Unit = {},
     onDismissError: () -> Unit = {},
@@ -206,6 +210,7 @@ fun VoiceNotePanel(
                         color = accent,
                         trackColor = accent.copy(alpha = 0.24f),
                         height = if (compact) 26.dp else 38.dp,
+                        onSeek = { fraction -> onSeek((fraction * total).toLong()) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Row(
@@ -473,6 +478,7 @@ fun PlaybackWaveform(
     color: Color,
     trackColor: Color,
     height: Dp = 32.dp,
+    onSeek: ((Float) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val transition = rememberInfiniteTransition(label = "playbackWave")
@@ -486,7 +492,21 @@ fun PlaybackWaveform(
         label = "playbackWavePhase",
     )
 
-    Canvas(modifier = modifier.height(height)) {
+    val seekModifier = if (onSeek != null) {
+        modifier
+            .height(height)
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    if (size.width > 0) {
+                        onSeek((offset.x / size.width).coerceIn(0f, 1f))
+                    }
+                }
+            }
+    } else {
+        modifier.height(height)
+    }
+
+    Canvas(modifier = seekModifier) {
         val bars = 36
         val gap = size.width * 0.006f
         val barWidth = (size.width - gap * (bars - 1)) / bars

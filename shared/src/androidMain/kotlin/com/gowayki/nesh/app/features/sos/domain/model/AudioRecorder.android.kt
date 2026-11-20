@@ -302,6 +302,13 @@ private class AndroidAudioRecorder(
         startPlaybackTimer()
     }
 
+    override suspend fun seekPlayback(positionMillis: Long): Result<Unit> = runCatching {
+        val player = mediaPlayer ?: throw IllegalStateException("No hay audio cargado")
+        val destino = positionMillis.coerceIn(0L, player.duration.toLong().coerceAtLeast(0L))
+        player.seekTo(destino.toInt())
+        _playbackPosition.value = destino
+    }
+
     override suspend fun stopPlayback(): Result<Unit> = runCatching {
         playbackTimer?.cancel()
         playbackTimer = null
@@ -407,6 +414,7 @@ private class NoopAudioRecorder : AudioRecorder {
     override suspend fun stopPlayback(): Result<Unit> = Result.success(Unit)
     override suspend fun pausePlayback(): Result<Unit> = Result.success(Unit)
     override suspend fun resumePlayback(): Result<Unit> = Result.success(Unit)
+    override suspend fun seekPlayback(positionMillis: Long): Result<Unit> = Result.success(Unit)
     override suspend fun hasRecordPermission(): Boolean = false
     override suspend fun requestRecordPermission(): Boolean = false
 }

@@ -49,6 +49,9 @@ interface AudioRecorder {
     /** Continúa la reproducción desde donde se pausó. */
     suspend fun resumePlayback(): Result<Unit>
 
+    /** Salta a una posición de la nota de voz (en milisegundos). */
+    suspend fun seekPlayback(positionMillis: Long): Result<Unit>
+
     // Verifica si tiene permisos de grabación
     suspend fun hasRecordPermission(): Boolean
 

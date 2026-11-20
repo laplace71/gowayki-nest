@@ -69,6 +69,7 @@ fun CommunicationVoicePopup(vm: CommunicationVoiceViewModel) {
             onCancel = { vm.cancel() },
             onStop = { vm.stopAndSave() },
             onPlayPause = { vm.togglePlayback() },
+            onSeek = { vm.seekTo(it) },
             onSend = { vm.sendRecorded() },
             onDiscard = { vm.discardRecorded() },
             onDismissError = { vm.clearError() },

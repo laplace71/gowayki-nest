@@ -29,6 +29,7 @@ private class NoopAudioRecorder : AudioRecorder {
     override suspend fun stopPlayback(): Result<Unit> = Result.success(Unit)
     override suspend fun pausePlayback(): Result<Unit> = Result.success(Unit)
     override suspend fun resumePlayback(): Result<Unit> = Result.success(Unit)
+    override suspend fun seekPlayback(positionMillis: Long): Result<Unit> = Result.success(Unit)
     override suspend fun hasRecordPermission(): Boolean = false
     override suspend fun requestRecordPermission(): Boolean = false
 }

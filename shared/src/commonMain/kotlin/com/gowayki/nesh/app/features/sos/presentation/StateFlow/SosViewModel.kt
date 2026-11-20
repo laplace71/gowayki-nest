@@ -355,6 +355,17 @@ class SosViewModel(
         }
     }
 
+    /** Salta a un punto de la nota de voz para escuchar desde ahí. */
+    fun seekAudioTo(positionMillis: Long) {
+        val path = ui.lastRecordedFilePath ?: return
+        viewModelScope.launch {
+            if (audioRecorder.seekPlayback(positionMillis).isFailure) {
+                runCatching { audioRecorder.playAudio(path) }
+                runCatching { audioRecorder.seekPlayback(positionMillis) }
+            }
+        }
+    }
+
     /** Detiene la reproducción */
     fun stopPlayback() {
         viewModelScope.launch {
@@ -482,6 +493,7 @@ private class NoopAudioRecorder : AudioRecorder {
     override suspend fun stopPlayback(): Result<Unit> = Result.success(Unit)
     override suspend fun pausePlayback(): Result<Unit> = Result.success(Unit)
     override suspend fun resumePlayback(): Result<Unit> = Result.success(Unit)
+    override suspend fun seekPlayback(positionMillis: Long): Result<Unit> = Result.success(Unit)
     override suspend fun hasRecordPermission(): Boolean = false
     override suspend fun requestRecordPermission(): Boolean = false
 }

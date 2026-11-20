@@ -327,10 +327,11 @@ fun ChatScreen(
             }
         } else {
             val voiceUi = voiceVm.ui
-            val hasVoiceState = voiceUi.isRecording ||
-                voiceUi.isPlaying ||
-                voiceUi.lastRecordedFilePath != null ||
-                voiceUi.audioError != null
+            // El popup global muestra la grabación bloqueada, la reproducción,
+            // la vista previa y los errores. La barra del chat solo se usa mientras
+            // se mantiene pulsado el micrófono (sin bloquear), para no pintar dos
+            // líneas de tiempo a la vez.
+            val hasVoiceState = voiceUi.isRecording && !voiceUi.isLocked
             if (hasVoiceState) {
                 RecordingComposer(
                     voiceVm = voiceVm,
@@ -1053,6 +1054,7 @@ private fun RecordingComposer(
         onCancel = { voiceVm.cancel() },
         onStop = { voiceVm.stopAndSave() },
         onPlayPause = { voiceVm.togglePlayback() },
+        onSeek = { voiceVm.seekTo(it) },
         onSend = { voiceVm.sendRecorded() },
         onDiscard = { voiceVm.discardRecorded() },
         onDismissError = { voiceVm.clearError() },

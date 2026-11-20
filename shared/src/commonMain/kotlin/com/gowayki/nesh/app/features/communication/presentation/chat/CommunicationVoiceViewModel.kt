@@ -278,8 +278,28 @@ class CommunicationVoiceViewModel(
         viewModelScope.launch {
             when {
                 ui.isPlaying -> recorder.pausePlayback()
-                ui.playbackPosition > 0L -> recorder.resumePlayback()
+                ui.playbackPosition > 0L -> {
+                    // Si el audio ya terminó, el reproductor se liberó y no se
+                    // puede reanudar: empezamos de nuevo para poder volver a
+                    // escuchar la nota.
+                    if (recorder.resumePlayback().isFailure) {
+                        recorder.playAudio(path)
+                    }
+                }
                 else -> recorder.playAudio(path)
+            }
+        }
+    }
+
+    /** Salta a un punto de la onda para escuchar desde ahí. */
+    fun seekTo(positionMillis: Long) {
+        val path = ui.lastRecordedFilePath ?: return
+        val recorder = audioRecorder ?: return
+        viewModelScope.launch {
+            if (recorder.seekPlayback(positionMillis).isFailure) {
+                // Todavía no hay reproductor cargado: arrancamos y saltamos.
+                recorder.playAudio(path)
+                recorder.seekPlayback(positionMillis)
             }
         }
     }
