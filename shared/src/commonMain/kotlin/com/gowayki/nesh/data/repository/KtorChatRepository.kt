@@ -603,11 +603,13 @@ class KtorChatRepository : ChatRepository {
                 }
             }
         }
-        // Respaldo si el WebSocket no entrega el mensaje. 2s recargaba el historial
-        // completo y trababa la UI; el socket cubre el tiempo real.
+        // Respaldo si el WebSocket no entrega el mensaje. 3,2 s es suficiente
+        // para sentirlo "en vivo" sin recargar el historial tan seguido como
+        // cuando se usaban 2 s (eso trababa la UI). El socket sigue siendo la
+        // fuente principal en tiempo real.
         scope.launch {
             while (true) {
-                delay(15_000)
+                delay(3_200)
                 val watched = watchedConversations.value
                 if (watched.isNotEmpty() && UserSession.currentUserId != null) {
                     watched.forEach { fetchMessages(it) }
