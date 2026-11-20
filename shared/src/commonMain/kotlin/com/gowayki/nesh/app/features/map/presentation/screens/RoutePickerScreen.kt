@@ -26,6 +26,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,7 +38,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
-import com.gowayki.nesh.app.features.map.domain.model.ArequipaRoutes
 import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
@@ -52,16 +52,29 @@ fun RoutePickerScreen(
     onRouteSelected: () -> Unit = onBack,
 ) {
     val selected by SelectedRouteHolder.selected.collectAsState()
+    val catalog by SelectedRouteHolder.catalog.collectAsState()
     var query by remember { mutableStateOf("") }
-    val routes = remember {
-        ArequipaRoutes.all.filter { it.isSub }
+
+    LaunchedEffect(Unit) {
+        runCatching { SelectedRouteHolder.refreshCatalog() }
     }
-    val filtered = remember(query, routes) {
-        if (query.isBlank()) routes
-        else routes.filter { it.name.contains(query, ignoreCase = true) || (it.operator?.contains(query, ignoreCase = true) == true) }
+
+    val routes = remember(catalog) {
+        catalog.ifEmpty { SelectedRouteHolder.subrutasForLine("") /* none */ }
+            .let { if (it.isNotEmpty()) it else catalog }
+    }
+    val allSubrutas = catalog
+    val filtered = remember(query, allSubrutas) {
+        val base = allSubrutas
+        if (query.isBlank()) base
+        else base.filter {
+            it.name.contains(query, ignoreCase = true) ||
+                it.operator.contains(query, ignoreCase = true) ||
+                (it.parent?.contains(query, ignoreCase = true) == true)
+        }
     }
     val grouped = remember(filtered) {
-        filtered.groupBy { it.parent ?: it.id }
+        filtered.groupBy { it.parent ?: "Otras" }
     }
 
     Box(

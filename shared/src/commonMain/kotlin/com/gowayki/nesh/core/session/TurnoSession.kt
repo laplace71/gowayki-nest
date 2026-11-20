@@ -3,6 +3,7 @@ package com.gowayki.nesh.core.session
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.gowayki.nesh.app.features.map.domain.model.CombiRoute
 import com.gowayki.nesh.data.entities.backend.BackendTurnoDto
 import com.gowayki.nesh.data.repository.BackendTurnosApi
 import kotlinx.coroutines.sync.Mutex
@@ -42,6 +43,10 @@ object TurnoSession {
     val lineaNombre: String
         get() = turno?.lineaNombre?.takeIf { it.isNotBlank() } ?: "Sin ruta asignada"
 
+    val subrutaNombre: String?
+        get() = turno?.subrutaNombre?.takeIf { it.isNotBlank() }
+            ?: com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder.selected.value?.name
+
     val unidadTexto: String
         get() = turno?.numeroPadron
             ?.takeIf { it.isNotBlank() }
@@ -66,6 +71,23 @@ object TurnoSession {
     val unidadesOcupadas: Set<Int>
         get() = activeTurnos.mapNotNull { it.unidadId }.toSet()
 
+    /**
+     * Otros choferes con turno activo en la MISMA subruta concreta. Es la fuente
+     * simétrica para Home y para «Nuevo grupo»: todos consultan /turnos/activos,
+     * así que si tú los ves, ellos te ven a ti.
+     */
+    fun companerosEnSubruta(route: CombiRoute?): List<BackendTurnoDto> {
+        if (route == null) return emptyList()
+        val miId = UserSession.currentUserId
+        val miTurnoId = turno?.id
+        return activeTurnos
+            .filter { t ->
+                !t.choferId.isNullOrBlank() && t.choferId != miId && t.id != miTurnoId &&
+                    turnoMatchesSubroute(t, route)
+            }
+            .distinctBy { it.choferId }
+    }
+
     /** Consulta el turno del usuario logueado y los turnos activos. */
     suspend fun refresh() {
         val choferId = UserSession.currentUser?.id?.takeIf { it.isNotBlank() }
@@ -77,8 +99,13 @@ object TurnoSession {
             isLoading = true
             error = null
             try {
+                val holder = com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
+                runCatching { holder.refreshCatalog() }
                 turno = BackendTurnosApi.turnoActivo(choferId)
-                turno?.lineaNombre?.let { com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder.selectLineByName(it) }
+                val subrutaId = turno?.subrutaCodigo?.takeIf { it.isNotBlank() }
+                if (subrutaId != null) {
+                    holder.selectById(subrutaId)
+                }
                 activeTurnos = BackendTurnosApi.turnosActivos()
             } catch (e: Exception) {
                 error = e.message ?: "No se pudo consultar tu turno"
@@ -118,4 +145,16 @@ object TurnoSession {
         error = null
         promptShown = false
     }
+}
+
+/** ¿Pertenece el turno a la misma subruta concreta (no solo a la misma línea)? */
+private fun turnoMatchesSubroute(turno: BackendTurnoDto, route: CombiRoute): Boolean {
+    fun norm(value: String?) = value?.trim()
+        ?.removePrefix("SB-")?.removePrefix("sb-")
+        ?.trim()?.takeIf { it.isNotBlank() }
+    val routeKeys = listOfNotNull(norm(route.id), norm(route.routeId), norm(route.returnRouteId))
+    val turnoKeys = listOfNotNull(norm(turno.subrutaCodigo), norm(turno.subrutaId?.toString()))
+    if (turnoKeys.any { k -> routeKeys.any { it.equals(k, ignoreCase = true) } }) return true
+    val nombre = turno.subrutaNombre?.trim()
+    return !nombre.isNullOrBlank() && nombre.equals(route.name.trim(), ignoreCase = true)
 }

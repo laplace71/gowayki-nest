@@ -86,10 +86,22 @@ object BackendTurnosApi {
     }
 
 
-    /** Crea el turno: deja al chofer en ruta con la unidad indicada. */
-    suspend fun asignar(choferId: String, unidadId: Int): Result<BackendTurnoDto> = try {
+    /** Crea el turno: deja al chofer en ruta con la unidad indicada (y subruta concreta). */
+    suspend fun asignar(
+        choferId: String,
+        unidadId: Int,
+        subrutaId: Int? = null,
+        subrutaCodigo: String? = null,
+    ): Result<BackendTurnoDto> = try {
         val response: HttpResponse = client.post("$baseUrl/turnos/asignar") {
-            setBody(AsignarTurnoRequestDto(choferId = choferId, unidadId = unidadId))
+            setBody(
+                AsignarTurnoRequestDto(
+                    choferId = choferId,
+                    unidadId = unidadId,
+                    subrutaId = subrutaId,
+                    subrutaCodigo = subrutaCodigo,
+                )
+            )
         }
         if (response.status.isSuccess()) {
             Result.success(response.body<BackendTurnoDto>())
