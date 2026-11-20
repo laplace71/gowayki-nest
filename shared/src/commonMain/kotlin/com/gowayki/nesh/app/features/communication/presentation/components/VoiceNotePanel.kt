@@ -36,6 +36,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -426,15 +428,19 @@ private fun VoiceWaveform(
     modifier: Modifier = Modifier,
 ) {
     val transition = rememberInfiniteTransition(label = "voiceWave")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(1400, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "voiceWavePhase",
-    )
+    val phase by if (active) {
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = (2 * PI).toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(1400, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "voiceWavePhase",
+        )
+    } else {
+        remember { mutableStateOf(0f) }
+    }
 
     Canvas(modifier = modifier.height(height)) {
         val bars = 28
@@ -482,15 +488,22 @@ fun PlaybackWaveform(
     modifier: Modifier = Modifier,
 ) {
     val transition = rememberInfiniteTransition(label = "playbackWave")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "playbackWavePhase",
-    )
+    // La animación infinita solo corre mientras suena o se graba. Si estuviera
+    // siempre activa, cada burbuja de audio recompondría la lista 60 veces por
+    // segundo aunque no hubiera ninguna nota reproduciéndose.
+    val phase by if (active) {
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = (2 * PI).toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "playbackWavePhase",
+        )
+    } else {
+        remember { mutableStateOf(0f) }
+    }
 
     val seekModifier = if (onSeek != null) {
         modifier

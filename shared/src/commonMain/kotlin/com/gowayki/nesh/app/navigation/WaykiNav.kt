@@ -85,11 +85,11 @@ fun WaykiNav(
     val communicationVoiceVm: CommunicationVoiceViewModel = viewModel {
         CommunicationVoiceViewModel(chatRepository = AppDi.getOrNull<ChatRepository>())
     }
-    // Triple clic desde cualquier módulo lleva al SOS.
-    LaunchedEffect(sosVm.ui.sosTripRequestSeq) {
-        if (sosVm.ui.sosTripRequestSeq > 0 &&
-            nav.currentBackStackEntry?.destination?.route != Routes.SOS
-        ) {
+    // Triple clic desde cualquier módulo lleva al SOS. Se observa en su propio
+    // alcance: si se leyera directo aquí, cada cambio de estado del SOS
+    // recompondría el NavHost completo (scroll y cambios de módulo con lag).
+    SosTripWatcher(sosVm) { secuencia ->
+        if (secuencia > 0 && nav.currentBackStackEntry?.destination?.route != Routes.SOS) {
             nav.navigate(Routes.SOS)
         }
     }
@@ -368,8 +368,8 @@ fun WaykiNav(
                 members = chatVm.participants,
                 colleagues = addMembersVm.colleagues,
                 messages = chatVm.messages,
-                draft = chatVm.draft,
-                sending = chatVm.sending,
+                draftProvider = { chatVm.draft },
+                sendingProvider = { chatVm.sending },
                 onDraftChange = chatVm::onDraftChange,
                 onSend = chatVm::send,
                 conversationId = conversationId,
@@ -561,4 +561,11 @@ fun WaykiNav(
     SosAudioPopup(sosVm)
     CommunicationVoicePopup(communicationVoiceVm)
     }
+}
+
+/** Lee solo el contador de SOS en su propio alcance para no recompensar la navegación. */
+@Composable
+private fun SosTripWatcher(vm: SosViewModel, onTrip: (Int) -> Unit) {
+    val secuencia = vm.ui.sosTripRequestSeq
+    LaunchedEffect(secuencia) { onTrip(secuencia) }
 }

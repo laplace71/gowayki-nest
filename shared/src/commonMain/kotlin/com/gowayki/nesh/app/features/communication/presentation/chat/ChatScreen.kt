@@ -98,8 +98,9 @@ fun ChatScreen(
     members: List<GroupMember> = emptyList(),
     colleagues: List<GroupMember> = emptyList(),
     messages: List<Message>,
-    draft: String,
-    sending: Boolean,
+    /** Proveedor del borrador: se lee dentro del composer para no recompensar el chat. */
+    draftProvider: () -> String,
+    sendingProvider: () -> Boolean = { false },
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
     conversationId: String,
@@ -326,13 +327,13 @@ fun ChatScreen(
                 )
             }
         } else {
-            val voiceUi = voiceVm.ui
             // El popup global muestra la grabación bloqueada, la reproducción,
             // la vista previa y los errores. La barra del chat solo se usa mientras
             // se mantiene pulsado el micrófono (sin bloquear), para no pintar dos
             // líneas de tiempo a la vez.
-            val hasVoiceState = voiceUi.isRecording && !voiceUi.isLocked
+            val hasVoiceState = ShowInlineComposer(voiceVm)
             if (hasVoiceState) {
+                val voiceUi = voiceVm.ui
                 RecordingComposer(
                     voiceVm = voiceVm,
                     voiceUi = voiceUi,
@@ -343,76 +344,14 @@ fun ChatScreen(
                         .imePadding(),
                 )
             } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(AppColors.cream)
-                        .navigationBarsPadding()
-                        .imePadding()
-                        .padding(horizontal = 12.dp)
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    BasicTextField(
-                        value = draft,
-                        onValueChange = onDraftChange,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(AppColors.mauve.copy(alpha = 0.35f))
-                            .padding(horizontal = 18.dp, vertical = 12.dp),
-                        textStyle = TextStyle(
-                            fontSize = 15.sp,
-                            color = AppColors.ink
-                        ),
-                        cursorBrush = SolidColor(AppColors.ink),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        maxLines = 4,
-                        decorationBox = { inner ->
-                            if (draft.isEmpty()) {
-                                Text(
-                                    text = "Escribe un mensaje",
-                                    style = AppTextStyles.waykiMini.copy(fontSize = 14.sp),
-                                    color = AppColors.slate,
-                                    modifier = Modifier.padding(vertical = 2.dp)
-                                )
-                            }
-                            inner()
-                        }
-                    )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // Botón de envío o de nota de voz.
-                    val hasText = draft.isNotBlank()
-                    if (hasText) {
-                        val sendSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                        Box(
-                            modifier = Modifier
-                                .size(46.dp)
-                                .background(AppColors.primary, CircleShape)
-                                .clickable(
-                                    interactionSource = sendSource,
-                                    indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
-                                    enabled = !sending,
-                                    onClick = onSend,
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = compose.icons.FeatherIcons.Send,
-                                contentDescription = "Enviar",
-                                tint = AppColors.cream,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                    } else {
-                        VoiceRecordingButton(
-                            voiceVm = voiceVm,
-                            conversationId = conversationId,
-                        )
-                    }
-                }
+                ChatComposerBar(
+                    draftProvider = draftProvider,
+                    sendingProvider = sendingProvider,
+                    onDraftChange = onDraftChange,
+                    onSend = onSend,
+                    voiceVm = voiceVm,
+                    conversationId = conversationId,
+                )
             }
         }
     }
@@ -888,14 +827,18 @@ private fun AudioBubbleContent(
     val audioPath = message.audioFilePath.orEmpty()
     val scope = rememberCoroutineScope()
 
-    // Se recolecta siempre, no solo mientras suena: así la posición sobrevive
-    // a una pausa y la onda no vuelve a 0:00 al tocar el botón.
+    // Solo la burbuja activa recolecta la posición. Si todas lo hicieran, cada
+    // actualización del reproductor (cada 60 ms) recompondría todos los audios
+    // del historial y la lista se pondría lenta.
+    val isActiveBubble = playingPath == audioPath && audioPath.isNotBlank()
     var playerPosition by remember { mutableStateOf(0L) }
     var playerDuration by remember { mutableStateOf(0L) }
-    LaunchedEffect(audioPlayer) {
+    LaunchedEffect(audioPlayer, isActiveBubble) {
+        if (!isActiveBubble) return@LaunchedEffect
         audioPlayer?.playbackPosition?.collect { playerPosition = it }
     }
-    LaunchedEffect(audioPlayer) {
+    LaunchedEffect(audioPlayer, isActiveBubble) {
+        if (!isActiveBubble) return@LaunchedEffect
         audioPlayer?.playbackDuration?.collect { playerDuration = it }
     }
 
@@ -1017,6 +960,105 @@ private fun VoiceRecordingButton(
             tint = AppColors.cream,
             modifier = Modifier.size(20.dp),
         )
+    }
+}
+
+/**
+ * Lee el estado de voz en su propio alcance: si se leyera directo en el cuerpo
+ * de ChatScreen, cada tick del reproductor (cada 60 ms) recompondría todo el
+ * chat. Con esta función solo se recompone cuando el valor cambia de verdad.
+ */
+@Composable
+private fun ShowInlineComposer(voiceVm: CommunicationVoiceViewModel): Boolean {
+    val ui = voiceVm.ui
+    return ui.isRecording && !ui.isLocked
+}
+
+/**
+ * Campo de texto y botón de envío en su propio alcance. El borrador se lee a
+ * través del proveedor para que, al teclear, no se recomponga toda la pantalla
+ * ni la lista de mensajes (cada tecla cambiaba `draft` y arrastraba el chat).
+ */
+@Composable
+private fun ChatComposerBar(
+    draftProvider: () -> String,
+    sendingProvider: () -> Boolean,
+    onDraftChange: (String) -> Unit,
+    onSend: () -> Unit,
+    voiceVm: CommunicationVoiceViewModel,
+    conversationId: String,
+) {
+    val draft = draftProvider()
+    val sending = sendingProvider()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AppColors.cream)
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = 12.dp)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        BasicTextField(
+            value = draft,
+            onValueChange = onDraftChange,
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(AppColors.mauve.copy(alpha = 0.35f))
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            textStyle = TextStyle(
+                fontSize = 15.sp,
+                color = AppColors.ink
+            ),
+            cursorBrush = SolidColor(AppColors.ink),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+            maxLines = 4,
+            decorationBox = { inner ->
+                if (draft.isEmpty()) {
+                    Text(
+                        text = "Escribe un mensaje",
+                        style = AppTextStyles.waykiMini.copy(fontSize = 14.sp),
+                        color = AppColors.slate,
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+                }
+                inner()
+            }
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Botón de envío o de nota de voz.
+        val hasText = draft.isNotBlank()
+        if (hasText) {
+            val sendSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .background(AppColors.primary, CircleShape)
+                    .clickable(
+                        interactionSource = sendSource,
+                        indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
+                        enabled = !sending,
+                        onClick = onSend,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = compose.icons.FeatherIcons.Send,
+                    contentDescription = "Enviar",
+                    tint = AppColors.cream,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        } else {
+            VoiceRecordingButton(
+                voiceVm = voiceVm,
+                conversationId = conversationId,
+            )
+        }
     }
 }
 
