@@ -1,6 +1,7 @@
 package com.gowayki.nesh.data.repository
 
 import com.gowayki.nesh.app.common.util.currentTimeMillis
+import com.gowayki.nesh.app.common.util.parseIsoToMillis
 import com.gowayki.nesh.app.features.communication.domain.model.Conversation
 import com.gowayki.nesh.app.features.communication.domain.model.GroupMember
 import com.gowayki.nesh.app.features.communication.domain.model.Message
@@ -8,6 +9,7 @@ import com.gowayki.nesh.app.features.communication.domain.model.MessageKind
 import com.gowayki.nesh.app.features.communication.domain.model.MessageStatus
 import com.gowayki.nesh.app.features.communication.domain.repository.ChatRepository
 import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
+import com.gowayki.nesh.app.features.map.presentation.SubrouteLabels
 import com.gowayki.nesh.core.config.AppConfig
 import com.gowayki.nesh.core.io.AudioFileUtils
 import com.gowayki.nesh.core.network.HttpClientFactory
@@ -15,7 +17,9 @@ import com.gowayki.nesh.core.session.UserSession
 import com.gowayki.nesh.data.entities.backend.ConversacionResponseDto
 import com.gowayki.nesh.data.entities.backend.CrearConversacionRequestDto
 import com.gowayki.nesh.data.entities.backend.MensajeResponseDto
-import io.ktor.client.plugins.websocket.ws
+import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.client.request.header
+import io.ktor.http.HttpHeaders
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlin.concurrent.Volatile
@@ -32,10 +36,14 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class KtorChatRepository : ChatRepository {
 
@@ -46,14 +54,49 @@ class KtorChatRepository : ChatRepository {
     private val _archived = MutableStateFlow<List<Conversation>>(emptyList())
     private val _messages = MutableStateFlow<Map<String, List<Message>>>(emptyMap())
 
+    /**
+     * Conversaciones que el usuario ocultó en ESTE dispositivo.
+     *
+     * El backend es la fuente de verdad sobre la visibilidad (él ya no las
+     * devuelve), pero no expone un listado de ocultas: para poder restaurar una
+     * hay que recordar aquí su título. Ocultar no borra mensajes ni adhesivos.
+     */
+    private val _hidden = MutableStateFlow<List<Conversation>>(emptyList())
+
     private val _colleagues = MutableStateFlow<List<GroupMember>>(emptyList())
     val colleaguesFlow: Flow<List<GroupMember>> = _colleagues.asStateFlow()
 
+    /**
+     * Subruta asignada localmente a los grupos creados a mano (y a los grupos
+     * "globales" heredados). El backend no siempre devuelve `claveRuta` en un
+     * GRUPO normal, así que lo recordamos aquí para que dejen de aparecer en
+     * todas las subrutas.
+     */
+    private val manualGroupSubroutes = mutableMapOf<String, String>()
+
+    /**
+     * Marca de tiempo local de los chats "limpiados" (regla 1: solo visual).
+     * Los mensajes con fecha anterior a esta marca no se muestran en este
+     * dispositivo; si llega uno nuevo, el chat reaparece con solo ese mensaje.
+     */
+    private val chatsLimpiados = mutableMapOf<String, Long>()
+
+    /**
+     * Ids de mensajes borrados en este dispositivo. El backend no tiene borrado
+     * por mensaje: el texto/audio sigue en la BD hasta que se elimina el grupo
+     * completo (plazo de 72 h). Guardamos esta "lápida" localmente y la aplicamos
+     * en cada carga para que el polling y el WebSocket no lo traigan de vuelta.
+     */
+    private val mensajesBorrados = mutableSetOf<String>()
+
     // Conversaciones cuyas pantallas de chat están observando mensajes.
     private val watchedConversations = MutableStateFlow<Set<String>>(emptySet())
-    // Control para no crear el grupo de ruta en cada poll.
-    @Volatile private var ensuredRouteGroup = false
+    // Subruta cuyo grupo de ruta ya se aseguró en el backend (entrar = unirse).
+    @Volatile private var joinedRouteClave: String? = null
     @Volatile private var persistPending = false
+    private val joinMutex = Mutex()
+    private val fetchMutex = Mutex()
+    private val fetchingMessages = mutableSetOf<String>()
 
     init {
         restore()
@@ -66,84 +109,343 @@ class KtorChatRepository : ChatRepository {
 
     fun availableColleagues(): List<GroupMember> = _colleagues.value
 
+    override fun activeSubrouteLabel(): String? = getActiveConcreteSubroute()?.name?.trim()
+
+    /**
+     * Clave de subruta efectiva de una conversación del backend. Si el grupo es
+     * manual y no trae clave, lo anclamos a la subruta activa (una sola vez) para
+     * que no se muestre en las demás. Los chats privados nunca se anclan.
+     */
+    private fun effectiveClaveRuta(dto: ConversacionResponseDto): String? {
+        dto.claveRuta?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+        if (!dto.esGrupo) return null
+        manualGroupSubroutes[dto.id]?.let { return it }
+        val clave = getActiveConcreteSubroute()?.let(::routeGroupKey) ?: return null
+        manualGroupSubroutes[dto.id] = clave
+        persist()
+        return clave
+    }
+
     fun fetchColleagues() {
-        val myId = UserSession.currentUserId
+        val myId = UserSession.currentUserId ?: return
         scope.launch {
-            BackendChatApi.usuarios().onSuccess { users ->
-                val list = users
-                    .filter { it.id != myId }
-                    .map { u ->
-                        val initials = u.nombre
-                            .split(" ")
-                            .filter { it.isNotBlank() }
-                            .take(2)
-                            .joinToString("") { it.first().uppercase() }
-                            .ifBlank { "C" }
-                        GroupMember(
-                            userId = u.id,
-                            name = u.nombre,
-                            initials = initials,
-                            isOnline = u.isOnline
-                        )
-                    }
-                _colleagues.value = list
+            val route = getActiveConcreteSubroute() ?: run {
+                _colleagues.value = emptyList()
+                return@launch
             }
+            val byId = linkedMapOf<String, GroupMember>()
+
+            // 1) Turnos activos: fuente simétrica. Todos los choferes consultan
+            //    /turnos/activos, así que quien está en mi subruta me ve y yo lo veo,
+            //    aunque todavía no haya participantes en el grupo de ruta.
+            com.gowayki.nesh.core.session.TurnoSession.refreshActiveTurnos()
+            com.gowayki.nesh.core.session.TurnoSession.companerosEnSubruta(route)
+                .forEach { t ->
+                    val userId = t.choferId!!
+                    val nombre = t.choferNombre?.trim()?.takeIf { it.isNotBlank() }
+                        ?: "Conductor${t.numeroPadron?.let { " · Unidad $it" } ?: ""}"
+                    val initials = nombre
+                        .split(" ")
+                        .filter { it.isNotBlank() }
+                        .take(2)
+                        .joinToString("") { it.first().uppercase() }
+                        .ifBlank { "C" }
+                    byId[userId] = GroupMember(
+                        userId = userId,
+                        name = nombre,
+                        initials = initials,
+                        isOnline = true,
+                        subruta = route.name.trim()
+                    )
+                }
+
+            // 2) Participantes del grupo automático de ruta (no de un grupo
+            //    manual creado dentro de ella). Sobrescribe para conservar rol
+            //    y estado reales del backend.
+            var convId = (_conversations.value + _archived.value)
+                .firstOrNull { it.tipoConversacion == "GRUPO_RUTA" && isSameRouteGroup(it, route) }
+                ?.id ?: (_conversations.value + _archived.value)
+                .firstOrNull { isSameRouteGroup(it, route) }
+                ?.id
+
+            if (convId == null) {
+                BackendChatApi.conversaciones().onSuccess { list ->
+                    convId = list.firstOrNull { dto ->
+                        dto.tipoConversacion == "GRUPO_RUTA" &&
+                            isRouteGroupDto(dto) && matchesRouteGroup(effectiveClaveRuta(dto), dto.titulo, route)
+                    }?.id ?: list.firstOrNull { dto ->
+                        isRouteGroupDto(dto) && matchesRouteGroup(effectiveClaveRuta(dto), dto.titulo, route)
+                    }?.id
+                }
+            }
+
+            val id = convId
+            if (id != null) {
+                BackendChatApi.participantes(id).onSuccess { parts ->
+                    parts
+                        .filter { it.userId != myId }
+                        .forEach { u ->
+                            val nombre = u.nombre ?: "Conductor"
+                            val initials = nombre
+                                .split(" ")
+                                .filter { it.isNotBlank() }
+                                .take(2)
+                                .joinToString("") { it.first().uppercase() }
+                                .ifBlank { "C" }
+                            byId[u.userId] = GroupMember(
+                                userId = u.userId,
+                                name = nombre,
+                                initials = initials,
+                                isOnline = u.isOnline == true,
+                                rol = u.rol,
+                                subruta = route.name.trim()
+                            )
+                        }
+                }
+            }
+
+            _colleagues.value = byId.values.toList()
         }
     }
 
-    private fun getActiveRouteGroupTitle(): String {
-        val turnoLinea = com.gowayki.nesh.core.session.TurnoSession.turno?.lineaNombre?.takeIf { it.isNotBlank() }
-        val route = SelectedRouteHolder.selected.value
-        val name = turnoLinea ?: route?.name?.takeIf { it.isNotBlank() } ?: "Línea C2"
-        return "GRUPO · $name"
+    /**
+     * Comprueba si una cadena representa un código de línea principal (ej. C2, C11, Línea C2, Canal de Línea C3).
+     * En este sistema las líneas NO tienen chats: solo las subrutas concretas.
+     */
+    private val lineCodeRegex = Regex("""^(?:l[ií]nea\s+|canal\s+de\s+(?:l[ií]nea\s+)?)?c(?:10|11|[0-9]+)$""", RegexOption.IGNORE_CASE)
+
+    private fun isLineCode(value: String?): Boolean {
+        val clean = value?.trim().orEmpty()
+        if (clean.isEmpty()) return false
+        if (lineCodeRegex.matches(clean)) return true
+        if (Regex("""^(?:l[ií]nea|linea)\s*\d+$""", RegexOption.IGNORE_CASE).matches(clean)) return true
+        if (Regex("""^(?:l[ií]nea|linea)\s*c\d+$""", RegexOption.IGNORE_CASE).matches(clean)) return true
+        if (clean.equals("general", ignoreCase = true)) return true
+        return false
+    }
+
+    private fun isLineLevelChat(titulo: String?, claveRuta: String?): Boolean {
+        if (isLineCode(titulo) || isLineCode(claveRuta)) return true
+        val t = titulo?.trim().orEmpty()
+        val c = claveRuta?.trim().orEmpty()
+        if (t.startsWith("Línea C", ignoreCase = true) || t.startsWith("Linea C", ignoreCase = true)) return true
+        if (t.startsWith("Canal de Línea", ignoreCase = true) || t.startsWith("Canal de Linea", ignoreCase = true)) return true
+        if (c.startsWith("c", ignoreCase = true) && c.drop(1).all { it.isDigit() }) return true
+        return false
+    }
+
+    /**
+     * Subruta en la que el chofer se encuentra activamente.
+     * C2…C11 no cuentan: dos personas solo se encuentran si entraron a la MISMA subruta.
+     */
+    private fun getActiveConcreteSubroute(): com.gowayki.nesh.app.features.map.domain.model.CombiRoute? {
+        // 1. Prioridad: subruta concreta del turno activo del chofer (asignación oficial)
+        val fromTurno = exactSubrouteFromTurno()
+        if (fromTurno != null) return fromTurno
+
+        // 2. Si el chofer eligió/entró manualmente a una subruta concreta en la app
+        val selected = SelectedRouteHolder.selected.value
+        if (isConcreteSubroute(selected)) return selected
+
+        return null
+    }
+
+    private fun isConcreteSubroute(route: com.gowayki.nesh.app.features.map.domain.model.CombiRoute?): Boolean {
+        if (route == null || !route.isSub) return false
+        if (route.id.isBlank() || isLineCode(route.id)) return false
+        if (isLineCode(route.name)) return false
+        return true
+    }
+
+    /** Solo el código de subruta guardado en el turno. Nunca una línea general. */
+    private fun exactSubrouteFromTurno(): com.gowayki.nesh.app.features.map.domain.model.CombiRoute? {
+        val turno = com.gowayki.nesh.core.session.TurnoSession.turno ?: return null
+        val code = turno.subrutaCodigo?.trim()?.takeIf { it.isNotBlank() && !isLineCode(it) }
+        val name = turno.subrutaNombre?.trim()?.takeIf { it.isNotBlank() && !isLineCode(it) }
+
+        if (code == null && name == null) return null
+
+        val catalog = SelectedRouteHolder.catalog.value
+        val allRoutes = (catalog + com.gowayki.nesh.app.features.map.domain.model.ArequipaRoutes.all)
+        val matched = allRoutes.firstOrNull { it.isSub && (code != null && (it.id.equals(code, ignoreCase = true) || it.routeId == code)) }
+            ?: allRoutes.firstOrNull { it.isSub && (name != null && it.name.equals(name, ignoreCase = true)) }
+
+        if (matched != null) return matched
+
+        // Si no está aún en el catálogo local, sintetiza la subruta con el código/nombre oficial del turno
+        val fallbackId = code ?: "SUB-$name"
+        val fallbackName = name ?: code ?: "Subruta"
+        return com.gowayki.nesh.app.features.map.domain.model.CombiRoute(
+            id = fallbackId,
+            name = fallbackName,
+            operator = turno.lineaNombre ?: "",
+            color = androidx.compose.ui.graphics.Color(0xFFE53935),
+            waypoints = emptyList(),
+            isSub = true,
+            parent = null
+        )
+    }
+
+    /** Clave estable del grupo: el id de la subruta (SB-…), nunca C2…C11. */
+    private fun routeGroupKey(route: com.gowayki.nesh.app.features.map.domain.model.CombiRoute): String =
+        route.id.trim()
+
+    /** Título legible del grupo de esa subruta. */
+    private fun routeGroupTitle(route: com.gowayki.nesh.app.features.map.domain.model.CombiRoute): String =
+        "GRUPO · ${route.name.trim()}"
+
+    private fun matchesRouteGroup(
+        claveRuta: String?,
+        titulo: String?,
+        route: com.gowayki.nesh.app.features.map.domain.model.CombiRoute
+    ): Boolean {
+        if (isLineLevelChat(titulo, claveRuta)) return false
+        val key = routeGroupKey(route)
+        val keyNorm = key.removePrefix("SB-").removePrefix("sb-").trim()
+
+        if (!claveRuta.isNullOrBlank()) {
+            val c = claveRuta.trim()
+            val cNorm = c.removePrefix("SB-").removePrefix("sb-").trim()
+            if (c.equals(key, ignoreCase = true) || (cNorm.isNotEmpty() && cNorm.equals(keyNorm, ignoreCase = true))) {
+                return true
+            }
+            if (c.equals(route.name.trim(), ignoreCase = true)) return true
+            if (route.routeId != null && c.equals(route.routeId, ignoreCase = true)) return true
+        }
+
+        val expectedTitle = routeGroupTitle(route)
+        if (!titulo.isNullOrBlank() && titulo.trim().equals(expectedTitle, ignoreCase = true)) {
+            return true
+        }
+        val cleanTitle = titulo?.removePrefix("GRUPO · ")?.removePrefix("GRUPO - ")?.trim()
+        if (!cleanTitle.isNullOrBlank() && cleanTitle.equals(route.name.trim(), ignoreCase = true)) {
+            return true
+        }
+        return false
+    }
+
+    private fun isSameRouteGroup(
+        conv: Conversation,
+        route: com.gowayki.nesh.app.features.map.domain.model.CombiRoute
+    ): Boolean = isRouteGroup(conv) && matchesRouteGroup(conv.claveRuta, conv.title, route)
+
+    private fun isRouteGroup(conv: Conversation): Boolean =
+        isLineLevelChat(conv.title, conv.claveRuta) ||
+        conv.tipoConversacion == "GRUPO_RUTA" ||
+        (conv.isGroup && (conv.title.startsWith("GRUPO · ") || conv.title.startsWith("GRUPO - "))) ||
+        !conv.claveRuta.isNullOrBlank()
+
+    private fun isRouteGroupDto(dto: ConversacionResponseDto): Boolean =
+        isLineLevelChat(dto.titulo, dto.claveRuta) ||
+        dto.tipoConversacion == "GRUPO_RUTA" ||
+        (dto.esGrupo && (dto.titulo.startsWith("GRUPO · ") || dto.titulo.startsWith("GRUPO - "))) ||
+        !dto.claveRuta.isNullOrBlank()
+
+    /** Un grupo de otra subruta (o de una línea) no debe verse en este dispositivo. */
+    private fun belongsOnThisDevice(conv: Conversation, active: com.gowayki.nesh.app.features.map.domain.model.CombiRoute?): Boolean {
+        if (isLineLevelChat(conv.title, conv.claveRuta)) return false
+        if (!isRouteGroup(conv)) return true
+        if (active == null) return false
+        return matchesRouteGroup(conv.claveRuta, conv.title, active)
     }
 
     private fun observeSelectedRoute() {
         scope.launch {
-            SelectedRouteHolder.selected.collect {
-                ensuredRouteGroup = false
+            var lastId: String? = null
+            SelectedRouteHolder.selected.collect { route ->
+                val id = route?.id
+                if (id == lastId) return@collect
+                lastId = id
+                joinedRouteClave = null
                 refreshConversations(ensureRouteGroup = true)
+                fetchColleagues()
             }
         }
     }
 
     fun refreshConversations(ensureRouteGroup: Boolean = false) {
         val myId = UserSession.currentUserId ?: return
-        val expectedTitle = getActiveRouteGroupTitle()
         scope.launch {
-            BackendChatApi.conversaciones(myId).onSuccess { list ->
-                val hasActiveRouteGroup = list.any { it.esGrupo && it.titulo == expectedTitle }
-                if (ensureRouteGroup && !ensuredRouteGroup && !hasActiveRouteGroup) {
-                    BackendChatApi.crearConversacion(
-                        CrearConversacionRequestDto(
-                            titulo = expectedTitle,
-                            esGrupo = true,
-                            createdBy = myId,
-                            participanteIds = listOf(myId)
+            val activeRoute = getActiveConcreteSubroute()
+            val clave = activeRoute?.let { routeGroupKey(it) }
+            // Entrar a la subruta une al grupo de esa clave. Quien ya está ahí
+            // se reencuentra; el backend saca al chofer de las otras subrutas.
+            if (ensureRouteGroup && activeRoute != null && clave != null && joinedRouteClave != clave) {
+                joinMutex.withLock {
+                    if (joinedRouteClave != clave) {
+                        val joined = BackendChatApi.crearConversacion(
+                            CrearConversacionRequestDto(
+                                titulo = routeGroupTitle(activeRoute),
+                                esGrupo = true,
+                                tipoConversacion = "GRUPO_RUTA",
+                                claveRuta = clave,
+                                createdBy = myId,
+                                participanteIds = listOf(myId)
+                            )
                         )
-                    ).onSuccess {
-                        ensuredRouteGroup = true
-                        BackendChatApi.conversaciones(myId).onSuccess { updatedList ->
-                            filterAndEmitConversations(updatedList, expectedTitle)
-                        }
-                    }.onFailure {
-                        filterAndEmitConversations(list, expectedTitle)
+                        if (joined.isSuccess) joinedRouteClave = clave
                     }
-                } else {
-                    if (hasActiveRouteGroup) ensuredRouteGroup = true
-                    filterAndEmitConversations(list, expectedTitle)
                 }
+            } else if (clave == null) {
+                joinedRouteClave = null
+            }
+
+            BackendChatApi.conversaciones().onSuccess { list ->
+                filterAndEmitConversations(list)
+                if (ensureRouteGroup && clave != null) fetchColleagues()
             }
         }
     }
 
-    private fun filterAndEmitConversations(list: List<ConversacionResponseDto>, activeTitle: String) {
+    /**
+     * Si la app estaba apagada cuando venció el plazo, pudo perderse el aviso
+     * WebSocket. Anclamos la purga local a la fecha devuelta por el backend para
+     * que el grupo tampoco aparezca en Archivados/Ocultos.
+     */
+    private fun purgeEliminacionesVencidas() {
+        val ahora = currentTimeMillis()
+        val vencidas = (_conversations.value + _archived.value + _hidden.value)
+            .filter { it.eliminacionPendiente }
+            .filter { conv ->
+                val programada = conv.eliminacionProgramadaPara?.let(::parseIsoToMillis)
+                programada != null && programada <= ahora
+            }
+            .map { it.id }
+            .toSet()
+        if (vencidas.isEmpty()) return
+        vencidas.forEach(::quitarConversacionLocal)
+        manualGroupSubroutes.keys.removeAll(vencidas)
+        persist()
+    }
+
+    private fun filterAndEmitConversations(list: List<ConversacionResponseDto>) {
+        purgeEliminacionesVencidas()
+        // El backend ya excluye las conversaciones que el usuario ocultó.
+        // Los grupos de ruta de otra subruta tampoco se muestran: cada subruta
+        // es un chat aparte. C2…C11 no agrupan a nadie.
+        val activeRoute = getActiveConcreteSubroute()
         val filtered = list.filter { dto ->
-            if (!dto.esGrupo) {
-                true
-            } else if (dto.titulo.startsWith("GRUPO · ")) {
-                dto.titulo == activeTitle
+            // Regla 1: un chat limpiado sigue oculto mientras no llegue un
+            // mensaje nuevo posterior a la marca local. La marca se conserva
+            // para que fetchMessages siga ocultando los mensajes antiguos.
+            val corte = chatsLimpiados[dto.id]
+            if (corte != null) {
+                val ultimo = parseIsoToMillis(dto.ultimoMensaje?.createdAt)
+                if (ultimo == null || ultimo <= corte) return@filter false
+            }
+            val clave = effectiveClaveRuta(dto)
+            // Descarta completamente cualquier chat de línea (C2...C11)
+            if (isLineLevelChat(dto.titulo, clave)) {
+                return@filter false
+            }
+            if (isRouteGroupDto(dto.copy(claveRuta = clave))) {
+                // Solo se muestra el grupo de ruta si coincide exactamente con la subruta activa del usuario.
+                // Los grupos manuales también quedan anclados a una subruta (ver effectiveClaveRuta),
+                // así que dejan de aparecer en todas. Si dos personas están en la misma
+                // subruta, ambas lo ven y se encuentran.
+                activeRoute != null && matchesRouteGroup(clave, dto.titulo, activeRoute)
             } else {
+                // Chats privados (nunca se anclan a una subruta)
                 true
             }
         }
@@ -152,18 +454,42 @@ class KtorChatRepository : ChatRepository {
             val fresh = mapDtoToConversation(dto)
             val existing = existingById[dto.id]
             if (existing != null) {
-                val lastLocal = _messages.value[dto.id]?.lastOrNull()?.sentAtMillis ?: existing.lastMessageAtMillis
+                val lastLocal = _messages.value[dto.id]?.lastOrNull()?.sentAtMillis ?: 0L
+                // Actividad nueva = el backend tiene otro último mensaje que el
+                // que ya conocíamos. Solo entonces el chat sube en la lista.
+                val hayActividadNueva = dto.ultimoMensaje?.id != null &&
+                    dto.ultimoMensaje.id != existing.lastMessageId
+                val marcaTiempo = when {
+                    lastLocal > existing.lastMessageAtMillis -> lastLocal
+                    hayActividadNueva -> currentTimeMillis()
+                    else -> existing.lastMessageAtMillis
+                }
                 fresh.copy(
                     photoPath = existing.photoPath,
-                    hiddenFromAll = existing.hiddenFromAll,
                     unreadCount = existing.unreadCount,
-                    lastMessageAtMillis = if (lastLocal > 0L) lastLocal else existing.lastMessageAtMillis
+                    lastMessageAtMillis = marcaTiempo,
+                    lastMessageId = dto.ultimoMensaje?.id ?: existing.lastMessageId,
+                    // Si el servidor devuelve la conversación es porque sigues participando;
+                    // al volver a entrar a una subruta se limpia el "saliste".
+                    hasLeft = false
                 )
             } else fresh
+        }.sortedByDescending { it.lastMessageAtMillis }
+
+        // Los grupos de los que saliste ya no los devuelve el servidor (no eres
+        // participante), pero deben seguir visibles en tu dispositivo hasta que
+        // los borres tú. Se conservan tal cual estaban guardados localmente.
+        val serverIds = mapped.map { it.id }.toSet()
+        val keptLeft = _conversations.value.filter { conv ->
+            conv.hasLeft && conv.id !in serverIds && belongsOnThisDevice(conv, activeRoute)
         }
+        val merged = (mapped + keptLeft)
+            .distinctBy { it.id } // ids únicos: son las keys del LazyColumn
+            .sortedByDescending { it.lastMessageAtMillis }
+
         val prev = _conversations.value
-        if (mapped != prev) {
-            _conversations.value = mapped
+        if (merged != prev) {
+            _conversations.value = merged
             persist()
         }
     }
@@ -187,21 +513,43 @@ class KtorChatRepository : ChatRepository {
     private fun fetchMessages(conversationId: String) {
         val myId = UserSession.currentUserId ?: ""
         scope.launch {
-            BackendChatApi.mensajes(conversationId).onSuccess { dtos ->
-                val prev = _messages.value[conversationId].orEmpty()
-                val prevById = prev.associateBy { it.id }
-                val list = dtos.map { dto ->
-                    val mapped = mapDtoToMessage(dto, myId)
-                    val existing = prevById[mapped.id]
-                    // Preserva timestamp/estado local estable para evitar parpadeos en cada poll.
-                    if (existing != null) mapped.copy(sentAtMillis = existing.sentAtMillis) else mapped
+            val start = fetchMutex.withLock { fetchingMessages.add(conversationId) }
+            if (!start) return@launch
+            try {
+                BackendChatApi.mensajes(conversationId).onSuccess { dtos ->
+                    val prev = _messages.value[conversationId].orEmpty()
+                    val prevById = prev.associateBy { it.id }
+                    // El backend puede repetir filas (joins/duplicados): un id
+                    // repetido rompe la key del LazyColumn y cierra la app.
+                    val list = dtos.distinctBy { it.id }.map { dto ->
+                        val mapped = mapDtoToMessage(dto, myId)
+                        val existing = prevById[mapped.id]
+                        if (existing == null) mapped
+                        else mapped.copy(
+                            sentAtMillis = parseIsoToMillis(dto.createdAt) ?: existing.sentAtMillis,
+                            status = existing.status
+                        )
+                    }.let { todos ->
+                        // Regla 1: en un chat limpiado solo se ven los mensajes
+                        // posteriores al momento en que se limpió (marca local).
+                        val corte = chatsLimpiados[conversationId]
+                        val visibles = if (corte != null) {
+                            todos.filter { it.sentAtMillis > corte }
+                        } else {
+                            todos
+                        }
+                        // Regla 2: lo borrado aquí sigue oculto aunque el backend
+                        // lo siga devolviendo (no hay borrado por mensaje allí).
+                        visibles.filterNot { it.id in mensajesBorrados }
+                    }
+                    if (list != prev) {
+                        _messages.update { it + (conversationId to list) }
+                        list.lastOrNull()?.let { updateConversationPreview(conversationId, it) }
+                        persist()
+                    }
                 }
-                if (list != prev) {
-                    _messages.update { it + (conversationId to list) }
-                    // Actualiza preview/timestamp de la conversación desde el último mensaje real.
-                    list.lastOrNull()?.let { updateConversationPreview(conversationId, it) }
-                    persist()
-                }
+            } finally {
+                fetchMutex.withLock { fetchingMessages.remove(conversationId) }
             }
         }
     }
@@ -216,13 +564,13 @@ class KtorChatRepository : ChatRepository {
                 }
             }
         }
-        // Polling de mensajes en chats abiertos: intervalo corto para sensación de tiempo real
-        // (fallback si el WebSocket no entrega eventos).
+        // Respaldo si el WebSocket no entrega el mensaje. 2s recargaba el historial
+        // completo y trababa la UI; el socket cubre el tiempo real.
         scope.launch {
             while (true) {
-                delay(2_000)
+                delay(15_000)
                 val watched = watchedConversations.value
-                if (watched.isNotEmpty()) {
+                if (watched.isNotEmpty() && UserSession.currentUserId != null) {
                     watched.forEach { fetchMessages(it) }
                 }
             }
@@ -236,7 +584,8 @@ class KtorChatRepository : ChatRepository {
         audioDurationSeconds: Int,
         audioFilePath: String?
     ): Result<Message> {
-        val myId = UserSession.currentUserId ?: "9239c8be-22e7-4373-a952-e82f41abc308"
+        val myId = UserSession.currentUserId
+            ?: return Result.failure(IllegalStateException("Sesión sin usuario"))
         val myName = UserSession.displayName
 
         if (kind == MessageKind.AUDIO) {
@@ -247,7 +596,6 @@ class KtorChatRepository : ChatRepository {
 
             val apiResult = BackendChatApi.enviarAudio(
                 conversacionId = conversationId,
-                emisorId = myId,
                 audioBytes = bytes,
                 duracionSegundos = audioDurationSeconds
             )
@@ -272,9 +620,7 @@ class KtorChatRepository : ChatRepository {
                         status = MessageStatus.DELIVERED,
                         isMine = true
                     )
-                    _messages.update { all ->
-                        all + (conversationId to (all[conversationId].orEmpty() + message))
-                    }
+                    _messages.update { all -> all.upsert(message) }
                     updateConversationPreview(conversationId, message)
                     persist()
                     Result.success(message)
@@ -290,7 +636,6 @@ class KtorChatRepository : ChatRepository {
 
             val apiResult = BackendChatApi.enviarTexto(
                 conversacionId = conversationId,
-                emisorId = myId,
                 contenido = text
             )
 
@@ -307,9 +652,7 @@ class KtorChatRepository : ChatRepository {
                         status = MessageStatus.DELIVERED,
                         isMine = true
                     )
-                    _messages.update { all ->
-                        all + (conversationId to (all[conversationId].orEmpty() + message))
-                    }
+                    _messages.update { all -> all.upsert(message) }
                     updateConversationPreview(conversationId, message)
                     persist()
                     Result.success(message)
@@ -339,30 +682,78 @@ class KtorChatRepository : ChatRepository {
 
     override suspend fun createGroup(name: String, members: List<GroupMember>): Result<Conversation> {
         if (name.isBlank()) return Result.failure(IllegalArgumentException("El grupo necesita nombre"))
-        val myId = UserSession.currentUserId ?: "9239c8be-22e7-4373-a952-e82f41abc308"
+        val myId = UserSession.currentUserId
+            ?: return Result.failure(IllegalStateException("Sesión sin usuario"))
 
+        // Un grupo creado a mano queda anclado a la subruta en la que se crea.
+        // Así no aparece en las demás (el backend puede ignorar este campo en un
+        // GRUPO normal; por eso también lo guardamos en manualGroupSubroutes).
+        val claveSubruta = getActiveConcreteSubroute()?.let(::routeGroupKey)
         val request = CrearConversacionRequestDto(
             titulo = name,
             esGrupo = true,
             createdBy = myId,
+            claveRuta = claveSubruta,
             participanteIds = listOf(myId) + members.map { it.userId }
         )
 
         return BackendChatApi.crearConversacion(request).map { dto ->
+            if (claveSubruta != null) manualGroupSubroutes[dto.id] = claveSubruta
             val group = mapDtoToConversation(dto)
-            _conversations.update { listOf(group) + it }
-            _messages.update { it + (group.id to emptyList()) }
+            _hidden.update { list -> list.filterNot { it.id == group.id } }
+            _conversations.update { listOf(group) + it.filterNot { c -> c.id == group.id } }
+            _messages.update { it + (group.id to (it[group.id].orEmpty())) }
             persist()
             group
         }
     }
+
+    override suspend fun addMembers(conversationId: String, members: List<GroupMember>): Result<Unit> {
+        if (members.isEmpty()) return Result.success(Unit)
+        val myId = UserSession.currentUserId
+            ?: return Result.failure(IllegalStateException("Sesión sin usuario"))
+        val group = (_conversations.value + _archived.value + _hidden.value)
+            .firstOrNull { it.id == conversationId }
+            ?: return Result.failure(IllegalArgumentException("Grupo no encontrado"))
+
+        // El backend reutiliza el grupo de la subruta cuando recibe la misma
+        // clave: agrega a los nuevos participantes en vez de crear otro grupo.
+        val request = CrearConversacionRequestDto(
+            titulo = group.title,
+            esGrupo = true,
+            tipoConversacion = group.tipoConversacion,
+            claveRuta = group.claveRuta,
+            createdBy = myId,
+            participanteIds = members.map { it.userId },
+        )
+
+        return BackendChatApi.crearConversacion(request)
+            .onSuccess {
+                refreshConversations()
+                getParticipants(conversationId).onSuccess { participantes ->
+                    fun update(list: List<Conversation>) = list.map { c ->
+                        if (c.id == conversationId) c.copy(members = participantes) else c
+                    }
+                    _conversations.update(::update)
+                    _archived.update(::update)
+                    _hidden.update(::update)
+                }
+                persist()
+            }
+            .map { Unit }
+    }
+
+    override suspend fun asignarRol(conversationId: String, userId: String, rol: String): Result<Unit> =
+        BackendChatApi.asignarRol(conversationId, userId, rol)
+            .onSuccess { refreshConversations() }
 
     override suspend fun openPrivateChat(member: GroupMember): Result<Conversation> {
         _conversations.value.firstOrNull {
             !it.isGroup && it.title == member.name
         }?.let { return Result.success(it) }
 
-        val myId = UserSession.currentUserId ?: "9239c8be-22e7-4373-a952-e82f41abc308"
+        val myId = UserSession.currentUserId
+            ?: return Result.failure(IllegalStateException("Sesión sin usuario"))
         val request = CrearConversacionRequestDto(
             titulo = member.name,
             esGrupo = false,
@@ -372,8 +763,9 @@ class KtorChatRepository : ChatRepository {
 
         return BackendChatApi.crearConversacion(request).map { dto ->
             val chat = mapDtoToConversation(dto)
-            _conversations.update { listOf(chat) + it }
-            _messages.update { it + (chat.id to emptyList()) }
+            _hidden.update { list -> list.filterNot { it.id == chat.id } }
+            _conversations.update { listOf(chat) + it.filterNot { c -> c.id == chat.id } }
+            _messages.update { it + (chat.id to (it[chat.id].orEmpty())) }
             persist()
             chat
         }
@@ -390,39 +782,125 @@ class KtorChatRepository : ChatRepository {
     }
 
     override suspend fun clearMessages(conversationId: String): Result<Unit> {
-        _messages.update { all -> all + (conversationId to emptyList()) }
-        _conversations.update { list ->
-            list.map { if (it.id == conversationId) it.copy(preview = "Sin mensajes") else it }
+        if (UserSession.currentUserId == null) {
+            return Result.failure(IllegalStateException("Sesión sin usuario"))
         }
+        // La marca se guarda en el backend (sobrevive a reinstalar); el estado
+        // local es solo una caché para que el efecto sea inmediato.
+        BackendChatApi.limpiarConversacion(conversationId)
+            .getOrElse { return Result.failure(it) }
+        aplicarLimpiezaLocal(conversationId)
+        return Result.success(Unit)
+    }
+
+    /**
+     * Efecto visual local de limpiar un chat. Los mensajes siguen en la BD y los
+     * demás participantes no notan nada. Cuando llegue un mensaje nuevo solo se
+     * mostrará lo posterior a la marca.
+     */
+    private fun aplicarLimpiezaLocal(conversationId: String, marcaMillis: Long = currentTimeMillis()) {
+        chatsLimpiados[conversationId] = marcaMillis
+        _messages.update { all -> all + (conversationId to emptyList()) }
+        _conversations.update { list -> list.filterNot { it.id == conversationId } }
+        _archived.update { list -> list.filterNot { it.id == conversationId } }
+        watchedConversations.update { it - conversationId }
+        manualGroupSubroutes.remove(conversationId)
+        persist()
+    }
+
+    override suspend fun ocultarConversacion(conversationId: String): Result<Unit> {
+        if (UserSession.currentUserId == null) {
+            return Result.failure(IllegalStateException("Sesión sin usuario"))
+        }
+        BackendChatApi.ocultarConversacion(conversationId).getOrElse { return Result.failure(it) }
+
+        val conv = _conversations.value.firstOrNull { it.id == conversationId }
+            ?: _archived.value.firstOrNull { it.id == conversationId }
+        _conversations.update { list -> list.filterNot { it.id == conversationId } }
+        _archived.update { list -> list.filterNot { it.id == conversationId } }
+        if (conv != null) {
+            _hidden.update { listOf(conv) + it.filterNot { c -> c.id == conversationId } }
+        }
+        // Los mensajes se conservan: si el usuario restaura el chat, vuelven.
         persist()
         return Result.success(Unit)
     }
 
-    override suspend fun deleteConversation(conversationId: String): Result<Unit> {
-        val isGroup = (_conversations.value.firstOrNull { it.id == conversationId }
-            ?: _archived.value.firstOrNull { it.id == conversationId })?.isGroup == true
+    override fun hiddenConversations(): Flow<List<Conversation>> = _hidden.asStateFlow()
 
-        if (isGroup) {
-            _messages.update { all -> all + (conversationId to emptyList()) }
-            _conversations.update { list ->
-                list.map { c ->
-                    if (c.id == conversationId) c.copy(preview = "Sin mensajes", lastMessageAtMillis = 0L, unreadCount = 0, hiddenFromAll = true)
-                    else c
-                }
-            }
-            _archived.update { list ->
-                list.map { c ->
-                    if (c.id == conversationId) c.copy(preview = "Sin mensajes", lastMessageAtMillis = 0L, unreadCount = 0, hiddenFromAll = true)
-                    else c
-                }
-            }
-        } else {
-            _conversations.update { list -> list.filterNot { it.id == conversationId } }
-            _archived.update { list -> list.filterNot { it.id == conversationId } }
-            _messages.update { all -> all - conversationId }
+    override suspend fun restaurarConversacion(conversationId: String): Result<Unit> {
+        if (UserSession.currentUserId == null) {
+            return Result.failure(IllegalStateException("Sesión sin usuario"))
         }
+        BackendChatApi.mostrarConversacion(conversationId).getOrElse { return Result.failure(it) }
+
+        _hidden.update { list -> list.filterNot { it.id == conversationId } }
+        // El refresco trae la conversación con sus datos actualizados.
+        refreshConversations()
         persist()
         return Result.success(Unit)
+    }
+
+    override suspend fun solicitarEliminacionGrupo(conversationId: String): Result<Unit> {
+        if (UserSession.currentUserId == null) {
+            return Result.failure(IllegalStateException("Sesión sin usuario"))
+        }
+        BackendChatApi.solicitarEliminacionGrupo(conversationId)
+            .getOrElse { return Result.failure(it) }
+
+        // El grupo desaparece AHORA de todas las interfaces (el backend avisa
+        // por WebSocket). En BD queda marcado 72 h antes de la purga física.
+        quitarConversacionLocal(conversationId)
+        persist()
+        return Result.success(Unit)
+    }
+
+    override suspend fun cancelarEliminacionGrupo(conversationId: String): Result<Unit> {
+        if (UserSession.currentUserId == null) {
+            return Result.failure(IllegalStateException("Sesión sin usuario"))
+        }
+        BackendChatApi.cancelarEliminacionGrupo(conversationId).getOrElse { return Result.failure(it) }
+
+        limpiarPendienteEliminacion(conversationId)
+        persist()
+        return Result.success(Unit)
+    }
+
+    private fun marcarPendienteEliminacion(conversationId: String, cuando: String?) {
+        fun marcar(list: List<Conversation>) = list.map {
+            if (it.id == conversationId) it.copy(
+                eliminacionPendiente = true,
+                eliminacionProgramadaPara = cuando ?: it.eliminacionProgramadaPara
+            ) else it
+        }
+        _conversations.update { marcar(it) }
+        _archived.update { marcar(it) }
+        _hidden.update { marcar(it) }
+    }
+
+    private fun limpiarPendienteEliminacion(conversationId: String) {
+        fun limpiar(list: List<Conversation>) = list.map {
+            if (it.id == conversationId) it.copy(
+                eliminacionPendiente = false,
+                eliminacionProgramadaPara = null
+            ) else it
+        }
+        _conversations.update { limpiar(it) }
+        _archived.update { limpiar(it) }
+        _hidden.update { limpiar(it) }
+    }
+
+    private fun quitarConversacionLocal(conversationId: String) {
+        _conversations.update { list -> list.filterNot { it.id == conversationId } }
+        _archived.update { list -> list.filterNot { it.id == conversationId } }
+        _hidden.update { list -> list.filterNot { it.id == conversationId } }
+        // El grupo ya se borró del todo (se cumplió el plazo de 72 h): sus
+        // mensajes no volverán, así que las lápidas de esos ids ya no sirven.
+        _messages.value[conversationId].orEmpty().forEach { mensajesBorrados -= it.id }
+        _messages.update { all -> all - conversationId }
+        manualGroupSubroutes.remove(conversationId)
+        chatsLimpiados.remove(conversationId)
+        watchedConversations.update { it - conversationId }
     }
 
     override suspend fun archiveConversation(conversationId: String): Result<Unit> {
@@ -441,7 +919,7 @@ class KtorChatRepository : ChatRepository {
         if (idx >= 0) {
             val c = _archived.value[idx]
             _archived.update { it.filterNot { x -> x.id == conversationId } }
-            _conversations.update { listOf(c.copy(hiddenFromAll = false)) + it }
+            _conversations.update { listOf(c) + it }
             persist()
         }
         return Result.success(Unit)
@@ -459,22 +937,115 @@ class KtorChatRepository : ChatRepository {
     }
 
     override suspend fun deleteMessage(conversationId: String, messageId: String, deleteForEveryone: Boolean): Result<Unit> {
+        // El backend es la fuente de verdad: "para mí" guarda una marca personal
+        // y "para todos" oculta el mensaje a todos (solo lo permite el emisor).
+        // La purga física a las 72 h la hace el servidor sin avisar al usuario.
+        val respuesta = if (deleteForEveryone) {
+            BackendChatApi.eliminarMensajeParaTodos(conversationId, messageId)
+        } else {
+            BackendChatApi.ocultarMensaje(conversationId, messageId)
+        }
+        return respuesta.onSuccess { aplicarBorradoLocal(conversationId, messageId) }
+    }
+
+    /** Quita el mensaje de la lista ya cargada y deja el resumen al día. */
+    private fun aplicarBorradoLocal(conversationId: String, messageId: String) {
+        mensajesBorrados += messageId
         _messages.update { all ->
-            val current = all[conversationId].orEmpty().filterNot { m ->
-                if (deleteForEveryone) m.id == messageId else (m.id == messageId && m.isMine)
-            }
+            val current = all[conversationId].orEmpty().filterNot { it.id == messageId }
             all + (conversationId to current)
+        }
+        recomputePreview(conversationId)
+        persist()
+    }
+
+    /** Deja el resumen del chat con el último mensaje que sigue visible. */
+    private fun recomputePreview(conversationId: String) {
+        val last = _messages.value[conversationId].orEmpty().lastOrNull()
+        fun update(list: List<Conversation>) = list.map { c ->
+            if (c.id != conversationId) {
+                c
+            } else if (last == null) {
+                c.copy(preview = "", lastMessageAtMillis = 0L, lastMessageId = null)
+            } else {
+                c.copy(
+                    preview = if (last.kind == MessageKind.AUDIO) "Audio" else last.text,
+                    lastMessageAtMillis = last.sentAtMillis,
+                    lastMessageId = last.id,
+                )
+            }
+        }
+        _conversations.update(::update)
+        _archived.update(::update)
+    }
+
+    override suspend fun leaveGroup(conversationId: String): Result<Unit> {
+        // El backend solo quita mi fila de participante: el grupo sigue existiendo
+        // para los demás. Si falla, no se toca la lista.
+        if (UserSession.currentUserId == null) {
+            return Result.failure(IllegalStateException("Sesión sin usuario"))
+        }
+        BackendChatApi.salirConversacion(conversationId).getOrElse { return Result.failure(it) }
+
+        // Como en WhatsApp: al salir sigues viendo el chat (solo lectura) hasta
+        // que lo borres tú. Los demás conservan todo porque siguen en el grupo.
+        _conversations.update { list ->
+            list.map { if (it.id == conversationId) it.copy(hasLeft = true, unreadCount = 0, miRol = null) else it }
+        }
+        _archived.update { list ->
+            list.map { if (it.id == conversationId) it.copy(hasLeft = true, unreadCount = 0, miRol = null) else it }
         }
         persist()
         return Result.success(Unit)
     }
 
-    override suspend fun deleteGroup(conversationId: String): Result<Unit> {
-        _conversations.update { list -> list.filterNot { it.id == conversationId } }
-        _archived.update { list -> list.filterNot { it.id == conversationId } }
-        _messages.update { all -> all - conversationId }
-        persist()
-        return Result.success(Unit)
+    override suspend fun getParticipants(conversationId: String): Result<List<GroupMember>> {
+        if (UserSession.currentUserId == null) {
+            return Result.failure(IllegalStateException("Sesión sin usuario"))
+        }
+        val subruta = SubrouteLabels.nameOf(
+            (_conversations.value + _archived.value)
+                .firstOrNull { it.id == conversationId }?.claveRuta
+        )
+        return BackendChatApi.participantes(conversationId).map { list ->
+            list.map { p ->
+                val nombre = p.nombre?.takeIf { it.isNotBlank() } ?: "Conductor"
+                val initials = nombre
+                    .split(" ")
+                    .filter { it.isNotBlank() }
+                    .take(2)
+                    .joinToString("") { it.first().uppercase() }
+                    .ifBlank { "C" }
+                GroupMember(
+                    userId = p.userId,
+                    name = nombre,
+                    initials = initials,
+                    isOnline = p.isOnline == true,
+                    rol = p.rol,
+                    subruta = subruta
+                )
+            }
+        }
+    }
+
+    /**
+     * Inserta o reemplaza un mensaje por id.
+     *
+     * El WebSocket y la respuesta REST entregan el MISMO mensaje (eco del
+     * servidor) sin orden garantizado: si el eco llega primero y luego se
+     * añade la respuesta de `enviarTexto`, el id queda repetido y el
+     * LazyColumn del chat lanza "Key ... was already used" y cierra la app.
+     */
+    private fun Map<String, List<Message>>.upsert(message: Message): Map<String, List<Message>> {
+        if (message.id in mensajesBorrados) return this
+        val current = this[message.conversationId].orEmpty()
+        val index = current.indexOfFirst { it.id == message.id }
+        val updated = if (index >= 0) {
+            current.toMutableList().also { it[index] = message }
+        } else {
+            current + message
+        }
+        return this + (message.conversationId to updated)
     }
 
     private fun mapDtoToMessage(dto: MensajeResponseDto, myId: String): Message {
@@ -492,7 +1063,7 @@ class KtorChatRepository : ChatRepository {
             kind = if (dto.tipo == "AUDIO") MessageKind.AUDIO else MessageKind.TEXT,
             audioDurationSeconds = dto.audioDuracionSegundos ?: 0,
             audioFilePath = fullUrl,
-            sentAtMillis = currentTimeMillis(),
+            sentAtMillis = parseIsoToMillis(dto.createdAt) ?: currentTimeMillis(),
             status = when (dto.estado) {
                 "LEIDO" -> MessageStatus.READ
                 "ENTREGADO" -> MessageStatus.DELIVERED
@@ -521,12 +1092,18 @@ class KtorChatRepository : ChatRepository {
             title = dto.titulo,
             isGroup = dto.esGrupo,
             preview = previewText,
-            lastMessageAtMillis = currentTimeMillis(),
+            lastMessageAtMillis = parseIsoToMillis(dto.ultimoMensaje?.createdAt) ?: currentTimeMillis(),
             unreadCount = 0,
             avatarText = dto.titulo.take(2).uppercase(),
             avatarDark = dto.esGrupo,
+            lastMessageId = dto.ultimoMensaje?.id,
             members = membersList,
-            hiddenFromAll = false
+            tipoConversacion = dto.tipoConversacion,
+            claveRuta = effectiveClaveRuta(dto),
+            createdBy = dto.createdBy,
+            miRol = dto.miRol,
+            eliminacionPendiente = dto.eliminacionPendiente,
+            eliminacionProgramadaPara = dto.eliminacionProgramadaPara
         )
     }
 
@@ -537,7 +1114,7 @@ class KtorChatRepository : ChatRepository {
                 else c.copy(
                     preview = if (message.kind == MessageKind.AUDIO) "Audio" else message.text,
                     lastMessageAtMillis = message.sentAtMillis,
-                    hiddenFromAll = false
+                    lastMessageId = message.id
                 )
             }
         }
@@ -549,7 +1126,15 @@ class KtorChatRepository : ChatRepository {
                 try {
                     val client = HttpClientFactory.wsClient
                     val wsUrl = HttpClientFactory.wsChatUrl
-                    client.ws(urlString = wsUrl) {
+                    val token = com.gowayki.nesh.core.session.AuthTokenState.authorizationHeader
+                    if (token == null) {
+                        delay(5000)
+                        continue
+                    }
+                    client.webSocket(
+                        urlString = wsUrl,
+                        request = { header(HttpHeaders.Authorization, token) }
+                    ) {
                         for (frame in incoming) {
                             if (frame is Frame.Text) {
                                 val text = frame.readText()
@@ -565,10 +1150,85 @@ class KtorChatRepository : ChatRepository {
     }
 
     private fun handleIncomingWebSocketMessage(text: String) {
+        val evento = runCatching { chatJson.parseToJsonElement(text).jsonObject }.getOrNull()
+        val tipo = evento?.get("tipo")?.jsonPrimitive?.content
+        when (tipo) {
+            // Ocultar/mostrar son personales: solo afectan a este usuario.
+            "CONVERSACION_OCULTA" -> {
+                val id = evento["conversacionId"]?.jsonPrimitive?.content ?: return
+                val conv = _conversations.value.firstOrNull { it.id == id }
+                    ?: _archived.value.firstOrNull { it.id == id }
+                _conversations.update { list -> list.filterNot { it.id == id } }
+                _archived.update { list -> list.filterNot { it.id == id } }
+                if (conv != null) {
+                    _hidden.update { listOf(conv) + it.filterNot { c -> c.id == id } }
+                }
+                persist()
+                return
+            }
+            "CONVERSACION_MOSTRADA" -> {
+                val id = evento["conversacionId"]?.jsonPrimitive?.content ?: return
+                _hidden.update { list -> list.filterNot { it.id == id } }
+                refreshConversations()
+                persist()
+                return
+            }
+            // Otro dispositivo del mismo usuario limpió el chat: sync de la marca.
+            "CONVERSACION_LIMPIADA" -> {
+                val id = evento["conversacionId"]?.jsonPrimitive?.content ?: return
+                val marca = evento["limpiadoEn"]?.jsonPrimitive?.content?.let(::parseIsoToMillis)
+                    ?: currentTimeMillis()
+                aplicarLimpiezaLocal(id, marca)
+                return
+            }
+            "GRUPO_ELIMINACION_PENDIENTE" -> {
+                val id = evento["conversacionId"]?.jsonPrimitive?.content ?: return
+                val cuando = evento["ejecutarDespues"]?.jsonPrimitive?.content
+                marcarPendienteEliminacion(id, cuando)
+                persist()
+                return
+            }
+            "GRUPO_ELIMINACION_CANCELADA" -> {
+                val id = evento["conversacionId"]?.jsonPrimitive?.content ?: return
+                limpiarPendienteEliminacion(id)
+                // Se deshizo el soft delete en BD: traer el grupo de vuelta.
+                refreshConversations()
+                persist()
+                return
+            }
+            // Purga definitiva cumplidas las 72 horas (aviso a los participantes).
+            "CONVERSACION_ELIMINADA" -> {
+                val id = evento["conversacionId"]?.jsonPrimitive?.content ?: return
+                quitarConversacionLocal(id)
+                persist()
+                return
+            }
+            // Otro dispositivo del mismo usuario ocultó este mensaje para sí.
+            "MENSAJE_OCULTO" -> {
+                val id = evento["conversacionId"]?.jsonPrimitive?.content ?: return
+                val mensajeId = evento["mensajeId"]?.jsonPrimitive?.content ?: return
+                aplicarBorradoLocal(id, mensajeId)
+                return
+            }
+            // El emisor lo borró para todos: desaparece en todas las apps.
+            "MENSAJE_ELIMINADO" -> {
+                val id = evento["conversacionId"]?.jsonPrimitive?.content ?: return
+                val mensajeId = evento["mensajeId"]?.jsonPrimitive?.content ?: return
+                aplicarBorradoLocal(id, mensajeId)
+                return
+            }
+        }
+
         val dto = runCatching { chatJson.decodeFromString<MensajeResponseDto>(text) }.getOrNull()
         if (dto != null) {
             val myId = UserSession.currentUserId ?: ""
             val message = mapDtoToMessage(dto, myId)
+
+            // Borrado en este dispositivo: ni el WebSocket lo devuelve a la lista.
+            if (message.id in mensajesBorrados) return
+
+            // La conversación está oculta: el mensaje no debe hacerla reaparecer.
+            if (_hidden.value.any { it.id == message.conversationId }) return
 
             var appended = false
             _messages.update { all ->
@@ -619,9 +1279,22 @@ class KtorChatRepository : ChatRepository {
     private fun restore(): Boolean = runCatching {
         val raw = ChatStore.read() ?: return false
         val saved = chatJson.decodeFromString<PersistedChatState>(raw)
-        _conversations.value = saved.conversations
-        _archived.value = saved.archived
-        _messages.value = saved.messages
+        // Estados guardados por versiones anteriores pueden traer ids repetidos
+        // (WS + REST). Se limpian al cargar para no reventar las keys de Compose.
+        _conversations.value = saved.conversations.distinctBy { it.id }
+        _archived.value = saved.archived.distinctBy { it.id }
+        _hidden.value = saved.hidden.distinctBy { it.id }
+        _messages.value = saved.messages.mapValues { (_, list) -> list.distinctBy { it.id } }
+        manualGroupSubroutes.clear()
+        manualGroupSubroutes.putAll(saved.manualGroupSubroutes)
+        chatsLimpiados.clear()
+        chatsLimpiados.putAll(saved.chatsLimpiados)
+        mensajesBorrados.clear()
+        mensajesBorrados.addAll(saved.mensajesBorrados)
+        // Por si una versión anterior guardó el mensaje antes de borrarlo.
+        _messages.value = _messages.value.mapValues { (_, list) ->
+            list.filterNot { it.id in mensajesBorrados }.distinctBy { it.id }
+        }
         true
     }.getOrDefault(false)
 
@@ -634,12 +1307,17 @@ class KtorChatRepository : ChatRepository {
             delay(600)
             persistPending = false
             runCatching {
+                val cappedMessages = _messages.value.mapValues { (_, list) -> list.takeLast(30) }
                 ChatStore.write(
                     chatJson.encodeToString(
                         PersistedChatState(
-                            _conversations.value,
-                            _archived.value,
-                            _messages.value
+                            conversations = _conversations.value,
+                            archived = _archived.value,
+                            hidden = _hidden.value,
+                            messages = cappedMessages,
+                            manualGroupSubroutes = manualGroupSubroutes.toMap(),
+                            chatsLimpiados = chatsLimpiados.toMap(),
+                            mensajesBorrados = mensajesBorrados.toSet()
                         )
                     )
                 )
@@ -651,7 +1329,15 @@ class KtorChatRepository : ChatRepository {
     private data class PersistedChatState(
         val conversations: List<Conversation>,
         val archived: List<Conversation> = emptyList(),
-        val messages: Map<String, List<Message>>
+        /** Conversaciones que el usuario ocultó: se guardan para poder restaurarlas. */
+        val hidden: List<Conversation> = emptyList(),
+        val messages: Map<String, List<Message>> = emptyMap(),
+        /** Subruta anclada a cada grupo manual, para no mostrarlo en todas partes. */
+        val manualGroupSubroutes: Map<String, String> = emptyMap(),
+        /** Marca local de los chats limpiados (solo visual, nunca se envía al backend). */
+        val chatsLimpiados: Map<String, Long> = emptyMap(),
+        /** Textos y audios borrados en este dispositivo; la BD los conserva hasta borrar el grupo. */
+        val mensajesBorrados: Set<String> = emptySet()
     )
 }
 

@@ -69,7 +69,8 @@ fun NewGroupScreen(
     onNameChange: (String) -> Unit,
     onToggle: (String) -> Unit,
     onCreate: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    subrouteLabel: String? = null
 ) {
     BackHandler(true) { onBack() }
     val selectedMembers = colleagues.filter { selected.contains(it.userId) }
@@ -109,10 +110,16 @@ fun NewGroupScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = if (selected.isEmpty()) "Añade participantes"
-                            else "${selected.size} seleccionado${if (selected.size == 1) "" else "s"}",
+                            text = if (subrouteLabel.isNullOrBlank()) {
+                                if (selected.isEmpty()) "Añade participantes"
+                                else "${selected.size} seleccionado${if (selected.size == 1) "" else "s"}"
+                            } else {
+                                "Subruta: $subrouteLabel"
+                            },
                             style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
-                            color = AppColors.cream.copy(alpha = 0.8f)
+                            color = AppColors.cream.copy(alpha = 0.8f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -287,9 +294,14 @@ fun NewGroupScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = if (member.isOnline) "En línea" else "Desconectado",
+                                text = listOfNotNull(
+                                    member.subruta?.takeIf { it.isNotBlank() } ?: subrouteLabel,
+                                    if (member.isOnline) "En línea" else "Desconectado"
+                                ).joinToString(" · "),
                                 style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
-                                color = AppColors.slate
+                                color = AppColors.slate,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         Checkbox(

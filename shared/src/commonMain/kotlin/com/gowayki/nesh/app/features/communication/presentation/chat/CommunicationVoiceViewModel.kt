@@ -216,6 +216,7 @@ class CommunicationVoiceViewModel(
                 audioFilePath = filePath,
             )
                 .onSuccess {
+                    audioRecorder?.stopPlayback()
                     ui = ui.copy(
                         lastRecordedFilePath = null,
                         recordedDurationMillis = 0,
@@ -264,6 +265,22 @@ class CommunicationVoiceViewModel(
         val path = ui.lastRecordedFilePath ?: return
         audioRecorder?.let { recorder ->
             viewModelScope.launch { recorder.playAudio(path) }
+        }
+    }
+
+    /**
+     * Play/Pausa real de la nota en previsualización: pausa conserva la
+     * posición y reanudar sigue desde ahí (antes se detenía y volvía a 0:00).
+     */
+    fun togglePlayback() {
+        val path = ui.lastRecordedFilePath ?: return
+        val recorder = audioRecorder ?: return
+        viewModelScope.launch {
+            when {
+                ui.isPlaying -> recorder.pausePlayback()
+                ui.playbackPosition > 0L -> recorder.resumePlayback()
+                else -> recorder.playAudio(path)
+            }
         }
     }
 

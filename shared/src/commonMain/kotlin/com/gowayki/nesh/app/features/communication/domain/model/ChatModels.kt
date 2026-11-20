@@ -54,7 +54,11 @@ data class GroupMember(
     val name: String,
     /** Iniciales para el avatar. */
     val initials: String,
-    val isOnline: Boolean = false
+    val isOnline: Boolean = false,
+    /** Rol dentro del grupo: ADMIN o MIEMBRO (null si no aplica/se desconoce). */
+    val rol: String? = null,
+    /** Subruta concreta donde se encuentra este conductor (para etiquetas en la UI). */
+    val subruta: String? = null
 )
 
 /**
@@ -75,12 +79,32 @@ data class Conversation(
     val avatarText: String,
     /** Fondo oscuro del avatar (estilo del diseño actual). */
     val avatarDark: Boolean = false,
+    /** Id del último mensaje conocido, para detectar actividad nueva al refrescar. */
+    val lastMessageId: String? = null,
     val members: List<GroupMember> = emptyList(),
     val photoPath: String? = null,
+    /** PRIVADA, GRUPO o GRUPO_RUTA (lo decide el backend, no el título). */
+    val tipoConversacion: String? = null,
+    /** Subruta concreta cuando [tipoConversacion] es GRUPO_RUTA. */
+    val claveRuta: String? = null,
+    /** Id del creador del grupo: también puede pedir su eliminación definitiva. */
+    val createdBy: String? = null,
     /**
-     * Un grupo al que se le borró el chat deja de listarse en "Todos",
-     * pero sigue disponible en la pestaña "Grupos" hasta borrarlo por
-     * completo con `deleteGroup`. Vuelve a "Todos" al recibir un mensaje.
+     * Rol del usuario actual dentro del grupo, según el backend. Si es
+     * "ADMIN" puede eliminarlo; si no, solo puede salirse.
      */
-    val hiddenFromAll: Boolean = false
+    val miRol: String? = null,
+    /**
+     * Hay una eliminación definitiva pedida: el grupo desaparecerá cuando
+     * pasen las 72 horas, salvo que alguien la cancele.
+     */
+    val eliminacionPendiente: Boolean = false,
+    /** Cuándo se ejecutará la eliminación definitiva (ISO-8601), si hay una. */
+    val eliminacionProgramadaPara: String? = null,
+    /**
+     * El usuario salió del grupo: ya no es participante. El chat se conserva en
+     * su dispositivo (solo lectura) hasta que lo elimine; los demás siguen en el
+     * grupo con todo el contenido.
+     */
+    val hasLeft: Boolean = false
 )

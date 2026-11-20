@@ -45,11 +45,38 @@ interface ChatRepository {
     /** Marca un mensaje como leído (doble check azul). */
     suspend fun markMessageRead(messageId: String): Result<Unit>
 
-    /** Vacía los mensajes de una conversación, sin eliminarla. */
+    /**
+     * Limpia una conversación SOLO para este usuario: guarda la marca en el
+     * backend (sobrevive a reinstalar), oculta los mensajes anteriores y quita
+     * el chat de la lista. No borra nada de la BD, no afecta a los demás y vuelve
+     * a aparecer si llega un mensaje nuevo.
+     */
     suspend fun clearMessages(conversationId: String): Result<Unit>
 
-    /** Elimina una conversación completa de la lista. */
-    suspend fun deleteConversation(conversationId: String): Result<Unit>
+    /**
+     * Oculta una conversación SOLO para el usuario actual.
+     *
+     * No borra mensajes, audios ni la conversación, y no cambia la membresía:
+     * los demás participantes no notan nada. Permanece oculta aunque lleguen
+     * mensajes nuevos; solo vuelve con [restaurarConversacion].
+     */
+    suspend fun ocultarConversacion(conversationId: String): Result<Unit>
+
+    /** Conversaciones que este usuario ocultó, para poder restaurarlas. */
+    fun hiddenConversations(): Flow<List<Conversation>>
+
+    /** Devuelve a la lista una conversación ocultada con [ocultarConversacion]. */
+    suspend fun restaurarConversacion(conversationId: String): Result<Unit>
+
+    /**
+     * Pide la eliminación definitiva de un grupo. No borra al momento: el
+     * backend espera 72 horas y luego purga mensajes, audios y archivos.
+     * Solo el creador o un administrador pueden pedirla.
+     */
+    suspend fun solicitarEliminacionGrupo(conversationId: String): Result<Unit>
+
+    /** Cancela la eliminación definitiva antes de que se cumplan las 72 horas. */
+    suspend fun cancelarEliminacionGrupo(conversationId: String): Result<Unit>
 
     /** Archiva una conversación. */
     suspend fun archiveConversation(conversationId: String): Result<Unit>
@@ -60,9 +87,37 @@ interface ChatRepository {
     /** Actualiza la foto de una conversación. */
     suspend fun updateConversationPhoto(conversationId: String, path: String?): Result<Unit>
 
-    /** Elimina un mensaje de una conversación. */
+    /**
+     * Elimina un mensaje.
+     *
+     * - `deleteForEveryone = false`: lo oculta SOLO para el usuario actual; se
+     *   guarda en el backend y los demás participantes lo siguen viendo.
+     * - `deleteForEveryone = true`: lo oculta para todos, pero solo lo permite
+     *   el backend si el mensaje fue enviado por el usuario actual. El servidor
+     *   guarda el contenido 72 horas y luego lo purga sin avisar al usuario.
+     */
     suspend fun deleteMessage(conversationId: String, messageId: String, deleteForEveryone: Boolean): Result<Unit>
 
-    /** Elimina un grupo (y sus mensajes). */
-    suspend fun deleteGroup(conversationId: String): Result<Unit>
+    /** Sale de un grupo: el grupo sigue existiendo, pero ya no lo ve el usuario. */
+    suspend fun leaveGroup(conversationId: String): Result<Unit>
+
+    /** Lista los participantes reales de una conversación (con nombre y rol). */
+    suspend fun getParticipants(conversationId: String): Result<List<GroupMember>>
+
+    /**
+     * Agrega conductores a un grupo que quedó con un solo miembro. El backend
+     * reutiliza el grupo de la subruta en vez de crear uno nuevo, así el
+     * historial y el nombre se conservan.
+     */
+    suspend fun addMembers(conversationId: String, members: List<GroupMember>): Result<Unit>
+
+    /**
+     * Cambia el rol de un participante (ADMIN o MIEMBRO). Solo lo permite el
+     * backend si quien lo pide es creador o ADMIN; el nuevo ADMIN hereda el
+     * permiso y puede seguir asignando roles a otros.
+     */
+    suspend fun asignarRol(conversationId: String, userId: String, rol: String): Result<Unit>
+
+    /** Nombre de la subruta concreta activa, para etiquetar conductores en la UI. */
+    fun activeSubrouteLabel(): String? = null
 }

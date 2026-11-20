@@ -30,7 +30,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -58,6 +57,7 @@ import compose.icons.feathericons.Send
 import compose.icons.feathericons.Square
 import compose.icons.feathericons.Trash2
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.sin
 
 /** Estado visual de la nota de voz. */
@@ -191,22 +191,22 @@ fun VoiceNotePanel(
                 }
             } else if (hasRecording) {
                 val total = totalMillis
-                val position = if (isPlaying) positionMillis.coerceAtMost(total.coerceAtLeast(1L)) else 0L
+                // Al pausar se conserva la posición: la onda queda donde quedó
+                // y no vuelve a 0:00 hasta que se detenga o se descarte.
+                val position = positionMillis.coerceAtMost(total.coerceAtLeast(1L))
                 val progress = if (total > 0L) {
                     (position.toFloat() / total.toFloat()).coerceIn(0f, 1f)
                 } else {
                     0f
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(CircleShape),
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    PlaybackWaveform(
+                        progress = progress,
+                        active = isPlaying,
                         color = accent,
-                        trackColor = accent.copy(alpha = 0.18f),
-                        drawStopIndicator = {},
+                        trackColor = accent.copy(alpha = 0.24f),
+                        height = if (compact) 26.dp else 38.dp,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -453,6 +453,58 @@ private fun VoiceWaveform(
             drawRoundRect(
                 color = color.copy(alpha = if (active) 0.85f else 0.35f),
                 topLeft = Offset(x, y),
+                size = Size(barWidth, barHeight),
+                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
+            )
+        }
+    }
+}
+
+/**
+ * Onda de reproducción estilo Material Design 3: barras redondeadas con una
+ * altura fija (no aleatoria) y las ya escuchadas pintadas con el color de
+ * acento. Es la misma onda para la barra de grabación y para la burbuja del
+ * mensaje, así el avance se lee de un vistazo.
+ */
+@Composable
+fun PlaybackWaveform(
+    progress: Float,
+    active: Boolean,
+    color: Color,
+    trackColor: Color,
+    height: Dp = 32.dp,
+    modifier: Modifier = Modifier,
+) {
+    val transition = rememberInfiniteTransition(label = "playbackWave")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "playbackWavePhase",
+    )
+
+    Canvas(modifier = modifier.height(height)) {
+        val bars = 36
+        val gap = size.width * 0.006f
+        val barWidth = (size.width - gap * (bars - 1)) / bars
+        val played = progress.coerceIn(0f, 1f)
+
+        repeat(bars) { i ->
+            // Patrón determinista: la misma nota de voz siempre se ve igual.
+            val envelope = 0.28f + 0.72f * abs(sin((i + 1) * 0.68f))
+            val pulse = if (active) 0.82f + 0.18f * ((sin(phase + i * 0.45f) + 1f) / 2f) else 1f
+            val barHeight = (size.height * envelope * pulse).coerceIn(
+                size.height * 0.14f,
+                size.height,
+            )
+            val isPlayed = (i + 1).toFloat() / bars <= played + 0.001f
+
+            drawRoundRect(
+                color = if (isPlayed) color else trackColor,
+                topLeft = Offset(i * (barWidth + gap), (size.height - barHeight) / 2f),
                 size = Size(barWidth, barHeight),
                 cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
             )

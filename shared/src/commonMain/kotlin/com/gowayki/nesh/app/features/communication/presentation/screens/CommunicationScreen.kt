@@ -15,6 +15,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -77,14 +78,18 @@ import com.gowayki.nesh.app.common.util.formatTime
 import com.gowayki.nesh.app.di.AppDi
 import com.gowayki.nesh.app.features.communication.domain.model.Conversation
 import com.gowayki.nesh.app.features.communication.domain.repository.ChatRepository
+import com.gowayki.nesh.app.features.map.presentation.SubrouteLabels
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
 import compose.icons.FeatherIcons
 import compose.icons.feathericons.Bell
+import compose.icons.feathericons.Check
+import compose.icons.feathericons.CheckSquare
 import compose.icons.feathericons.Menu
 import compose.icons.feathericons.Plus
 import compose.icons.feathericons.Search
+import compose.icons.feathericons.Trash2
 import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -96,8 +101,11 @@ fun CommunicationScreen(
     onConversationClick: (String) -> Unit = {},
     onNewGroupClick: () -> Unit = {},
     onClearChat: (String) -> Unit = {},
-    onDeleteChat: (String) -> Unit = {},
-    onDeleteGroup: (String) -> Unit = {},
+    onHideChat: (String) -> Unit = {},
+    onRestoreChat: (String) -> Unit = {},
+    onRequestGroupDeletion: (String) -> Unit = {},
+    onCancelGroupDeletion: (String) -> Unit = {},
+    onLeaveGroup: (String) -> Unit = {},
     onSosClick: () -> Unit = {},
     onInicioClick: () -> Unit = {},
     onRecorridoClick: () -> Unit = {},
@@ -106,7 +114,6 @@ fun CommunicationScreen(
     onSupportClick: () -> Unit = {},
     onLogoutClick: () -> Unit = {}
 ) {
-    BackHandler(true) { onInicioClick() }
     val drawerState = androidx.compose.material3.rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -117,10 +124,29 @@ fun CommunicationScreen(
 
     var query by rememberSaveable { mutableStateOf("") }
     var longPressedConv by remember { mutableStateOf<Conversation?>(null) }
-    var deleteTarget by remember { mutableStateOf<Conversation?>(null) }
-    var deleteGroupTarget by remember { mutableStateOf<Conversation?>(null) }
+    var hideTarget by remember { mutableStateOf<Conversation?>(null) }
+    var requestDeleteTarget by remember { mutableStateOf<Conversation?>(null) }
+    var cancelDeleteTarget by remember { mutableStateOf<Conversation?>(null) }
+    var leaveGroupTarget by remember { mutableStateOf<Conversation?>(null) }
     var clearTarget by remember { mutableStateOf<Conversation?>(null) }
-    var selectedTab by rememberSaveable { mutableStateOf(0) } // 0 Todos, 1 No leídos, 2 Grupos, 3 Archivados
+    var selectedTab by rememberSaveable { mutableStateOf(0) } // 0 Todos, 1 No leídos, 2 Grupos, 3 Archivados, 4 Ocultos
+
+    // Modo selección múltiple: se eligen varios chats y se ocultan de una vez.
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var confirmBulkHide by remember { mutableStateOf(false) }
+
+    fun exitSelection() {
+        selectionMode = false
+        selectedIds = emptySet()
+    }
+
+    fun toggleSelection(id: String) {
+        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+    }
+
+    // Atrás: primero sale del modo selección, después navega al inicio.
+    BackHandler(true) { if (selectionMode) exitSelection() else onInicioClick() }
 
     // Al cambiar de pestaña se vuelve arriba y el FAB reaparece.
     LaunchedEffect(selectedTab) {
@@ -129,8 +155,18 @@ fun CommunicationScreen(
         }
     }
 
-    fun conversationsFor(tab: Int, q: String, all: List<Conversation>, archivedList: List<Conversation>): List<Conversation> {
-        val base = if (tab == 3) archivedList else all
+    fun conversationsFor(
+        tab: Int,
+        q: String,
+        all: List<Conversation>,
+        archivedList: List<Conversation>,
+        hiddenList: List<Conversation>
+    ): List<Conversation> {
+        val base = when (tab) {
+            3 -> archivedList
+            4 -> hiddenList
+            else -> all
+        }
         return base.filter { conv ->
             val matchesQuery = q.isBlank() ||
                 conv.title.contains(q, ignoreCase = true) ||
@@ -138,17 +174,15 @@ fun CommunicationScreen(
             val matchesTab = when (tab) {
                 1 -> conv.unreadCount > 0
                 2 -> conv.isGroup
-                3 -> true
-                // "Todos": un chat de grupo borrado se oculta de aquí y
-                // sigue apareciendo en "Grupos".
-                else -> !conv.hiddenFromAll
+                3, 4 -> true
+                else -> true
             }
             matchesQuery && matchesTab
         }.sortedByDescending { it.lastMessageAtMillis }
     }
 
-    val visibleLists = androidx.compose.runtime.remember(conversations, vm.archived, query) {
-        listOf(0, 1, 2, 3).associateWith { tab -> conversationsFor(tab, query, conversations, vm.archived) }
+    val visibleLists = androidx.compose.runtime.remember(conversations, vm.archived, vm.hidden, query) {
+        listOf(0, 1, 2, 3, 4).associateWith { tab -> conversationsFor(tab, query, conversations, vm.archived, vm.hidden) }
     }
 
     androidx.compose.material3.ModalNavigationDrawer(
@@ -193,16 +227,34 @@ fun CommunicationScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         TopAction(icon = FeatherIcons.Menu, description = "Menú", onClick = { coroutineScope.launch { drawerState.open() } })
-                        Text(
-                            text = "Comunicación",
-                            style = AppTextStyles.waykiHeader.copy(fontSize = 20.sp),
-                            color = AppColors.cream,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TopAction(icon = FeatherIcons.Bell, description = "Notificaciones", onClick = onNotificationsClick)
+                        if (selectionMode) {
+                            Text(
+                                text = if (selectedIds.isEmpty()) "Selecciona chats" else "${selectedIds.size} seleccionado${if (selectedIds.size == 1) "" else "s"}",
+                                style = AppTextStyles.waykiHeader.copy(fontSize = 20.sp),
+                                color = AppColors.cream,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TopAction(
+                                icon = FeatherIcons.Trash2,
+                                description = "Ocultar seleccionados",
+                                onClick = { if (selectedIds.isNotEmpty()) confirmBulkHide = true }
+                            )
+                        } else {
+                            Text(
+                                text = "Comunicación",
+                                style = AppTextStyles.waykiHeader.copy(fontSize = 20.sp),
+                                color = AppColors.cream,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TopAction(icon = FeatherIcons.CheckSquare, description = "Seleccionar chats", onClick = { selectionMode = true })
+                            TopAction(icon = FeatherIcons.Bell, description = "Notificaciones", onClick = onNotificationsClick)
+                        }
                     }
                 }
 
@@ -239,7 +291,7 @@ fun CommunicationScreen(
                 }
 
                 // ---------- Tabs ----------
-                val tabs = listOf("Todos", "No leídos", "Grupos", "Archivados")
+                val tabs = listOf("Todos", "No leídos", "Grupos", "Archivados", "Ocultos")
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -323,8 +375,14 @@ fun CommunicationScreen(
                                     Column(Modifier.animateItem()) {
                                         ConversationRow(
                                             conv = conv,
-                                            onClick = { onConversationClick(conv.id) },
-                                            onLongClick = { longPressedConv = conv }
+                                            selectionMode = selectionMode,
+                                            selected = conv.id in selectedIds,
+                                            onClick = {
+                                                if (selectionMode) toggleSelection(conv.id) else onConversationClick(conv.id)
+                                            },
+                                            onLongClick = {
+                                                if (selectionMode) toggleSelection(conv.id) else longPressedConv = conv
+                                            }
                                         )
                                         HorizontalDivider(
                                             thickness = 0.5.dp,
@@ -347,44 +405,119 @@ fun CommunicationScreen(
                     containerColor = AppColors.cream
                 ) {
                     Text(conv.title, style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold), color = AppColors.ink, modifier = Modifier.padding(16.dp))
-                    SheetActionRow(
-                        label = if (selectedTab == 3) "Desarchivar" else "Archivar",
-                        onClick = {
-                            if (selectedTab == 3) vm.unarchiveConversation(conv.id)
-                            else vm.archiveConversation(conv.id)
-                            longPressedConv = null
-                        }
-                    )
-                    SheetActionRow("Vaciar chat", onClick = { clearTarget = conv; longPressedConv = null })
-                    if (conv.isGroup) {
+                    if (selectedTab == 4) {
                         SheetActionRow(
-                            label = "Eliminar grupo",
-                            onClick = { deleteGroupTarget = conv; longPressedConv = null },
+                            label = "Restaurar chat",
+                            onClick = { onRestoreChat(conv.id); longPressedConv = null }
+                        )
+                    } else {
+                        SheetActionRow(
+                            label = "Seleccionar chats",
+                            onClick = { selectionMode = true; selectedIds = setOf(conv.id); longPressedConv = null }
+                        )
+                        SheetActionRow(
+                            label = if (selectedTab == 3) "Desarchivar" else "Archivar",
+                            onClick = {
+                                if (selectedTab == 3) vm.unarchiveConversation(conv.id)
+                                else vm.archiveConversation(conv.id)
+                                longPressedConv = null
+                            }
+                        )
+                        SheetActionRow("Limpiar chat (solo para ti)", onClick = { clearTarget = conv; longPressedConv = null })
+
+                        if (conv.isGroup && !conv.hasLeft) {
+                            SheetActionRow(
+                                label = "Salir del grupo",
+                                onClick = { leaveGroupTarget = conv; longPressedConv = null }
+                            )
+                            val puedeGestionarEliminacion =
+                                conv.miRol == "ADMIN" || conv.createdBy == com.gowayki.nesh.core.session.UserSession.currentUserId
+                            if (puedeGestionarEliminacion && !conv.eliminacionPendiente) {
+                                SheetActionRow(
+                                    label = "Eliminar grupo (definitivo)",
+                                    onClick = { requestDeleteTarget = conv; longPressedConv = null },
+                                    color = AppColors.error
+                                )
+                            }
+                            if (puedeGestionarEliminacion && conv.eliminacionPendiente) {
+                                SheetActionRow(
+                                    label = "Cancelar eliminación del grupo",
+                                    onClick = { cancelDeleteTarget = conv; longPressedConv = null }
+                                )
+                            }
+                        }
+
+                        SheetActionRow(
+                            label = "Ocultar chat",
+                            onClick = { hideTarget = conv; longPressedConv = null },
                             color = AppColors.error
                         )
                     }
-                    SheetActionRow("Eliminar chat", onClick = { deleteTarget = conv; longPressedConv = null }, color = AppColors.error)
                     Spacer(Modifier.height(8.dp))
                 }
             }
 
-            deleteTarget?.let { target ->
+            hideTarget?.let { target ->
                 androidx.compose.material3.AlertDialog(
-                    onDismissRequest = { deleteTarget = null },
-                    title = { Text("¿Eliminar este chat?") },
+                    onDismissRequest = { hideTarget = null },
+                    title = { Text("¿Ocultar este chat?") },
                     text = {
                         Text(
-                            if (target.isGroup) "Se eliminará esta conversación de tu lista de chats. El grupo seguirá disponible en la sección Grupos y podrás volver a abrirlo."
-                            else "Se borrará \"${target.title}\" con sus mensajes y audios."
+                            "Se quitará \"${target.title}\" de tu lista. Solo lo ocultas para ti: " +
+                                "no se borran mensajes ni audios y los demás participantes no notan nada. " +
+                                "Podrás restaurarlo desde Ocultos."
                         )
                     },
                     confirmButton = {
-                        androidx.compose.material3.TextButton(onClick = { onDeleteChat(target.id); deleteTarget = null }) {
-                            Text("Eliminar chat", color = AppColors.ink)
+                        androidx.compose.material3.TextButton(onClick = { onHideChat(target.id); hideTarget = null }) {
+                            Text("Ocultar", color = AppColors.ink)
                         }
                     },
                     dismissButton = {
-                        androidx.compose.material3.TextButton(onClick = { deleteTarget = null }) { Text("Cancelar") }
+                        androidx.compose.material3.TextButton(onClick = { hideTarget = null }) { Text("Cancelar") }
+                    }
+                )
+            }
+
+            requestDeleteTarget?.let { target ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { requestDeleteTarget = null },
+                    title = { Text("¿Eliminar grupo definitivamente?") },
+                    text = {
+                        Text(
+                            "\"${target.title}\" desaparecerá inmediatamente para todos los participantes. " +
+                                "Durante las próximas 72 horas podrás cancelar la eliminación; pasado ese plazo " +
+                                "se borrarán definitivamente el grupo, sus mensajes y sus archivos."
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(onClick = { onRequestGroupDeletion(target.id); requestDeleteTarget = null }) {
+                            Text("Programar eliminación", color = AppColors.error)
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { requestDeleteTarget = null }) { Text("Cancelar") }
+                    }
+                )
+            }
+
+            cancelDeleteTarget?.let { target ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { cancelDeleteTarget = null },
+                    title = { Text("¿Cancelar la eliminación?") },
+                    text = {
+                        Text(
+                            "El grupo \"${target.title}\" dejará de estar pendiente de eliminación " +
+                                "y seguirá disponible para sus participantes."
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(onClick = { onCancelGroupDeletion(target.id); cancelDeleteTarget = null }) {
+                            Text("Cancelar eliminación", color = AppColors.ink)
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { cancelDeleteTarget = null }) { Text("Volver") }
                     }
                 )
             }
@@ -392,13 +525,13 @@ fun CommunicationScreen(
             clearTarget?.let { target ->
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { clearTarget = null },
-                    title = { Text("¿Vaciar este chat?") },
+                    title = { Text("¿Limpiar este chat?") },
                     text = {
-                        Text("Se eliminarán todos los mensajes de esta conversación. El chat seguirá disponible en tu lista y podrás seguir enviando y recibiendo mensajes.")
+                        Text("Solo afecta a tu cuenta: ocultarás los mensajes anteriores y el chat saldrá de tu lista, también al reinstalar la app. Los mensajes NO se borran y los demás participantes no notan nada. Si llega un mensaje nuevo, el chat vuelve a aparecer mostrando solo lo nuevo.")
                     },
                     confirmButton = {
                         androidx.compose.material3.TextButton(onClick = { onClearChat(target.id); clearTarget = null }) {
-                            Text("Vaciar chat", color = AppColors.ink)
+                            Text("Limpiar chat", color = AppColors.ink)
                         }
                     },
                     dismissButton = {
@@ -407,18 +540,68 @@ fun CommunicationScreen(
                 )
             }
 
-            deleteGroupTarget?.let { target ->
+            leaveGroupTarget?.let { target ->
+                val esAdminGrupo = target.miRol == "ADMIN" || target.createdBy == com.gowayki.nesh.core.session.UserSession.currentUserId
                 androidx.compose.material3.AlertDialog(
-                    onDismissRequest = { deleteGroupTarget = null },
-                    title = { Text("¿Eliminar grupo?") },
-                    text = { Text("\"${target.title}\" se eliminará por completo con todos sus mensajes y audios.") },
+                    onDismissRequest = { leaveGroupTarget = null },
+                    title = { Text(if (esAdminGrupo) "¿Salir y eliminar el grupo?" else "¿Salir del grupo?") },
+                    text = {
+                        Text(
+                            if (esAdminGrupo) {
+                                "Si sales del grupo \"${target.title}\", el grupo se eliminará una vez que salgas. " +
+                                    "Se programará su eliminación para todos los participantes."
+                            } else {
+                                "Dejarás de participar en \"${target.title}\". El grupo y sus mensajes siguen existiendo para los demás y podrás seguir viendo este chat hasta que lo ocultes."
+                            }
+                        )
+                    },
                     confirmButton = {
-                        androidx.compose.material3.TextButton(onClick = { onDeleteGroup(target.id); deleteGroupTarget = null }) {
-                            Text("Eliminar", color = AppColors.error)
+                        androidx.compose.material3.TextButton(onClick = {
+                            if (esAdminGrupo) {
+                                onRequestGroupDeletion(target.id)
+                            } else {
+                                onLeaveGroup(target.id)
+                            }
+                            leaveGroupTarget = null
+                        }) {
+                            Text(if (esAdminGrupo) "Salir y eliminar" else "Salir", color = AppColors.error)
                         }
                     },
                     dismissButton = {
-                        androidx.compose.material3.TextButton(onClick = { deleteGroupTarget = null }) { Text("Cancelar") }
+                        androidx.compose.material3.TextButton(onClick = { leaveGroupTarget = null }) { Text("Cancelar") }
+                    }
+                )
+            }
+
+            if (confirmBulkHide) {
+                val base = when (selectedTab) {
+                    3 -> vm.archived
+                    4 -> vm.hidden
+                    else -> conversations
+                }
+                val elegidos = base.filter { it.id in selectedIds }
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { confirmBulkHide = false },
+                    title = {
+                        Text(if (elegidos.size == 1) "¿Ocultar 1 chat?" else "¿Ocultar ${elegidos.size} chats?")
+                    },
+                    text = {
+                        Text(
+                            "Se quitarán de tu lista solo para ti. No se borran mensajes ni audios y " +
+                                "los demás participantes no notan nada. Podrás restaurarlos desde Ocultos."
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(onClick = {
+                            elegidos.forEach { conv -> onHideChat(conv.id) }
+                            confirmBulkHide = false
+                            exitSelection()
+                        }) {
+                            Text("Ocultar", color = AppColors.ink)
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { confirmBulkHide = false }) { Text("Cancelar") }
                     }
                 )
             }
@@ -430,12 +613,14 @@ fun CommunicationScreen(
             val navInset = androidx.compose.foundation.layout.WindowInsets.navigationBars
                 .asPaddingValues()
                 .calculateBottomPadding()
-            NewChatFab(
-                modifier = Modifier.align(Alignment.BottomEnd),
-                listState = listState,
-                bottomPadding = 76.dp + 12.dp + navInset + 16.dp,
-                onClick = onNewGroupClick
-            )
+            if (!selectionMode) {
+                NewChatFab(
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                    listState = listState,
+                    bottomPadding = 76.dp + 12.dp + navInset + 16.dp,
+                    onClick = onNewGroupClick
+                )
+            }
 
             // ---------- Bottom nav ----------
             WaykiBottomNav(
@@ -497,21 +682,100 @@ private fun TopAction(icon: androidx.compose.ui.graphics.vector.ImageVector, des
 }
 
 @Composable
-private fun ConversationRow(conv: Conversation, onClick: () -> Unit, onLongClick: () -> Unit = {}) {
+private fun ConversationRow(
+    conv: Conversation,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
+    selectionMode: Boolean = false,
+    selected: Boolean = false
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(if (selected) AppColors.primary.copy(alpha = 0.10f) else androidx.compose.ui.graphics.Color.Transparent)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .heightIn(min = 72.dp)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (selectionMode) {
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(if (selected) AppColors.primary else androidx.compose.ui.graphics.Color.Transparent)
+                    .border(
+                        width = 2.dp,
+                        color = if (selected) AppColors.primary else AppColors.slate,
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (selected) {
+                    Icon(
+                        FeatherIcons.Check,
+                        contentDescription = "Seleccionado",
+                        tint = AppColors.cream,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+        }
         WaykiAvatar(text = conv.avatarText, size = 52.dp, dark = conv.avatarDark, photoPath = conv.photoPath)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(conv.title, style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold), color = AppColors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    conv.title,
+                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = AppColors.ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (conv.eliminacionPendiente) {
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .background(AppColors.error.copy(alpha = 0.12f), CircleShape)
+                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            "Se eliminará",
+                            style = AppTextStyles.waykiMini.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                            color = AppColors.error
+                        )
+                    }
+                } else if (conv.isGroup && conv.hasLeft) {
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .background(AppColors.slate.copy(alpha = 0.12f), CircleShape)
+                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                    ) {
+                        Text("Saliste", style = AppTextStyles.waykiMini.copy(fontSize = 10.sp), color = AppColors.slate)
+                    }
+                } else if (conv.isGroup && conv.miRol == "ADMIN") {
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .background(AppColors.primary.copy(alpha = 0.12f), CircleShape)
+                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                    ) {
+                        Text("Admin", style = AppTextStyles.waykiMini.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold), color = AppColors.primary)
+                    }
+                }
+            }
             Spacer(Modifier.height(3.dp))
-            Text(conv.preview, style = AppTextStyles.waykiMini, color = AppColors.slate, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val subruta = SubrouteLabels.nameOf(conv.claveRuta)
+            val previewText = when {
+                conv.eliminacionPendiente -> "Pendiente de eliminación en 72 horas"
+                conv.isGroup && conv.hasLeft -> "Ya no participas en este grupo"
+                subruta != null -> "Subruta: $subruta · ${conv.preview}"
+                else -> conv.preview
+            }
+            Text(previewText, style = AppTextStyles.waykiMini, color = AppColors.slate, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {

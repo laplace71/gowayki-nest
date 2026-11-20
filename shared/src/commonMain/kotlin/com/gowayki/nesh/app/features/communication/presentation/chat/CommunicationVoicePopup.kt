@@ -68,9 +68,7 @@ fun CommunicationVoicePopup(vm: CommunicationVoiceViewModel) {
             kicker = "NOTA DE VOZ",
             onCancel = { vm.cancel() },
             onStop = { vm.stopAndSave() },
-            onPlayPause = {
-                if (isPlaying) vm.stopPlayback() else vm.playLastRecording()
-            },
+            onPlayPause = { vm.togglePlayback() },
             onSend = { vm.sendRecorded() },
             onDiscard = { vm.discardRecorded() },
             onDismissError = { vm.clearError() },

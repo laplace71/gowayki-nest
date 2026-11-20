@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.lang.ref.WeakReference
@@ -220,31 +221,59 @@ private class AndroidAudioRecorder(
         playbackTimer?.cancel()
         playbackTimer = null
         mediaPlayer?.apply {
-            if (isPlaying) stop()
-            release()
+            runCatching { if (isPlaying) stop() }
+            runCatching { release() }
         }
+        mediaPlayer = null
+        _playbackPosition.value = 0L
+        _playbackDuration.value = 0L
 
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(filePath)
-            prepare()
-            _playbackDuration.value = duration.toLong()
-            _playbackPosition.value = 0L
-            start()
-            _isPlaying.value = true
+        // El botón responde apenas se toca: no esperamos a que MediaPlayer
+        // termine de preparar el archivo para cambiar el estado visual.
+        _isPlaying.value = true
 
-            setOnCompletionListener {
-                _playbackPosition.value = 0L
-                _isPlaying.value = false
-                it.release()
-                mediaPlayer = null
+        val player = MediaPlayer()
+        runCatching {
+            // prepare() bloquea; se ejecuta fuera del hilo principal para que
+            // la lista de mensajes siga fluida.
+            withContext(Dispatchers.IO) {
+                player.setDataSource(filePath)
+                player.prepare()
             }
-            setOnErrorListener { _, _, _ ->
+            // Si el usuario pulsó pausa mientras se preparaba, no arrancamos
+            // un audio que ya nadie va a poder controlar desde la pantalla.
+            if (!_isPlaying.value) {
+                player.release()
+                return@runCatching
+            }
+            player.setOnCompletionListener {
+                _playbackPosition.value = _playbackDuration.value
                 _isPlaying.value = false
+                playbackTimer?.cancel()
+                playbackTimer = null
+                it.release()
+                if (mediaPlayer === it) mediaPlayer = null
+            }
+            player.setOnErrorListener { _, _, _ ->
+                _isPlaying.value = false
+                playbackTimer?.cancel()
+                playbackTimer = null
                 true // Manejado
             }
+            mediaPlayer = player
+            _playbackDuration.value = player.duration.toLong().coerceAtLeast(0L)
+            player.start()
+        }.onFailure {
+            player.release()
+            _isPlaying.value = false
+            throw it
         }
 
-        // Sondeo de posición para la barra de progreso de la nota de voz.
+        startPlaybackTimer()
+    }
+
+    /** Sondeo de posición: 60 ms para que la onda/barra se mueva sin saltos. */
+    private fun startPlaybackTimer() {
         playbackTimer?.cancel()
         playbackTimer = scope.launch {
             while (_isPlaying.value) {
@@ -254,9 +283,23 @@ private class AndroidAudioRecorder(
                         if (p.duration > 0) _playbackDuration.value = p.duration.toLong()
                     }
                 }
-                delay(120)
+                delay(60)
             }
         }
+    }
+
+    override suspend fun pausePlayback(): Result<Unit> = runCatching {
+        playbackTimer?.cancel()
+        playbackTimer = null
+        runCatching { mediaPlayer?.takeIf { it.isPlaying }?.pause() }
+        _isPlaying.value = false
+    }
+
+    override suspend fun resumePlayback(): Result<Unit> = runCatching {
+        val player = mediaPlayer ?: throw IllegalStateException("No hay audio en pausa")
+        player.start()
+        _isPlaying.value = true
+        startPlaybackTimer()
     }
 
     override suspend fun stopPlayback(): Result<Unit> = runCatching {
@@ -362,6 +405,8 @@ private class NoopAudioRecorder : AudioRecorder {
     override suspend fun playTripleBeep(): Result<Unit> = Result.success(Unit)
     override suspend fun playAudio(filePath: String): Result<Unit> = Result.success(Unit)
     override suspend fun stopPlayback(): Result<Unit> = Result.success(Unit)
+    override suspend fun pausePlayback(): Result<Unit> = Result.success(Unit)
+    override suspend fun resumePlayback(): Result<Unit> = Result.success(Unit)
     override suspend fun hasRecordPermission(): Boolean = false
     override suspend fun requestRecordPermission(): Boolean = false
 }

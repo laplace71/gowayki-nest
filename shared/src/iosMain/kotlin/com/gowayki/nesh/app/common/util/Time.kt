@@ -13,3 +13,13 @@ actual fun currentTimeMillis(): Long = memScoped {
     gettimeofday(tv.ptr, null)
     tv.tv_sec * 1000L + tv.tv_usec / 1000L
 }
+
+actual fun parseIsoToMillis(isoString: String?): Long? {
+    if (isoString.isNullOrBlank()) return null
+    isoString.toLongOrNull()?.let { return it }
+    return runCatching {
+        val formatter = platform.Foundation.NSISO8601DateFormatter()
+        val date = formatter.dateFromString(isoString) ?: return null
+        (date.timeIntervalSince1970 * 1000.0).toLong()
+    }.getOrNull()
+}
