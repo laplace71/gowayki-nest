@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -134,8 +135,18 @@ fun MapScreen(
     val routeColorHex = "#2196F3"
     val returnRouteColorHex = "#E91E63"
 
+    // El asset se muestra al instante, pero recargamos cuando llega la versión
+    // de la BD (sin depender de salir y volver a entrar al mapa).
+    var refrescoBackend by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.flow.merge(
+            RouteStopsStore.actualizaciones(),
+            RouteGeometryStore.actualizaciones(),
+        ).collect { refrescoBackend++ }
+    }
+
     // Carga los trazados reales empaquetados (Ida y Retorno) y los paraderos de la ruta.
-    LaunchedEffect(route?.id, route?.routeId, route?.returnRouteId) {
+    LaunchedEffect(route?.id, route?.routeId, route?.returnRouteId, refrescoBackend) {
         // Si hay cache, no mostrar loader
         val hasCache = geometry.idaPoints.isNotEmpty() || geometry.returnPoints.isNotEmpty()
         if (hasCache) {

@@ -105,6 +105,12 @@ fun RouteAssignmentDialog(
     // que el chofer haya elegido esa subruta para la unidad actual.
     var subrutaElegida by remember { mutableStateOf<String?>(null) }
 
+    // Cambiar de unidad descarta la subruta elegida para la anterior: así un
+    // vehículo con otra subruta asignada no hereda la elección del anterior.
+    LaunchedEffect(unidadSeleccionada?.id) {
+        subrutaElegida = null
+    }
+
     LaunchedEffect(visible) {
         if (!visible) return@LaunchedEffect
         step = 0

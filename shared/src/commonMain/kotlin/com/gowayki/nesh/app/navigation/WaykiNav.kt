@@ -89,8 +89,10 @@ fun WaykiNav(
 
     /** Cierra sesión de verdad: token, socket y todo el historial del back stack. */
     fun cerrarSesion() {
-        UserSession.clear()
+        // Primero el repositorio guarda el metadata por cuenta y cierra el
+        // socket; después se limpia la sesión en memoria.
         (sesionRepo as? KtorChatRepository)?.cerrarSesion()
+        UserSession.clear()
         nav.navigate(Routes.WELCOME) {
             popUpTo(0) { inclusive = true }
             launchSingleTop = true

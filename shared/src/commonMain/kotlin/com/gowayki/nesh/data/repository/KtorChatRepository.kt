@@ -67,6 +67,14 @@ class KtorChatRepository : ChatRepository {
     private val _hidden = MutableStateFlow<List<Conversation>>(emptyList())
 
     /**
+     * Chats ocultos guardados por cuenta. Al salir se limpia la lista viva para
+     * no filtrar información entre cuentas, pero se conserva el metadata debajo
+     * del userId para poder restaurar "Ocultos" al volver a entrar.
+     */
+    private val hiddenPorCuenta = mutableMapOf<String, List<Conversation>>()
+    private var hiddenCargadoPara: String? = null
+
+    /**
      * Grupos con eliminación pedida: desaparecen de las listas normales, pero
      * se conservan aquí para poder cancelar la purga antes de las 72 horas.
      */
@@ -375,6 +383,16 @@ class KtorChatRepository : ChatRepository {
 
     fun refreshConversations(ensureRouteGroup: Boolean = false) {
         val myId = UserSession.currentUserId ?: return
+        // El backend no lista los chats ocultos: al volver a entrar con la
+        // misma cuenta recuperamos sus ids/títulos del guardado por cuenta.
+        if (hiddenCargadoPara != myId) {
+            hiddenCargadoPara = myId
+            hiddenPorCuenta[myId]?.let { guardados ->
+                if (_hidden.value.isEmpty() && guardados.isNotEmpty()) {
+                    _hidden.value = guardados
+                }
+            }
+        }
         scope.launch {
             val activeRoute = getActiveConcreteSubroute()
             val clave = activeRoute?.let { routeGroupKey(it) }
@@ -414,7 +432,8 @@ class KtorChatRepository : ChatRepository {
      */
     private fun purgeEliminacionesVencidas() {
         val ahora = currentTimeMillis()
-        val vencidas = (_conversations.value + _archived.value + _hidden.value)
+        val vencidas = (_conversations.value + _archived.value + _hidden.value +
+            _eliminacionesPendientes.value)
             .filter { it.eliminacionPendiente }
             .filter { conv ->
                 val programada = conv.eliminacionProgramadaPara?.let(::parseIsoToMillis)
@@ -424,6 +443,8 @@ class KtorChatRepository : ChatRepository {
             .toSet()
         if (vencidas.isEmpty()) return
         vencidas.forEach(::quitarConversacionLocal)
+        // Si perdimos el evento final, la entrada pendiente también debe irse.
+        _eliminacionesPendientes.update { list -> list.filterNot { it.id in vencidas } }
         manualGroupSubroutes.keys.removeAll(vencidas)
         persist()
     }
@@ -1165,6 +1186,11 @@ class KtorChatRepository : ChatRepository {
      * repositorio compartido bajo la sesión nueva.
      */
     fun cerrarSesion() {
+        val usuario = com.gowayki.nesh.core.session.UserSession.currentUserId
+        if (!usuario.isNullOrBlank() && _hidden.value.isNotEmpty()) {
+            hiddenPorCuenta[usuario] = _hidden.value
+        }
+        hiddenCargadoPara = null
         scope.launch {
             runCatching {
                 activeSocket?.close(CloseReason(CloseReason.Codes.NORMAL, "logout"))
@@ -1368,6 +1394,8 @@ class KtorChatRepository : ChatRepository {
         _conversations.value = saved.conversations.distinctBy { it.id }
         _archived.value = saved.archived.distinctBy { it.id }
         _hidden.value = saved.hidden.distinctBy { it.id }
+        hiddenPorCuenta.clear()
+        hiddenPorCuenta.putAll(saved.hiddenPorCuenta)
         _eliminacionesPendientes.value = saved.eliminacionesPendientes.distinctBy { it.id }
         _messages.value = saved.messages.mapValues { (_, list) -> list.distinctBy { it.id } }
         manualGroupSubroutes.clear()
@@ -1409,6 +1437,7 @@ class KtorChatRepository : ChatRepository {
                             conversations = _conversations.value,
                             archived = _archived.value,
                             hidden = _hidden.value,
+                            hiddenPorCuenta = hiddenPorCuenta.toMap(),
                             eliminacionesPendientes = _eliminacionesPendientes.value,
                             messages = cappedMessages,
                             manualGroupSubroutes = manualGroupSubroutes.toMap(),
@@ -1427,6 +1456,8 @@ class KtorChatRepository : ChatRepository {
         val archived: List<Conversation> = emptyList(),
         /** Conversaciones que el usuario ocultó: se guardan para poder restaurarlas. */
         val hidden: List<Conversation> = emptyList(),
+        /** Chats ocultos por cuenta, para recuperar "Ocultos" tras un logout. */
+        val hiddenPorCuenta: Map<String, List<Conversation>> = emptyMap(),
         /** Grupos con purga pendiente: se conservan para poder cancelarla. */
         val eliminacionesPendientes: List<Conversation> = emptyList(),
         val messages: Map<String, List<Message>> = emptyMap(),
