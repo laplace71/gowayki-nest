@@ -523,6 +523,13 @@ class KtorChatRepository : ChatRepository {
             _conversations.value = merged
             persist()
         }
+        actualizarBadgeNoLeidos()
+    }
+
+    /** Refresca el total que muestra el puntito en la barra inferior. */
+    private fun actualizarBadgeNoLeidos() {
+        com.gowayki.nesh.app.common.ui.shared.ChatUnreadBadge.total =
+            _conversations.value.sumOf { it.unreadCount.coerceAtLeast(0) }
     }
 
     override fun conversations(): Flow<List<Conversation>> {
@@ -709,6 +716,7 @@ class KtorChatRepository : ChatRepository {
         _conversations.update { list ->
             list.map { if (it.id == conversationId) it.copy(unreadCount = 0) else it }
         }
+        actualizarBadgeNoLeidos()
         _messages.update { all ->
             val current = all[conversationId].orEmpty().map { m ->
                 if (!m.isMine && m.status != MessageStatus.READ) {
@@ -1209,6 +1217,7 @@ class KtorChatRepository : ChatRepository {
             chatsLimpiados.clear()
             manualGroupSubroutes.clear()
             watchedConversations.value = emptySet()
+            com.gowayki.nesh.app.common.ui.shared.ChatUnreadBadge.total = 0
             persist()
         }
     }
@@ -1363,6 +1372,7 @@ class KtorChatRepository : ChatRepository {
                             if (c.id == message.conversationId) c.copy(unreadCount = c.unreadCount + 1) else c
                         }
                     }
+                    actualizarBadgeNoLeidos()
                 }
                 if (_conversations.value.none { it.id == message.conversationId } &&
                     _archived.value.none { it.id == message.conversationId }

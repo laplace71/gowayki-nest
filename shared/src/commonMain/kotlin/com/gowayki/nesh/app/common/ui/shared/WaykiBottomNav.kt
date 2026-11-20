@@ -360,6 +360,17 @@ private fun BottomNavItem(
                         scaleY = iconScale
                     }
             )
+            // Punto de mensajes nuevos en Comunicación, visible desde cualquier módulo.
+            if (tabIndex == 1 && ChatUnreadBadge.total > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 2.dp, top = 2.dp)
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(AppColors.error),
+                )
+            }
         }
         Spacer(Modifier.height(2.dp))
         Text(

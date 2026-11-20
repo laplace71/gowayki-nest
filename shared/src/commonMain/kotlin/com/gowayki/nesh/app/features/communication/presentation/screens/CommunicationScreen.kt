@@ -840,13 +840,38 @@ private fun ConversationRow(
             }
             Spacer(Modifier.height(3.dp))
             val subruta = SubrouteLabels.nameOf(conv.claveRuta)
-            val previewText = when {
-                conv.eliminacionPendiente -> "Pendiente de eliminación en 72 horas"
-                conv.isGroup && conv.hasLeft -> "Ya no participas en este grupo"
-                subruta != null -> "Subruta: $subruta · ${conv.preview}"
-                else -> conv.preview
+            when {
+                conv.eliminacionPendiente -> Text(
+                    "Pendiente de eliminación en 72 horas",
+                    style = AppTextStyles.waykiMini,
+                    color = AppColors.error,
+                    maxLines = 1,
+                )
+                conv.isGroup && conv.hasLeft -> Text(
+                    "Ya no participas en este grupo",
+                    style = AppTextStyles.waykiMini,
+                    color = AppColors.slate,
+                    maxLines = 1,
+                )
+                else -> {
+                    // Indicador de subruta arriba y mensaje reciente debajo.
+                    if (subruta != null) {
+                        Text(
+                            text = "Subruta: $subruta",
+                            style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                            color = AppColors.primary,
+                            maxLines = 1,
+                        )
+                    }
+                    Text(
+                        text = conv.preview,
+                        style = AppTextStyles.waykiMini,
+                        color = AppColors.slate,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-            Text(previewText, style = AppTextStyles.waykiMini, color = AppColors.slate, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
