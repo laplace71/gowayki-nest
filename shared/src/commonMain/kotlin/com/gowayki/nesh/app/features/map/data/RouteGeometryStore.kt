@@ -1,7 +1,12 @@
 package com.gowayki.nesh.app.features.map.data
 
 import com.gowayki.nesh.data.repository.BackendLineasApi
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -26,6 +31,11 @@ object RouteGeometryStore {
     private val localCache = mutableMapOf<String, List<Pair<Double, Double>>>()
     private val apiCache = mutableMapOf<String, List<Pair<Double, Double>>>()
     private val apiMutex = Mutex()
+    private val refreshScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val _actualizaciones = MutableSharedFlow<String>(extraBufferCapacity = 16)
+
+    /** Aviso de que una ruta tiene geometría nueva viniendo del backend. */
+    fun actualizaciones(): Flow<String> = _actualizaciones
 
     suspend fun geometryFor(routeId: String): List<Pair<Double, Double>>? {
         apiMutex.withLock { apiCache[routeId] }?.let { return it }
@@ -33,6 +43,7 @@ object RouteGeometryStore {
         // Primero el asset local (0 ms) para que la UI responda al instante.
         val local = localRoute(routeId)
         if (!local.isNullOrEmpty()) {
+            refrescarEnSegundoPlano(routeId)
             return local
         }
 
@@ -43,6 +54,15 @@ object RouteGeometryStore {
         }
 
         return geometryFromApi(routeId)
+    }
+
+    private fun refrescarEnSegundoPlano(routeId: String) {
+        refreshScope.launch {
+            val remoto = geometryFromNewApi(routeId)
+            if (remoto.isNullOrEmpty()) return@launch
+            apiMutex.withLock { apiCache[routeId] = remoto }
+            _actualizaciones.tryEmit(routeId)
+        }
     }
 
     private suspend fun geometryFromNewApi(routeId: String): List<Pair<Double, Double>>? {

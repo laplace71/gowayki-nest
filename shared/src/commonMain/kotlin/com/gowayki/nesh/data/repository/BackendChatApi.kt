@@ -1,6 +1,7 @@
 package com.gowayki.nesh.data.repository
 
 import com.gowayki.nesh.core.network.HttpClientFactory
+import com.gowayki.nesh.data.entities.backend.AgregarParticipantesRequestDto
 import com.gowayki.nesh.data.entities.backend.ConversacionResponseDto
 import com.gowayki.nesh.data.entities.backend.CrearConversacionRequestDto
 import com.gowayki.nesh.data.entities.backend.EliminacionGrupoResponseDto
@@ -166,6 +167,18 @@ object BackendChatApi {
                 response.body<List<MensajeResponseDto>>()
             } else {
                 throw errorDeRespuesta(response, "No se pudieron cargar los mensajes")
+            }
+        }
+    }
+
+    /** Invita conductores a un grupo concreto por su id (grupos normales y de ruta). */
+    suspend fun agregarParticipantes(conversacionId: String, usuarioIds: List<String>): Result<Unit> = runCatching {
+        withContext(Dispatchers.Default) {
+            val response = client.post("$baseUrl/chat/conversaciones/$conversacionId/participantes") {
+                setBody(AgregarParticipantesRequestDto(usuarioIds))
+            }
+            if (!response.status.isSuccess()) {
+                throw errorDeRespuesta(response, "No se pudo invitar a los conductores")
             }
         }
     }

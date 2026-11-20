@@ -728,24 +728,17 @@ class KtorChatRepository : ChatRepository {
 
     override suspend fun addMembers(conversationId: String, members: List<GroupMember>): Result<Unit> {
         if (members.isEmpty()) return Result.success(Unit)
-        val myId = UserSession.currentUserId
-            ?: return Result.failure(IllegalStateException("Sesión sin usuario"))
         val group = (_conversations.value + _archived.value + _hidden.value)
             .firstOrNull { it.id == conversationId }
             ?: return Result.failure(IllegalArgumentException("Grupo no encontrado"))
 
-        // El backend reutiliza el grupo de la subruta cuando recibe la misma
-        // clave: agrega a los nuevos participantes en vez de crear otro grupo.
-        val request = CrearConversacionRequestDto(
-            titulo = group.title,
-            esGrupo = true,
-            tipoConversacion = group.tipoConversacion,
-            claveRuta = group.claveRuta,
-            createdBy = myId,
-            participanteIds = members.map { it.userId },
+        // Se invita por ID de conversación: funciona igual para grupos normales
+        // y de ruta, sin depender de que el backend "reutilice" un grupo por
+        // título o clave (eso solo estaba garantizado para los de subruta).
+        return BackendChatApi.agregarParticipantes(
+            conversationId,
+            members.map { it.userId },
         )
-
-        return BackendChatApi.crearConversacion(request)
             .onSuccess {
                 refreshConversations()
                 getParticipants(conversationId).onSuccess { participantes ->
@@ -1399,7 +1392,17 @@ class KtorChatRepository : ChatRepository {
             delay(600)
             persistPending = false
             runCatching {
-                val cappedMessages = _messages.value.mapValues { (_, list) -> list.takeLast(30) }
+                // Los grupos de los que salimos se conservan solo en este
+                // dispositivo (el backend ya no nos devuelve los mensajes):
+                // recortarlos a 30 borraría el historial definitivamente.
+                val historialCompleto = (_conversations.value + _archived.value + _hidden.value +
+                    _eliminacionesPendientes.value)
+                    .filter { it.hasLeft }
+                    .map { it.id }
+                    .toSet()
+                val cappedMessages = _messages.value.mapValues { (id, list) ->
+                    if (id in historialCompleto) list else list.takeLast(30)
+                }
                 ChatStore.write(
                     chatJson.encodeToString(
                         PersistedChatState(

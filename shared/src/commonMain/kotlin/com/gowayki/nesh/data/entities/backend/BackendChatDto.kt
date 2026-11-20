@@ -62,6 +62,11 @@ data class EliminacionGrupoResponseDto(
 )
 
 @Serializable
+data class AgregarParticipantesRequestDto(
+    val usuarioIds: List<String> = emptyList()
+)
+
+@Serializable
 data class EnviarMensajeTextoRequestDto(
     val contenidoTexto: String
 )
