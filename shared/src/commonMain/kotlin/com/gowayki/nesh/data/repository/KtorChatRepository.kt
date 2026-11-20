@@ -588,6 +588,27 @@ class KtorChatRepository : ChatRepository {
                         // lo siga devolviendo (no hay borrado por mensaje allí).
                         visibles.filterNot { it.id in mensajesBorrados }
                     }
+                    // Si el WebSocket no entregó nada, el polling también debe
+                    // contar los mensajes ajenos nuevos como no leídos. Solo se
+                    // cuenta cuando ya teníamos historial (no al cargar por
+                    // primera vez) y cuando el chat no está abierto.
+                    val prevIds = prev.map { it.id }.toSet()
+                    val nuevosAjenos = if (prev.isEmpty()) {
+                        0
+                    } else {
+                        list.count { it.id !in prevIds && !it.isMine }
+                    }
+                    if (nuevosAjenos > 0 && conversationId !in watchedConversations.value) {
+                        _conversations.update { convs ->
+                            convs.map { c ->
+                                if (c.id == conversationId) {
+                                    c.copy(unreadCount = c.unreadCount + nuevosAjenos)
+                                } else c
+                            }
+                        }
+                        actualizarBadgeNoLeidos()
+                    }
+
                     if (list != prev) {
                         _messages.update { it + (conversationId to list) }
                         list.lastOrNull()?.let { updateConversationPreview(conversationId, it) }
