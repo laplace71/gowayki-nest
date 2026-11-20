@@ -14,6 +14,8 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class KtorAuthRepository : AuthRepository {
 
@@ -24,8 +26,8 @@ class KtorAuthRepository : AuthRepository {
         return loginWithDni(UserSession.activeDni, pin)
     }
 
-    override suspend fun loginWithDni(dni: String, pin: String): Result<User> {
-        return try {
+    override suspend fun loginWithDni(dni: String, pin: String): Result<User> = withContext(Dispatchers.IO) {
+        try {
             val response: HttpResponse = client.post("$baseUrl/auth/login") {
                 setBody(LoginRequestDto(dni = dni.trim(), pin = pin.trim()))
             }
@@ -65,8 +67,9 @@ class KtorAuthRepository : AuthRepository {
         }
     }
 
-    override suspend fun register(name: String, dni: String, phone: String, email: String, pin: String): Result<User> {
-        return try {
+    override suspend fun register(name: String, dni: String, phone: String, email: String, pin: String): Result<User> =
+        withContext(Dispatchers.IO) {
+        try {
             val response: HttpResponse = client.post("$baseUrl/auth/registro") {
                 setBody(
                     RegisterRequestDto(
