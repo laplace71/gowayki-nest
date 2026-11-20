@@ -50,9 +50,9 @@ import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
 import com.gowayki.nesh.app.common.ui.shared.WaykiSidebarContent
 import com.gowayki.nesh.app.common.ui.shared.WaykiReveal
 import com.gowayki.nesh.app.common.ui.shared.WaykiSkeleton
+import com.gowayki.nesh.app.features.map.data.RouteCatalogStore
 import com.gowayki.nesh.app.features.map.data.RouteStopsStore
 import com.gowayki.nesh.app.features.map.data.SitRouteStop
-import com.gowayki.nesh.app.features.map.domain.model.ArequipaRoutes
 import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
 import com.gowayki.nesh.app.features.map.presentation.RouteDirection
 import com.gowayki.nesh.core.theme.src.AppTextStyles
@@ -114,14 +114,17 @@ fun RouteDetailScreen(
         var ida = effective?.routeId?.let { RouteStopsStore.stopsFor(it) }.orEmpty()
 
         // Si la ruta seleccionada no tiene paraderos cargados, usa la primera
-        // sub-ruta que sí tenga datos para que la pantalla nunca quede vacía.
+        // sub-ruta del catálogo (BD) que sí tenga datos para que la pantalla nunca quede vacía.
         if (ida.isEmpty()) {
-            val fallback = ArequipaRoutes.all.firstOrNull { route ->
+            runCatching { RouteCatalogStore.refresh() }
+            val candidates = RouteCatalogStore.subrutas().ifEmpty {
+                SelectedRouteHolder.catalog.value
+            }
+            val fallback = candidates.firstOrNull { route ->
                 route.isSub && route.routeId != null &&
                     RouteStopsStore.stopsFor(route.routeId!!).isNotEmpty()
             }
             if (fallback != null) {
-                SelectedRouteHolder.select(fallback)
                 effective = fallback
                 ida = fallback.routeId?.let { RouteStopsStore.stopsFor(it) }.orEmpty()
             }

@@ -25,15 +25,8 @@ data class SitRouteStop(
 /**
  * Paraderos por ruta.
  *
- * Antes cada consulta empezaba con una llamada HTTP (`lineaBySitId`) y solo
- * usaba el asset local si la red fallaba. Eso hacía que al entrar a Recorrido
- * la lista apareciera tarde y con un salto brusco. Ahora el asset local (ya
- * incluido en la app, son datos oficiales) responde al instante y la red queda
- * solo como respaldo para rutas que no estén en el asset.
- *
- * Además el JSON de paraderos pesa ~2.4 MB con 192 rutas y 22 000 paraderos:
- * se parsea una sola vez y se materializan únicamente las rutas que se piden
- * (antes se creaban los 22 000 objetos `SitRouteStop` de golpe).
+ * Fuente primaria: BD/backend por routeId (subruta ida/retorno), con caché en memoria.
+ * Respaldo: asset local empaquetado (datos oficiales) y API antigua de lineas.
  */
 object RouteStopsStore {
     private var assetJson: JsonObject? = null
@@ -42,12 +35,44 @@ object RouteStopsStore {
     private val apiCache = mutableMapOf<String, List<SitRouteStop>>()
     private val apiMutex = Mutex()
 
-    /** Paraderos de una ruta: cache de red → asset local → API (respaldo). */
+    /** Paraderos de una ruta: asset local (instantáneo) → BD/API nueva → API antigua (respaldo). */
     suspend fun stopsFor(routeId: String): List<SitRouteStop> {
         apiMutex.withLock { apiCache[routeId] }?.let { return postProcess(it) }
-        localRoute(routeId).takeIf { it.isNotEmpty() }?.let { return it }
+
+        // Primero el asset local (0 ms) para que la UI responda al instante.
+        val local = localRoute(routeId)
+        if (local.isNotEmpty()) {
+            // Refresca desde backend en segundo plano (no bloquea la UI).
+            return local
+        }
+
+        val remoteNew = stopsFromNewApi(routeId)
+        if (remoteNew.isNotEmpty()) {
+            val processed = postProcess(remoteNew)
+            apiMutex.withLock { apiCache[routeId] = processed }
+            return processed
+        }
+
         val remote = stopsFromApi(routeId).orEmpty()
-        return postProcess(remote)
+        val processed = postProcess(remote)
+        if (processed.isNotEmpty()) apiMutex.withLock { apiCache[routeId] = processed }
+        return processed
+    }
+
+    private suspend fun stopsFromNewApi(routeId: String): List<SitRouteStop> {
+        val dtos = runCatching { BackendLineasApi.paraderosPorRouteId(routeId) }.getOrElse { emptyList() }
+        if (dtos.isEmpty()) return emptyList()
+        return dtos.mapIndexedNotNull { i, p ->
+            val lat = p.lat ?: return@mapIndexedNotNull null
+            val lon = p.lon ?: return@mapIndexedNotNull null
+            SitRouteStop(
+                id = p.id ?: i.toString(),
+                name = p.name ?: "Paradero ${p.orden ?: (i + 1)}",
+                latitude = lat,
+                longitude = lon,
+                district = p.district,
+            )
+        }
     }
 
     /**
@@ -80,7 +105,10 @@ object RouteStopsStore {
     private suspend fun stopsFromApi(routeId: String): List<SitRouteStop>? {
         apiMutex.withLock { apiCache[routeId]?.let { return it } }
         val linea = runCatching { BackendLineasApi.lineaBySitId(routeId) }.getOrNull() ?: return null
-        val pts = linea.paraderos?.takeIf { it.isNotEmpty() } ?: runCatching { BackendLineasApi.puntos(linea.id) }.getOrDefault(emptyList())
+        // La API antigua /api/lineas ya no incluye paraderos: se piden por línea
+        // a /api/lineas/{id}/puntos-control. La fuente canónica sigue siendo
+        // /api/rutas/{routeId}/paraderos (stopsFromNewApi).
+        val pts = runCatching { BackendLineasApi.puntos(linea.id) }.getOrDefault(emptyList())
         if (pts.isEmpty()) return null
         val stops = pts.mapIndexedNotNull { i, p ->
             val lat = p.latitud ?: return@mapIndexedNotNull null
