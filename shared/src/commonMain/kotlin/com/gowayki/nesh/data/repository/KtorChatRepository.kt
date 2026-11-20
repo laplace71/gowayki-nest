@@ -1187,7 +1187,9 @@ class KtorChatRepository : ChatRepository {
      */
     fun cerrarSesion() {
         val usuario = com.gowayki.nesh.core.session.UserSession.currentUserId
-        if (!usuario.isNullOrBlank() && _hidden.value.isNotEmpty()) {
+        if (!usuario.isNullOrBlank()) {
+            // También se guarda la lista vacía: si se restauraron todos los
+            // chats, el snapshot anterior NO debe repoblar Ocultos al volver.
             hiddenPorCuenta[usuario] = _hidden.value
         }
         hiddenCargadoPara = null
@@ -1420,6 +1422,11 @@ class KtorChatRepository : ChatRepository {
             delay(600)
             persistPending = false
             runCatching {
+                // Toda mutación de "Ocultos" (incluida restaurar el último chat)
+                // debe reflejarse en el snapshot de la cuenta: guardar listas
+                // vacías es tan importante como guardar las llenas.
+                val uid = com.gowayki.nesh.core.session.UserSession.currentUserId
+                if (!uid.isNullOrBlank()) hiddenPorCuenta[uid] = _hidden.value
                 // Los grupos de los que salimos se conservan solo en este
                 // dispositivo (el backend ya no nos devuelve los mensajes):
                 // recortarlos a 30 borraría el historial definitivamente.

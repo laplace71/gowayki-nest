@@ -453,29 +453,38 @@ fun RouteAssignmentDialog(
                                 ?.removePrefix("Línea")?.removePrefix("Linea")?.trim()
                                 ?.split(" ")?.firstOrNull()?.uppercase()
                             val catalogo = SelectedRouteHolder.catalog.value
+                            fun codigo(v: String?) = v?.trim()?.removePrefix("SB-")
+                                ?.takeIf { it.isNotBlank() }
+
+                            // 1) Si el chofer tocó una subruta de ESTA línea, gana.
+                            // 2) Si no, gana la subruta asignada al vehículo, aunque
+                            //    no esté en el catálogo (se manda su código tal cual).
+                            // 3) Solo al final se usa un default de la línea.
                             val elegida = subrutaElegida?.let { id ->
                                 catalogo.firstOrNull { it.id.equals(id, true) }
                             }
-                            // Primero la elección explícita (si es de la línea de
-                            // la unidad), luego la subruta asignada al vehículo y
-                            // solo al final un default de la línea.
-                            val subrutaForTurno = when {
-                                elegida != null && (lineCode == null || elegida.parent.equals(lineCode, true)) -> elegida
-                                else -> unidad.subrutaCodigo?.let { code ->
-                                    catalogo.firstOrNull {
-                                        it.id.equals(code, true) || it.id.equals("SB-$code", true)
-                                    }
-                                } ?: lineCode?.let { SelectedRouteHolder.subrutasForLine(it).firstOrNull() }
+                            val eleccionValida = elegida != null &&
+                                (lineCode == null || elegida.parent.equals(lineCode, true))
+                            val codigoElegido = if (eleccionValida) {
+                                codigo(elegida?.routeId) ?: codigo(elegida?.id)
+                            } else {
+                                null
                             }
+                            val codigoVehiculo = codigo(unidad.subrutaCodigo)
+                            val codigoDefault = lineCode?.let { lc ->
+                                SelectedRouteHolder.subrutasForLine(lc).firstOrNull()
+                            }?.let { codigo(it.routeId) ?: codigo(it.id) }
+                            val codigoTurno = codigoElegido ?: codigoVehiculo ?: codigoDefault
+
                             BackendTurnosApi.asignar(
                                 choferId = choferId,
                                 unidadId = unidad.id,
-                                subrutaCodigo = subrutaForTurno?.id ?: unidad.subrutaCodigo,
+                                subrutaCodigo = codigoTurno,
                             )
                                 .onSuccess { turno ->
                                     TurnoSession.set(turno)
                                     val subCode = turno.subrutaCodigo?.takeIf { it.isNotBlank() }
-                                        ?: subrutaForTurno?.id
+                                        ?: codigoTurno
                                         ?: unidad.subrutaCodigo
                                     if (subCode != null) {
                                         SelectedRouteHolder.selectById(subCode)
