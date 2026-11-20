@@ -146,7 +146,7 @@ fun ChatScreen(
     var ultimoVistoId by remember { mutableStateOf<String?>(null) }
     var mensajesNuevos by remember { mutableStateOf(0) }
     var previewNueva by remember { mutableStateOf("") }
-    val cercaDelFinal by remember {
+    val cercaDelFinal by remember(messages) {
         derivedStateOf {
             val ultimoVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
             messages.isEmpty() || ultimoVisible >= messages.lastIndex - 1
