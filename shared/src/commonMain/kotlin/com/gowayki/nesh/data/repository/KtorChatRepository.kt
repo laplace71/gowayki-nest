@@ -754,6 +754,9 @@ class KtorChatRepository : ChatRepository {
     }
 
     override suspend fun markAsRead(conversationId: String): Result<Unit> {
+        // Avisamos al backend: si solo limpiáramos lo local, el próximo refresh
+        // traería otra vez el noLeidos y el marcador reaparecería.
+        val remoto = BackendChatApi.marcarLeido(conversationId)
         _conversations.update { list ->
             list.map { if (it.id == conversationId) it.copy(unreadCount = 0) else it }
         }
@@ -767,7 +770,7 @@ class KtorChatRepository : ChatRepository {
             all + (conversationId to current)
         }
         persist()
-        return Result.success(Unit)
+        return remoto
     }
 
     override suspend fun createGroup(name: String, members: List<GroupMember>): Result<Conversation> {

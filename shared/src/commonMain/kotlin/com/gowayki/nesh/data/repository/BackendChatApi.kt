@@ -171,6 +171,16 @@ object BackendChatApi {
         }
     }
 
+    /** Avisa al backend de que el chofer ya vio los mensajes de este chat. */
+    suspend fun marcarLeido(conversacionId: String): Result<Unit> = runCatching {
+        withContext(Dispatchers.Default) {
+            val response = client.post("$baseUrl/chat/conversaciones/$conversacionId/leido")
+            if (!response.status.isSuccess()) {
+                throw errorDeRespuesta(response, "No se pudo marcar el chat como leído")
+            }
+        }
+    }
+
     /** Invita conductores a un grupo concreto por su id (grupos normales y de ruta). */
     suspend fun agregarParticipantes(conversacionId: String, usuarioIds: List<String>): Result<Unit> = runCatching {
         withContext(Dispatchers.Default) {
