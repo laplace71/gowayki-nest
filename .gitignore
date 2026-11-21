@@ -31,8 +31,8 @@ openspec/
 *.aab
 apks/
 
-# Keystores de firma: secretos. Excepción: el keystore beta del repo, que debe
-# ser estable para que las betas se instalen una encima de otra.
+# Keystores de firma: secretos. NINGUNO se commitea: una clave pública no
+# distingue una beta oficial de una falsificada (CWE-321). La beta se firma
+# con RELEASE_KEYSTORE_* en CI y con los mismos secretos en publicar-apk.sh.
 *.jks
 *.keystore
-!androidApp/keystore/wayki-beta.jks
