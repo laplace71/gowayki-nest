@@ -1,0 +1,110 @@
+package com.gowayki.nesh.app.features.map.data
+
+import androidx.compose.ui.graphics.Color
+import com.gowayki.nesh.app.features.map.domain.model.ArequipaRoutes
+import com.gowayki.nesh.app.features.map.domain.model.CombiRoute
+import com.gowayki.nesh.data.entities.backend.BackendSubrutaDto
+import com.gowayki.nesh.data.repository.BackendLineasApi
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+/**
+ * Catálogo de rutas/subrutas.
+ *
+ * Fuente primaria: BD/backend (/api/rutas/catalogo). Respaldo: catálogo
+ * empaquetado en la app ([ArequipaRoutes]) para funcionar offline o si la API
+ * no está disponible. La unidad operativa es la subruta concreta (no la línea
+ * general C2/C3...).
+ */
+object RouteCatalogStore {
+    private val mutex = Mutex()
+    private var loaded = false
+    private var catalogSubrutas: List<CombiRoute> = emptyList()
+
+    /** Carga/actualiza el catálogo desde BD. Idempotente por llamada concurrente. */
+    suspend fun refresh(force: Boolean = false): List<CombiRoute> = mutex.withLock {
+        if (loaded && !force && catalogSubrutas.isNotEmpty()) return catalogSubrutas
+
+        // Respaldo empaquetado primero (instantáneo) para que la UI no se congele.
+        if (!loaded) {
+            catalogSubrutas = ArequipaRoutes.all.filter { it.isSub && it.routeId != null }
+            loaded = true
+        }
+
+        val remote = runCatching { BackendLineasApi.catalogoRutas() }.getOrNull()
+        val mapped = remote?.lineas
+            ?.flatMap { it.subrutas }
+            ?.mapNotNull { it.toCombiRoute() }
+            .orEmpty()
+
+        if (mapped.isNotEmpty()) {
+            // El backend puede repetir subrutas (misma fila en dos líneas):
+            // los ids son keys de LazyColumn y un duplicado cierra la app.
+            catalogSubrutas = mapped.distinctBy { it.id }
+            loaded = true
+        }
+        return catalogSubrutas
+    }
+
+    /** Subrutas disponibles (desde BD si cargó, si no respaldo empaquetado). */
+    suspend fun subrutas(): List<CombiRoute> {
+        if (!loaded || catalogSubrutas.isEmpty()) refresh()
+        return catalogSubrutas.ifEmpty { ArequipaRoutes.all.filter { it.isSub && it.routeId != null } }
+    }
+
+    /** Subrutas de una línea (código padre, ej. "C2"). */
+    suspend fun subrutasForLine(lineCode: String): List<CombiRoute> =
+        subrutas().filter { it.parent.equals(lineCode, ignoreCase = true) }
+
+    suspend fun byId(id: String): CombiRoute? {
+        val subs = subrutas()
+        return subs.firstOrNull { it.id == id }
+            ?: ArequipaRoutes.byId(id)
+    }
+
+    suspend fun byRouteId(routeId: String): CombiRoute? {
+        val subs = subrutas()
+        return subs.firstOrNull { it.routeId == routeId || it.returnRouteId == routeId }
+            ?: ArequipaRoutes.all.firstOrNull { it.routeId == routeId || it.returnRouteId == routeId }
+    }
+
+    /** Resolución síncrona desde lo ya cargado (o el respaldo empaquetado), para etiquetas de UI. */
+    fun cachedById(id: String): CombiRoute? =
+        catalogSubrutas.firstOrNull { it.id.equals(id, ignoreCase = true) }
+            ?: ArequipaRoutes.byId(id)
+
+    /** Todas las rutas conocidas (subrutas de catálogo + rutas empaquetadas como respaldo). */
+    suspend fun all(): List<CombiRoute> {
+        val subs = subrutas()
+        return if (subs.isNotEmpty()) subs else ArequipaRoutes.all
+    }
+
+    private fun BackendSubrutaDto.toCombiRoute(): CombiRoute? {
+        val code = codigo ?: return null
+        val ida = routeIdIda ?: return null
+        val parentCode = (lineaCodigo ?: code.removePrefix("SB-").take(3)).uppercase()
+        return CombiRoute(
+            id = code,
+            name = nombre ?: code,
+            operator = operador ?: (lineaNombre ?: ""),
+            color = parseColor(colorHex),
+            waypoints = emptyList(),
+            isSub = true,
+            parent = parentCode.ifBlank { null },
+            routeId = ida,
+            returnRouteId = routeIdRetorno,
+            returnName = nombreRetorno,
+        )
+    }
+
+    private fun parseColor(hex: String?): Color {
+        val clean = hex?.trim()?.removePrefix("#") ?: return Color(0xFF888888)
+        return runCatching {
+            when (clean.length) {
+                6 -> Color(0xFF000000 or clean.toLong(16))
+                8 -> Color(clean.toLong(16))
+                else -> Color(0xFF888888)
+            }
+        }.getOrDefault(Color(0xFF888888))
+    }
+}

@@ -1,5 +1,6 @@
 package com.gowayki.nesh.app.features.map.presentation
 
+import com.gowayki.nesh.app.features.map.data.RouteCatalogStore
 import com.gowayki.nesh.app.features.map.data.RouteSelectionStore
 import com.gowayki.nesh.app.features.map.domain.model.ArequipaRoutes
 import com.gowayki.nesh.app.features.map.domain.model.CombiRoute
@@ -31,6 +32,10 @@ object SelectedRouteHolder {
     /** Sentido compartido entre "Tu recorrido" y el mapa. */
     val direction: StateFlow<RouteDirection> = _direction.asStateFlow()
 
+    private val _catalog = MutableStateFlow<List<CombiRoute>>(emptyList())
+    /** Catálogo dinámico de subrutas (desde BD). */
+    val catalog: StateFlow<List<CombiRoute>> = _catalog.asStateFlow()
+
     fun setDirection(direction: RouteDirection) {
         _direction.value = direction
         persistSelection()
@@ -39,6 +44,48 @@ object SelectedRouteHolder {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var restored = false
     private var userSelected = false
+    /** true si se restauró una ruta guardada previamente (el usuario ya había elegido). */
+    private var restoredFromStore = false
+
+    /** El usuario entró/eligió una ruta de forma efectiva (selección, turno o ruta guardada). */
+    val hasEnteredRoute: Boolean
+        get() = userSelected || restoredFromStore
+
+    /** Carga catálogo de subrutas desde BD (con respaldo empaquetado). */
+    suspend fun refreshCatalog(force: Boolean = false) {
+        val subs = RouteCatalogStore.refresh(force)
+        _catalog.value = subs
+        // Si no hay selección concreta válida, asegurar una subruta por defecto.
+        val cur = _selected.value
+        if (cur == null || !cur.isSub) {
+            val def = subs.firstOrNull() ?: ArequipaRoutes.all.firstOrNull { it.isSub && it.routeId != null }
+            if (def != null) _selected.value = def
+        }
+    }
+
+    /** Subrutas disponibles de una línea (C2, C3...). */
+    fun subrutasForLine(lineCode: String): List<CombiRoute> {
+        val fromCatalog = _catalog.value.filter { it.parent.equals(lineCode, ignoreCase = true) }
+        if (fromCatalog.isNotEmpty()) return fromCatalog
+        return ArequipaRoutes.all.filter { it.isSub && it.parent.equals(lineCode, ignoreCase = true) }
+    }
+
+    private fun findById(id: String): CombiRoute? {
+        val norm = id.trim()
+        val withoutSb = norm.removePrefix("SB-").removePrefix("sb-").trim()
+        val withSb = "SB-$withoutSb"
+        return _catalog.value.firstOrNull {
+            it.id.equals(norm, ignoreCase = true) ||
+            it.id.equals(withSb, ignoreCase = true) ||
+            (withoutSb.isNotEmpty() && it.id.equals(withoutSb, ignoreCase = true)) ||
+            it.routeId == norm || (withoutSb.isNotEmpty() && it.routeId == withoutSb)
+        } ?: ArequipaRoutes.all.firstOrNull {
+            it.id.equals(norm, ignoreCase = true) ||
+            it.id.equals(withSb, ignoreCase = true) ||
+            (withoutSb.isNotEmpty() && it.id.equals(withoutSb, ignoreCase = true)) ||
+            it.routeId == norm || (withoutSb.isNotEmpty() && it.routeId == withoutSb)
+        }
+    }
 
     private fun persistSelection() {
         val route = _selected.value ?: return
@@ -65,7 +112,20 @@ object SelectedRouteHolder {
     }
 
     fun selectById(id: String?) {
-        val route = id?.let { ArequipaRoutes.byId(it) } ?: return
+        if (id.isNullOrBlank()) return
+        val route = findById(id) ?: run {
+            val clean = id.trim()
+            if (clean.equals("general", ignoreCase = true)) return
+            CombiRoute(
+                id = clean,
+                name = clean,
+                operator = "",
+                color = androidx.compose.ui.graphics.Color(0xFFE53935),
+                waypoints = emptyList(),
+                isSub = true,
+                parent = null
+            )
+        }
         select(route)
     }
 
@@ -119,19 +179,38 @@ object SelectedRouteHolder {
     private fun routeForLineName(nombre: String?): CombiRoute? {
         val code = lineCode(nombre) ?: return null
         // Preferir una subruta concreta (con trazado real) antes que la línea general.
+        val fromCatalog = _catalog.value.firstOrNull { it.isSub && it.parent.equals(code, true) && it.routeId != null }
+        if (fromCatalog != null) return fromCatalog
         return ArequipaRoutes.all.firstOrNull { it.isSub && it.parent == code && it.routeId != null }
             ?: ArequipaRoutes.byId(code)
     }
 
-    /** Restaura la última ruta guardada. Idempotente. */
+    /** Restaura la última ruta guardada y carga catálogo desde BD. Idempotente. */
     suspend fun restore() {
         if (restored) return
         restored = true
-        val id = RouteSelectionStore.load() ?: return
+        // Cargar catálogo de subrutas desde BD (con respaldo empaquetado)
+        val subs = runCatching { RouteCatalogStore.refresh() }.getOrDefault(emptyList())
+        if (subs.isNotEmpty()) _catalog.value = subs
+
+        val id = RouteSelectionStore.load() ?: run {
+            // Asegurar selección por defecto de subruta concreta
+            if (_selected.value?.isSub != true) {
+                val def = subs.firstOrNull() ?: ArequipaRoutes.all.firstOrNull { it.isSub && it.routeId != null }
+                if (def != null) _selected.value = def
+            }
+            return
+        }
         if (userSelected) return
         // Solo se restauran sub-rutas reales (no líneas agregadas).
-        val saved = ArequipaRoutes.byId(id) ?: return
-        if (saved.isSub) _selected.value = saved
+        val saved = findById(id) ?: RouteCatalogStore.byId(id)
+        if (saved != null && saved.isSub) {
+            restoredFromStore = true
+            _selected.value = saved
+        } else {
+            val def = subs.firstOrNull() ?: ArequipaRoutes.all.firstOrNull { it.isSub && it.routeId != null }
+            if (def != null) _selected.value = def
+        }
     }
 
     // --- Cache de geometría para que el mapa muestre la ruta al instante

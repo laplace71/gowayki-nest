@@ -5,7 +5,9 @@ import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.request.header
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
@@ -32,6 +34,9 @@ object HttpClientFactory {
 
             defaultRequest {
                 contentType(ContentType.Application.Json)
+                com.gowayki.nesh.core.session.AuthTokenState.authorizationHeader?.let { valor ->
+                    header(HttpHeaders.Authorization, valor)
+                }
             }
         }
     }
@@ -42,6 +47,12 @@ object HttpClientFactory {
                 requestTimeoutMillis = 30_000
                 connectTimeoutMillis = 15_000
                 socketTimeoutMillis = 30_000
+            }
+            // El audio también va autenticado: el backend toma el emisor del token.
+            defaultRequest {
+                com.gowayki.nesh.core.session.AuthTokenState.authorizationHeader?.let { valor ->
+                    header(HttpHeaders.Authorization, valor)
+                }
             }
         }
     }

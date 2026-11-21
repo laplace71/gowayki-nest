@@ -7,7 +7,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.LoginStatus
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.LoginUiState
+import com.gowayki.nesh.core.session.LastDniStore
 import com.gowayki.nesh.core.session.UserSession
+import com.gowayki.nesh.domain.model.AuthError
+import com.gowayki.nesh.domain.model.AuthPolicy
 import com.gowayki.nesh.domain.model.User
 import com.gowayki.nesh.domain.repository.AuthRepository
 import kotlinx.coroutines.Job
@@ -31,9 +34,16 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
     var loginState by mutableStateOf(LoginUiState())
         private set
 
-    // Persona activa: el login se hace contra este DNI.
-    var activeDni by mutableStateOf(UserSession.activeDni)
+    // Persona activa: el login se hace contra este DNI. Se recuerda el último
+    // usado para no volver siempre al DNI de prueba.
+    var activeDni by mutableStateOf(
+        LastDniStore.read()?.takeIf { it.length == 8 } ?: UserSession.activeDni
+    )
         private set
+
+    init {
+        UserSession.activeDni = activeDni
+    }
 
     /** Cambia de persona y limpia cualquier intento de PIN en curso. */
     fun updateDni(dni: String) {
@@ -41,6 +51,7 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
         if (clean.isBlank()) return
         activeDni = clean
         UserSession.activeDni = clean
+        runCatching { LastDniStore.write(clean) }
         loginState = LoginUiState()
     }
 
@@ -58,7 +69,7 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
         val currentPin = loginState.pin
         if (currentPin.length < 6) {
             val newPin = currentPin + number
-            loginState = loginState.copy(pin = newPin, status = LoginStatus.NORMAL)
+            loginState = loginState.copy(pin = newPin, status = LoginStatus.NORMAL, errorMessage = null)
             
             if (newPin.length == 6) {
                 verifyPin(newPin)
@@ -73,7 +84,8 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
         if (currentPin.isNotEmpty()) {
             loginState = loginState.copy(
                 pin = currentPin.dropLast(1),
-                status = LoginStatus.NORMAL // Resetear error al borrar
+                status = LoginStatus.NORMAL, // Resetear error al borrar
+                errorMessage = null,
             )
         }
     }
@@ -88,40 +100,84 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
                     loginState = LoginUiState()
                     state = AuthUiState(user = it)
                 }
-                .onFailure {
-                    val newAttempts = loginState.attemptsLeft - 1
-                    if (newAttempts <= 0) {
-                        startBlockTimer()
-                    } else {
-                        loginState = loginState.copy(
-                            status = LoginStatus.ERROR,
-                            attemptsLeft = newAttempts,
-                            pin = "" // Opcional: limpiar pin al fallar
-                        )
-                    }
-                    state = AuthUiState(error = it.message ?: "Error inesperado")
+                .onFailure { error ->
+                    aplicarFallo(error)
                 }
         }
     }
 
-    private fun startBlockTimer() {
+    /**
+     * Traduce el fallo del intento a la pantalla.
+     *
+     * El backend manda: si dice que quedan N intentos, se muestran esos N; si
+     * dice que la cuenta está bloqueada, se bloquea 15 minutos, igual que la
+     * base de datos. Un fallo de red no gasta intentos ni bloquea nada.
+     */
+    private fun aplicarFallo(error: Throwable) {
+        val motivo = error as? AuthError ?: AuthError.SinConexion()
+
+        when (motivo) {
+            is AuthError.SinConexion -> {
+                loginState = loginState.copy(
+                    status = LoginStatus.ERROR,
+                    pin = "",
+                    errorMessage = motivo.message,
+                )
+            }
+
+            is AuthError.CuentaBloqueada -> startBlockTimer(motivo.message)
+
+            is AuthError.PinIncorrecto -> {
+                val restantes = motivo.restantes
+                    ?: (loginState.attemptsLeft - 1).coerceAtLeast(0)
+
+                if (restantes <= 0) {
+                    startBlockTimer(
+                        "Demasiados intentos con PIN incorrecto. La cuenta quedó bloqueada por seguridad."
+                    )
+                } else {
+                    loginState = loginState.copy(
+                        status = LoginStatus.ERROR,
+                        attemptsLeft = restantes,
+                        pin = "",
+                        errorMessage = motivo.message,
+                    )
+                }
+            }
+
+            is AuthError.Rechazado -> {
+                loginState = loginState.copy(
+                    status = LoginStatus.ERROR,
+                    pin = "",
+                    errorMessage = motivo.message,
+                )
+            }
+        }
+
+        state = AuthUiState(error = motivo.message)
+    }
+
+    private fun startBlockTimer(mensaje: String?) {
+        blockTimerJob?.cancel()
+
         loginState = loginState.copy(
             status = LoginStatus.BLOCKED,
-            blockTimerSeconds = 30, // 30 segundos segun el Figma
+            blockTimerSeconds = AuthPolicy.SEGUNDOS_DE_BLOQUEO,
             attemptsLeft = 0,
-            pin = ""
+            pin = "",
+            errorMessage = mensaje,
         )
-        
-        blockTimerJob?.cancel()
+
         blockTimerJob = viewModelScope.launch {
             while (loginState.blockTimerSeconds > 0) {
                 delay(1000)
                 loginState = loginState.copy(blockTimerSeconds = loginState.blockTimerSeconds - 1)
             }
-            // Termino el castigo
+            // Terminó el bloqueo: el próximo intento lo vuelve a decidir el servidor.
             loginState = loginState.copy(
                 status = LoginStatus.NORMAL,
-                attemptsLeft = 3
+                attemptsLeft = AuthPolicy.MAX_INTENTOS,
+                errorMessage = null,
             )
         }
     }
@@ -135,6 +191,7 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
                 .onSuccess { registered ->
                     activeDni = registered.dni.ifBlank { dni.trim() }
                     UserSession.activeDni = activeDni
+                    runCatching { LastDniStore.write(activeDni) }
                     state = AuthUiState(user = registered)
                 }
                 .onFailure {

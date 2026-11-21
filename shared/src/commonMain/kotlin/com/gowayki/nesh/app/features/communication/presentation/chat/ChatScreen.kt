@@ -38,7 +38,6 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -57,39 +56,51 @@ import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
 import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import com.gowayki.nesh.app.common.ui.shared.WaykiAvatar
 import com.gowayki.nesh.app.common.ui.shared.ToastManager
+import com.gowayki.nesh.app.common.util.formatTime
 import com.gowayki.nesh.app.features.sos.domain.model.createAudioRecorder
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.derivedStateOf
+import com.gowayki.nesh.app.features.communication.domain.model.GroupMember
 import com.gowayki.nesh.app.features.communication.domain.model.Message
 import com.gowayki.nesh.app.features.communication.domain.model.MessageKind
 import com.gowayki.nesh.app.features.communication.domain.model.MessageStatus
+import com.gowayki.nesh.app.features.communication.presentation.components.PlaybackWaveform
 import com.gowayki.nesh.app.features.communication.presentation.components.VoiceNoteMode
 import com.gowayki.nesh.app.features.communication.presentation.components.VoiceNotePanel
 import com.gowayki.nesh.app.features.communication.presentation.components.formatVoiceTime
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
 import com.gowayki.nesh.core.theme.src.core.AppSpacing
+import compose.icons.FeatherIcons
 import compose.icons.feathericons.Check
 import compose.icons.feathericons.CheckSquare
 import compose.icons.feathericons.Mic
 import compose.icons.feathericons.Archive
 import compose.icons.feathericons.Inbox
+import compose.icons.feathericons.LogOut
 import compose.icons.feathericons.MessageCircle
 import compose.icons.feathericons.MoreVertical
+import compose.icons.feathericons.Pause
+import compose.icons.feathericons.Play
 import compose.icons.feathericons.Send
 import compose.icons.feathericons.Trash2
 import compose.icons.feathericons.ArrowUp
+import compose.icons.feathericons.EyeOff
+import compose.icons.feathericons.XCircle
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     title: String,
     isGroup: Boolean,
     memberCount: Int,
+    members: List<GroupMember> = emptyList(),
+    colleagues: List<GroupMember> = emptyList(),
     messages: List<Message>,
-    draft: String,
-    sending: Boolean,
+    /** Proveedor del borrador: se lee dentro del composer para no recompensar el chat. */
+    draftProvider: () -> String,
+    sendingProvider: () -> Boolean = { false },
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
     conversationId: String,
@@ -103,12 +114,26 @@ fun ChatScreen(
     onArchive: () -> Unit = {},
     onUnarchive: () -> Unit = {},
     onClearChat: () -> Unit = {},
-    onDeleteChat: () -> Unit = {},
+    onHideChat: () -> Unit = {},
+    onLeaveGroup: () -> Unit = {},
+    onRequestGroupDeletion: () -> Unit = {},
+    onCancelGroupDeletion: () -> Unit = {},
+    onAddMembers: (List<GroupMember>) -> Unit = {},
+    onRefreshColleagues: () -> Unit = {},
+    onAssignRole: (String, String) -> Unit = { _, _ -> },
+    miRol: String? = null,
+    createdBy: String? = null,
+    hasLeft: Boolean = false,
+    eliminacionPendiente: Boolean = false,
+    subrouteLabel: String? = null,
 ) {
     var showInfo by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var longPressedMessage by remember { mutableStateOf<Message?>(null) }
-    var confirmDeleteChat by remember { mutableStateOf(false) }
+    var confirmLeaveGroup by remember { mutableStateOf(false) }
+    var confirmRequestDeleteGroup by remember { mutableStateOf(false) }
+    var confirmCancelDeleteGroup by remember { mutableStateOf(false) }
+    var confirmHideChat by remember { mutableStateOf(false) }
     var confirmClearChat by remember { mutableStateOf(false) }
     BackHandler(true) { if (showInfo) showInfo = false else onBack() }
     val listState = rememberLazyListState()
@@ -116,34 +141,69 @@ fun ChatScreen(
     val audioPlayer = remember { runCatching { createAudioRecorder() }.getOrNull() }
     var playingPath by remember { mutableStateOf<String?>(null) }
     var playerIsPlaying by remember { mutableStateOf(false) }
-    var playerPosition by remember { mutableStateOf(0L) }
-    var playerDuration by remember { mutableStateOf(0L) }
 
-    // Collect audio player state in LaunchedEffect to avoid recomposition on every position update
+    // Aviso de mensajes nuevos mientras el usuario está scrolleando arriba.
+    var ultimoVistoId by remember { mutableStateOf<String?>(null) }
+    var mensajesNuevos by remember { mutableStateOf(0) }
+    var previewNueva by remember { mutableStateOf("") }
+    val cercaDelFinal by remember(messages) {
+        derivedStateOf {
+            val ultimoVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            messages.isEmpty() || ultimoVisible >= messages.lastIndex - 1
+        }
+    }
+
+    val ultimoMensaje = messages.lastOrNull()
+    LaunchedEffect(ultimoMensaje?.id) {
+        val id = ultimoMensaje?.id ?: return@LaunchedEffect
+        if (ultimoVistoId == null) {
+            ultimoVistoId = id
+            return@LaunchedEffect
+        }
+        if (id == ultimoVistoId) return@LaunchedEffect
+
+        val desde = messages.indexOfLast { it.id == ultimoVistoId }
+        val cantidad = (messages.lastIndex - desde).coerceAtLeast(1)
+        val ultimo = messages.last()
+        val texto = when (ultimo.kind) {
+            MessageKind.AUDIO -> "Audio · ${formatVoiceTime(ultimo.audioDurationSeconds * 1000L)}"
+            else -> ultimo.text
+        }
+        val autor = if (ultimo.isMine) "Tú" else ultimo.senderName
+
+        if (cercaDelFinal) {
+            listState.animateScrollToItem(messages.lastIndex)
+            mensajesNuevos = 0
+            previewNueva = ""
+        } else {
+            mensajesNuevos += cantidad
+            previewNueva = "$autor: $texto"
+        }
+        ultimoVistoId = id
+    }
+
+    LaunchedEffect(cercaDelFinal) {
+        if (cercaDelFinal) {
+            mensajesNuevos = 0
+            previewNueva = ""
+            ultimoVistoId = messages.lastOrNull()?.id
+        }
+    }
+
+    // La reproducción se observa directamente. Antes había un efecto que
+    // limpiaba `playingPath` 120 ms después de pulsar play; como MediaPlayer
+    // tarda un poco en arrancar, ese retardo apagaba el estado antes de que
+    // empezara y la línea de tiempo nunca se movía.
     LaunchedEffect(audioPlayer) {
-        if (audioPlayer != null) {
-            audioScope.launch {
-                audioPlayer.isPlaying.collect { playerIsPlaying = it }
-            }
-            audioScope.launch {
-                audioPlayer.playbackPosition.collect { playerPosition = it }
-            }
-            audioScope.launch {
-                audioPlayer.playbackDuration.collect { playerDuration = it }
-            }
-        }
+        audioPlayer?.isPlaying?.collect { playerIsPlaying = it }
     }
 
-    LaunchedEffect(playerIsPlaying, playingPath) {
-        if (!playerIsPlaying && playingPath != null) {
-            // Al terminar la reproducción, limpia el estado visual del bubble.
-            // (pequeño retardo para permitir que el player actualice posición final)
-            kotlinx.coroutines.delay(120)
-            if (!playerIsPlaying) playingPath = null
-        }
-    }
     DisposableEffect(audioPlayer) {
-        onDispose { audioScope.launch { runCatching { audioPlayer?.stopPlayback() } } }
+        onDispose {
+            audioScope.launch {
+                runCatching { audioPlayer?.stopPlayback() }
+            }
+        }
     }
 
     // Baja al último mensaje solo si el usuario ya está al final (o si es
@@ -166,14 +226,24 @@ fun ChatScreen(
         ChatInfoScreen(
             title = title,
             isGroup = isGroup,
-            memberCount = memberCount,
+            memberCount = if (members.isNotEmpty()) members.size else memberCount,
+            members = members,
             photoPath = photoPath,
+            miRol = miRol,
+            createdBy = createdBy,
+            hasLeft = hasLeft,
+            subrouteLabel = subrouteLabel,
+            colleagues = colleagues,
             onBack = { showInfo = false },
             onChangePhoto = onChangePhoto,
+            onAddMembers = onAddMembers,
+            onRefreshColleagues = onRefreshColleagues,
+            onAssignRole = onAssignRole,
         )
         return
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -214,10 +284,28 @@ fun ChatScreen(
                     maxLines = 1
                 )
                 if (isGroup) {
+                    val subtitle = when {
+                        hasLeft -> "Ya no participas · $memberCount miembros"
+                        miRol == "ADMIN" -> "$memberCount miembros · Eres admin"
+                        else -> "$memberCount miembros"
+                    }
                     Text(
-                        text = "$memberCount conductores",
+                        text = subtitle,
                         style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
                         color = AppColors.cream.copy(alpha = 0.7f)
+                    )
+                }
+                val location = when {
+                    !subrouteLabel.isNullOrBlank() -> "Subruta: $subrouteLabel"
+                    isGroup -> "Grupo global · todas las subrutas"
+                    else -> null
+                }
+                if (location != null) {
+                    Text(
+                        text = location,
+                        style = AppTextStyles.waykiMini.copy(fontSize = 10.sp),
+                        color = AppColors.cream.copy(alpha = 0.65f),
+                        maxLines = 1
                     )
                 }
             }
@@ -255,114 +343,65 @@ fun ChatScreen(
                 // Agrupa mensajes seguidos del mismo emisor (solo en grupos).
                 val previous = messages.getOrNull(index - 1)
                 val showSender = isGroup && previous?.senderId != message.senderId
-                val animatePop = index >= (messages.size - 10).coerceAtLeast(0)
 
-                Box(if (animatePop) Modifier.animateItem() else Modifier) {
-                    MessageBubble(
-                        message = message,
-                        showSender = showSender,
-                        showAvatar = !message.isMine && showSender,
-                        animatePop = animatePop,
-                        onLongPress = { longPressedMessage = message },
-                        audioPlayer = audioPlayer,
-                        playingPath = playingPath,
-                        onPlayingPathChange = { playingPath = it },
-                        playerIsPlaying = playerIsPlaying,
-                        // Solo pasar posición/duración si este mensaje es el que se está reproduciendo
-                        playerPosition = if (playingPath == message.audioFilePath.orEmpty() && playerIsPlaying) playerPosition else 0L,
-                        playerDuration = if (playingPath == message.audioFilePath.orEmpty() && playerIsPlaying) playerDuration else 0L,
-                    )
-                }
+                MessageBubble(
+                    message = message,
+                    showSender = showSender,
+                    showAvatar = !message.isMine && showSender,
+                    onLongPress = { longPressedMessage = message },
+                    audioPlayer = audioPlayer,
+                    playingPath = playingPath,
+                    onPlayingPathChange = { playingPath = it },
+                    playerIsPlaying = playerIsPlaying,
+                )
             }
         }
 
         // ── Campo de escritura (o barra de voz como WhatsApp) ────────────
-        val voiceUi = voiceVm.ui
-        val hasVoiceState = voiceUi.isRecording ||
-            voiceUi.isPlaying ||
-            voiceUi.lastRecordedFilePath != null ||
-            voiceUi.audioError != null
-        if (hasVoiceState) {
-            RecordingComposer(
-                voiceVm = voiceVm,
-                voiceUi = voiceUi,
+        if (hasLeft) {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(AppColors.cream)
                     .navigationBarsPadding()
-                    .imePadding(),
-            )
+                    .imePadding()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Ya no participas en este grupo. Puedes leer los mensajes y, si quieres, eliminar el chat de tu dispositivo.",
+                    style = AppTextStyles.waykiMini.copy(fontSize = 13.sp),
+                    color = AppColors.slate,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
         } else {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(AppColors.cream)
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(horizontal = 12.dp)
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            BasicTextField(
-                value = draft,
-                onValueChange = onDraftChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(AppColors.mauve.copy(alpha = 0.35f))
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
-                textStyle = TextStyle(
-                    fontSize = 15.sp,
-                    color = AppColors.ink
-                ),
-                cursorBrush = SolidColor(AppColors.ink),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                maxLines = 4,
-                decorationBox = { inner ->
-                    if (draft.isEmpty()) {
-                        Text(
-                            text = "Escribe un mensaje",
-                            style = AppTextStyles.waykiMini.copy(fontSize = 14.sp),
-                            color = AppColors.slate,
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        )
-                    }
-                    inner()
-                }
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Botón de envío o de nota de voz.
-            val hasText = draft.isNotBlank()
-            if (hasText) {
-                val sendSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                Box(
+            // El popup global muestra la grabación bloqueada, la reproducción,
+            // la vista previa y los errores. La barra del chat solo se usa mientras
+            // se mantiene pulsado el micrófono (sin bloquear), para no pintar dos
+            // líneas de tiempo a la vez.
+            val hasVoiceState = ShowInlineComposer(voiceVm)
+            if (hasVoiceState) {
+                val voiceUi = voiceVm.ui
+                RecordingComposer(
+                    voiceVm = voiceVm,
+                    voiceUi = voiceUi,
                     modifier = Modifier
-                        .size(46.dp)
-                        .background(AppColors.primary, CircleShape)
-                        .clickable(
-                            interactionSource = sendSource,
-                            indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
-                            enabled = !sending,
-                            onClick = onSend,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = compose.icons.FeatherIcons.Send,
-                        contentDescription = "Enviar",
-                        tint = AppColors.cream,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
+                        .fillMaxWidth()
+                        .background(AppColors.cream)
+                        .navigationBarsPadding()
+                        .imePadding(),
+                )
             } else {
-                VoiceRecordingButton(
+                ChatComposerBar(
+                    draftProvider = draftProvider,
+                    sendingProvider = sendingProvider,
+                    onDraftChange = onDraftChange,
+                    onSend = onSend,
                     voiceVm = voiceVm,
                     conversationId = conversationId,
                 )
             }
-        }
         }
     }
 
@@ -398,17 +437,85 @@ fun ChatScreen(
                 )
                 ChatMenuRow(
                     icon = compose.icons.FeatherIcons.MessageCircle,
-                    label = "Vaciar chat",
+                    label = "Limpiar chat (solo para ti)",
                     onClick = { showMenu = false; confirmClearChat = true }
                 )
+                if (isGroup && !hasLeft) {
+                    ChatMenuRow(
+                        icon = compose.icons.FeatherIcons.LogOut,
+                        label = "Salir del grupo",
+                        onClick = { showMenu = false; confirmLeaveGroup = true }
+                    )
+                    val puedeGestionar = miRol == "ADMIN" || createdBy == com.gowayki.nesh.core.session.UserSession.currentUserId
+                    if (puedeGestionar && !eliminacionPendiente) {
+                        ChatMenuRow(
+                            icon = compose.icons.FeatherIcons.Trash2,
+                            label = "Eliminar grupo (definitivo)",
+                            destructive = true,
+                            onClick = { showMenu = false; confirmRequestDeleteGroup = true }
+                        )
+                    }
+                    if (puedeGestionar && eliminacionPendiente) {
+                        ChatMenuRow(
+                            icon = compose.icons.FeatherIcons.XCircle,
+                            label = "Cancelar eliminación del grupo",
+                            onClick = { showMenu = false; confirmCancelDeleteGroup = true }
+                        )
+                    }
+                }
                 ChatMenuRow(
-                    icon = compose.icons.FeatherIcons.Trash2,
-                    label = "Eliminar chat",
+                    icon = compose.icons.FeatherIcons.EyeOff,
+                    label = "Ocultar chat",
                     destructive = true,
-                    onClick = { showMenu = false; confirmDeleteChat = true }
+                    onClick = { showMenu = false; confirmHideChat = true }
                 )
             }
         }
+    }
+
+    // Aviso flotante: puntito + contador + vista previa del último mensaje.
+    if (mensajesNuevos > 0) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 104.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(AppColors.primary)
+                .clickable {
+                    audioScope.launch { listState.animateScrollToItem(messages.lastIndex) }
+                    mensajesNuevos = 0
+                    previewNueva = ""
+                    ultimoVistoId = messages.lastOrNull()?.id
+                }
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(AppColors.cream),
+                )
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = "$mensajesNuevos mensaje${if (mensajesNuevos == 1) "" else "s"} nuevo${if (mensajesNuevos == 1) "" else "s"}",
+                        style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                        color = AppColors.cream,
+                        maxLines = 1,
+                    )
+                    if (previewNueva.isNotBlank()) {
+                        Text(
+                            text = previewNueva,
+                            style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
+                            color = AppColors.cream.copy(alpha = 0.85f),
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
+    }
     }
 
     // ── Acciones de un mensaje (mantener presionado) ─────────────────────
@@ -441,49 +548,162 @@ fun ChatScreen(
                         onDeleteMessage(msg.id)
                     }
                 )
-                ChatMenuRow(
-                    icon = compose.icons.FeatherIcons.Trash2,
-                    label = "Eliminar para todos",
-                    destructive = true,
-                    onClick = {
-                        longPressedMessage = null
-                        onDeleteMessageForAll(msg.id)
-                    }
-                )
+                // Solo quien envió el mensaje puede borrarlo para todos; el
+                // backend lo valida de nuevo con la identidad del JWT.
+                if (msg.isMine) {
+                    ChatMenuRow(
+                        icon = compose.icons.FeatherIcons.Trash2,
+                        label = "Eliminar para todos",
+                        destructive = true,
+                        onClick = {
+                            longPressedMessage = null
+                            onDeleteMessageForAll(msg.id)
+                        }
+                    )
+                }
             }
         }
     }
 
-    if (confirmDeleteChat) {
+    if (confirmLeaveGroup) {
+        val puedeGestionarGrupo = isGroup && (miRol == "ADMIN" || createdBy == com.gowayki.nesh.core.session.UserSession.currentUserId)
         androidx.compose.material3.AlertDialog(
-            onDismissRequest = { confirmDeleteChat = false },
+            onDismissRequest = { confirmLeaveGroup = false },
             containerColor = AppColors.cream,
             shape = RoundedCornerShape(28.dp),
             title = {
                 Text(
-                    text = "¿Eliminar este chat?",
+                    text = if (puedeGestionarGrupo) "¿Salir y eliminar el grupo?" else "¿Salir del grupo?",
                     style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
                     color = AppColors.ink
                 )
             },
             text = {
                 Text(
-                    text = if (isGroup) "Se eliminará esta conversación de tu lista de chats. El grupo seguirá disponible en la sección Grupos y podrás volver a abrirlo."
-                    else "Se borrará \"$title\" con sus mensajes y audios.",
+                    text = if (puedeGestionarGrupo) {
+                        "Si sales del grupo \"$title\", el grupo se eliminará una vez que salgas. Se programará su eliminación para todos los participantes."
+                    } else {
+                        "Dejarás de participar en \"$title\". El grupo y sus mensajes siguen existiendo para los demás y podrás seguir viendo este chat hasta que lo ocultes."
+                    },
                     style = AppTextStyles.waykiMini,
                     color = AppColors.slate
                 )
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
-                    confirmDeleteChat = false
-                    onDeleteChat()
+                    confirmLeaveGroup = false
+                    if (puedeGestionarGrupo) onRequestGroupDeletion() else onLeaveGroup()
                 }) {
-                    Text("Eliminar chat", color = AppColors.error, fontWeight = FontWeight.Bold)
+                    Text(if (puedeGestionarGrupo) "Salir y eliminar" else "Salir", color = AppColors.error, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { confirmDeleteChat = false }) {
+                androidx.compose.material3.TextButton(onClick = { confirmLeaveGroup = false }) {
+                    Text("Cancelar", color = AppColors.primary)
+                }
+            }
+        )
+    }
+
+    if (confirmRequestDeleteGroup) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmRequestDeleteGroup = false },
+            containerColor = AppColors.cream,
+            shape = RoundedCornerShape(28.dp),
+            title = {
+                Text(
+                    text = "¿Eliminar grupo definitivamente?",
+                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
+                    color = AppColors.ink
+                )
+            },
+            text = {
+                Text(
+                    text = "\"$title\" desaparecerá inmediatamente para todos los participantes. Durante las próximas 72 horas podrás cancelar la eliminación; pasado ese plazo se borrarán definitivamente el grupo, sus mensajes y sus archivos.",
+                    style = AppTextStyles.waykiMini,
+                    color = AppColors.slate
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    confirmRequestDeleteGroup = false
+                    onRequestGroupDeletion()
+                }) {
+                    Text("Programar eliminación", color = AppColors.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmRequestDeleteGroup = false }) {
+                    Text("Cancelar", color = AppColors.primary)
+                }
+            }
+        )
+    }
+
+    if (confirmCancelDeleteGroup) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmCancelDeleteGroup = false },
+            containerColor = AppColors.cream,
+            shape = RoundedCornerShape(28.dp),
+            title = {
+                Text(
+                    text = "¿Cancelar la eliminación?",
+                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
+                    color = AppColors.ink
+                )
+            },
+            text = {
+                Text(
+                    text = "El grupo \"$title\" dejará de estar pendiente de eliminación y seguirá disponible para sus participantes.",
+                    style = AppTextStyles.waykiMini,
+                    color = AppColors.slate
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    confirmCancelDeleteGroup = false
+                    onCancelGroupDeletion()
+                }) {
+                    Text("Cancelar eliminación", color = AppColors.primary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmCancelDeleteGroup = false }) {
+                    Text("Volver", color = AppColors.primary)
+                }
+            }
+        )
+    }
+
+    if (confirmHideChat) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmHideChat = false },
+            containerColor = AppColors.cream,
+            shape = RoundedCornerShape(28.dp),
+            title = {
+                Text(
+                    text = "¿Ocultar este chat?",
+                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
+                    color = AppColors.ink
+                )
+            },
+            text = {
+                Text(
+                    text = "Se quitará \"$title\" de tu lista. Solo lo ocultas para ti: no se borran mensajes ni audios y los demás participantes no notan nada. Podrás restaurarlo desde Ocultos.",
+                    style = AppTextStyles.waykiMini,
+                    color = AppColors.slate
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    confirmHideChat = false
+                    onHideChat()
+                }) {
+                    Text("Ocultar", color = AppColors.ink, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmHideChat = false }) {
                     Text("Cancelar", color = AppColors.primary)
                 }
             }
@@ -497,14 +717,14 @@ fun ChatScreen(
             shape = RoundedCornerShape(28.dp),
             title = {
                 Text(
-                    text = "¿Vaciar este chat?",
+                    text = "¿Limpiar este chat?",
                     style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
                     color = AppColors.ink
                 )
             },
             text = {
                 Text(
-                    text = "Se eliminarán todos los mensajes de esta conversación. El chat seguirá disponible en tu lista y podrás seguir enviando y recibiendo mensajes.",
+                    text = "Solo afecta a tu cuenta: ocultarás los mensajes anteriores y el chat saldrá de tu lista, también al reinstalar la app. Los mensajes NO se borran y los demás participantes no notan nada. Si llega un mensaje nuevo, el chat vuelve a aparecer mostrando solo lo nuevo.",
                     style = AppTextStyles.waykiMini,
                     color = AppColors.slate
                 )
@@ -514,7 +734,7 @@ fun ChatScreen(
                     confirmClearChat = false
                     onClearChat()
                 }) {
-                    Text("Vaciar chat", color = AppColors.primary, fontWeight = FontWeight.Bold)
+                    Text("Limpiar chat", color = AppColors.primary, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -570,27 +790,13 @@ private fun MessageBubble(
     message: Message,
     showSender: Boolean,
     showAvatar: Boolean,
-    animatePop: Boolean = true,
     onLongPress: () -> Unit = {},
     audioPlayer: com.gowayki.nesh.app.features.sos.domain.model.AudioRecorder? = null,
     playingPath: String? = null,
     onPlayingPathChange: (String?) -> Unit = {},
     playerIsPlaying: Boolean = false,
-    playerPosition: Long = 0L,
-    playerDuration: Long = 0L,
 ) {
     val isMine = message.isMine
-
-    // Pop solo para mensajes recientes/entrantes para evitar trabajo en scroll largo.
-    val pop = if (animatePop) remember(message.id) { Animatable(0.92f) } else null
-    LaunchedEffect(message.id, animatePop) {
-        if (pop != null) {
-            pop.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(200, easing = LinearOutSlowInEasing)
-            )
-        }
-    }
 
     Row(
         modifier = Modifier
@@ -598,13 +804,6 @@ private fun MessageBubble(
             .combinedClickable(
                 onClick = {},
                 onLongClick = onLongPress
-            )
-            .then(
-                if (pop != null) Modifier.graphicsLayer {
-                    scaleX = pop.value
-                    scaleY = pop.value
-                    alpha = pop.value
-                } else Modifier
             ),
         horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Bottom
@@ -654,8 +853,6 @@ private fun MessageBubble(
                         playingPath = playingPath,
                         onPlayingPathChange = onPlayingPathChange,
                         playerIsPlaying = playerIsPlaying,
-                        playerPosition = playerPosition,
-                        playerDuration = playerDuration,
                     )
                 } else {
                     Text(
@@ -713,22 +910,47 @@ private fun AudioBubbleContent(
     playingPath: String?,
     onPlayingPathChange: (String?) -> Unit,
     playerIsPlaying: Boolean,
-    playerPosition: Long,
-    playerDuration: Long,
 ) {
     val contentColor = if (isMine) AppColors.cream else AppColors.ink
-    val muted = if (isMine) AppColors.cream.copy(alpha = 0.4f) else AppColors.slate
+    val muted = if (isMine) {
+        AppColors.cream.copy(alpha = 0.35f)
+    } else {
+        AppColors.slate.copy(alpha = 0.35f)
+    }
+    val accent = if (isMine) AppColors.cream else AppColors.primary
     val audioPath = message.audioFilePath.orEmpty()
     val scope = rememberCoroutineScope()
-    val isThisPlaying = playerIsPlaying && playingPath == audioPath && audioPath.isNotBlank()
 
-    val totalMillis = if (isThisPlaying && playerDuration > 0L) {
+    // Solo la burbuja activa recolecta la posición. Si todas lo hicieran, cada
+    // actualización del reproductor (cada 60 ms) recompondría todos los audios
+    // del historial y la lista se pondría lenta.
+    val isActiveBubble = playingPath == audioPath && audioPath.isNotBlank()
+    var playerPosition by remember { mutableStateOf(0L) }
+    var playerDuration by remember { mutableStateOf(0L) }
+    LaunchedEffect(audioPlayer, isActiveBubble) {
+        if (!isActiveBubble) return@LaunchedEffect
+        audioPlayer?.playbackPosition?.collect { playerPosition = it }
+    }
+    LaunchedEffect(audioPlayer, isActiveBubble) {
+        if (!isActiveBubble) return@LaunchedEffect
+        audioPlayer?.playbackDuration?.collect { playerDuration = it }
+    }
+
+    val isThisPlaying = playerIsPlaying && playingPath == audioPath && audioPath.isNotBlank()
+    val totalMillis = if (playingPath == audioPath && playerDuration > 0L) {
         playerDuration
     } else {
         message.audioDurationSeconds * 1000L
     }
-    val progress = if (isThisPlaying && totalMillis > 0L) {
-        (playerPosition.toFloat() / totalMillis.toFloat()).coerceIn(0f, 1f)
+    val positionMillis = if (playingPath == audioPath) {
+        playerPosition.coerceAtMost(totalMillis)
+    } else {
+        0L
+    }
+    val isThisPaused = !playerIsPlaying && audioPath.isNotBlank() &&
+        playingPath == audioPath && positionMillis > 0L && positionMillis < totalMillis
+    val progress = if (totalMillis > 0L) {
+        (positionMillis.toFloat() / totalMillis.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
@@ -745,45 +967,43 @@ private fun AudioBubbleContent(
                 .clickable {
                     if (audioPath.isBlank()) {
                         ToastManager.show("Audio de muestra: sin archivo grabado")
-                    } else {
-                        scope.launch {
-                            if (isThisPlaying) {
-                                audioPlayer?.stopPlayback()
-                                onPlayingPathChange(null)
-                            } else {
-                                onPlayingPathChange(audioPath)
-                                audioPlayer?.playAudio(audioPath)
-                            }
+                        return@clickable
+                    }
+                    when {
+                        isThisPlaying -> scope.launch { audioPlayer?.pausePlayback() }
+                        isThisPaused -> scope.launch { audioPlayer?.resumePlayback() }
+                        else -> {
+                            onPlayingPathChange(audioPath)
+                            scope.launch { audioPlayer?.playAudio(audioPath) }
                         }
                     }
                 },
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = if (isThisPlaying) "❚❚" else "▶",
-                style = AppTextStyles.waykiLabelMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
-                color = if (isMine) AppColors.ink else AppColors.cream
+            Icon(
+                imageVector = if (isThisPlaying) FeatherIcons.Pause else FeatherIcons.Play,
+                contentDescription = if (isThisPlaying) "Pausar audio" else "Reproducir audio",
+                tint = if (isMine) AppColors.ink else AppColors.cream,
+                modifier = Modifier.size(18.dp),
             )
         }
         Spacer(modifier = Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
-            androidx.compose.material3.LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(3.dp)
-                    .clip(CircleShape),
-                color = if (isMine) AppColors.cream else AppColors.ink,
+            PlaybackWaveform(
+                progress = progress,
+                active = isThisPlaying,
+                color = accent,
                 trackColor = muted,
-                drawStopIndicator = {}
+                height = 30.dp,
+                modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(modifier = Modifier.height(5.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = if (isThisPlaying) formatVoiceTime(playerPosition) else "0:00",
+                    text = formatVoiceTime(positionMillis),
                     style = AppTextStyles.waykiMini.copy(fontSize = 10.sp),
                     color = contentColor.copy(alpha = 0.8f)
                 )
@@ -796,7 +1016,7 @@ private fun AudioBubbleContent(
         }
         Spacer(modifier = Modifier.width(8.dp))
         Icon(
-            imageVector = compose.icons.FeatherIcons.Mic,
+            imageVector = FeatherIcons.Mic,
             contentDescription = null,
             tint = contentColor.copy(alpha = 0.7f),
             modifier = Modifier.size(16.dp)
@@ -805,13 +1025,6 @@ private fun AudioBubbleContent(
 }
 
 /** "14:32" a partir del timestamp. */
-private fun formatTime(millis: Long): String {
-    val totalMinutes = (millis / 60000) % (24 * 60)
-    val hour = (totalMinutes / 60).toInt()
-    val minute = (totalMinutes % 60).toInt()
-    return "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
-}
-
 /** "18" segundos -> "0:18". */
 private fun formatDuration(seconds: Int): String {
     val m = seconds / 60
@@ -841,6 +1054,105 @@ private fun VoiceRecordingButton(
             tint = AppColors.cream,
             modifier = Modifier.size(20.dp),
         )
+    }
+}
+
+/**
+ * Lee el estado de voz en su propio alcance: si se leyera directo en el cuerpo
+ * de ChatScreen, cada tick del reproductor (cada 60 ms) recompondría todo el
+ * chat. Con esta función solo se recompone cuando el valor cambia de verdad.
+ */
+@Composable
+private fun ShowInlineComposer(voiceVm: CommunicationVoiceViewModel): Boolean {
+    val ui = voiceVm.ui
+    return ui.isRecording && !ui.isLocked
+}
+
+/**
+ * Campo de texto y botón de envío en su propio alcance. El borrador se lee a
+ * través del proveedor para que, al teclear, no se recomponga toda la pantalla
+ * ni la lista de mensajes (cada tecla cambiaba `draft` y arrastraba el chat).
+ */
+@Composable
+private fun ChatComposerBar(
+    draftProvider: () -> String,
+    sendingProvider: () -> Boolean,
+    onDraftChange: (String) -> Unit,
+    onSend: () -> Unit,
+    voiceVm: CommunicationVoiceViewModel,
+    conversationId: String,
+) {
+    val draft = draftProvider()
+    val sending = sendingProvider()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AppColors.cream)
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = 12.dp)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        BasicTextField(
+            value = draft,
+            onValueChange = onDraftChange,
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(AppColors.mauve.copy(alpha = 0.35f))
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            textStyle = TextStyle(
+                fontSize = 15.sp,
+                color = AppColors.ink
+            ),
+            cursorBrush = SolidColor(AppColors.ink),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+            maxLines = 4,
+            decorationBox = { inner ->
+                if (draft.isEmpty()) {
+                    Text(
+                        text = "Escribe un mensaje",
+                        style = AppTextStyles.waykiMini.copy(fontSize = 14.sp),
+                        color = AppColors.slate,
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+                }
+                inner()
+            }
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Botón de envío o de nota de voz.
+        val hasText = draft.isNotBlank()
+        if (hasText) {
+            val sendSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .background(AppColors.primary, CircleShape)
+                    .clickable(
+                        interactionSource = sendSource,
+                        indication = ripple(color = AppColors.cream.copy(alpha = 0.2f)),
+                        enabled = !sending,
+                        onClick = onSend,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = compose.icons.FeatherIcons.Send,
+                    contentDescription = "Enviar",
+                    tint = AppColors.cream,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        } else {
+            VoiceRecordingButton(
+                voiceVm = voiceVm,
+                conversationId = conversationId,
+            )
+        }
     }
 }
 
@@ -877,9 +1189,8 @@ private fun RecordingComposer(
         error = voiceUi.audioError,
         onCancel = { voiceVm.cancel() },
         onStop = { voiceVm.stopAndSave() },
-        onPlayPause = {
-            if (voiceUi.isPlaying) voiceVm.stopPlayback() else voiceVm.playLastRecording()
-        },
+        onPlayPause = { voiceVm.togglePlayback() },
+        onSeek = { voiceVm.seekTo(it) },
         onSend = { voiceVm.sendRecorded() },
         onDiscard = { voiceVm.discardRecorded() },
         onDismissError = { voiceVm.clearError() },

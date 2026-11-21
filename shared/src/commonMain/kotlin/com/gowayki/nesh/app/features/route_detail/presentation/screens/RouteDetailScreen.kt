@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,9 +51,10 @@ import com.gowayki.nesh.app.common.ui.shared.WaykiBottomNav
 import com.gowayki.nesh.app.common.ui.shared.WaykiSidebarContent
 import com.gowayki.nesh.app.common.ui.shared.WaykiReveal
 import com.gowayki.nesh.app.common.ui.shared.WaykiSkeleton
+import com.gowayki.nesh.app.features.map.data.RouteCatalogStore
+import com.gowayki.nesh.app.features.map.data.RouteGeometryStore
 import com.gowayki.nesh.app.features.map.data.RouteStopsStore
 import com.gowayki.nesh.app.features.map.data.SitRouteStop
-import com.gowayki.nesh.app.features.map.domain.model.ArequipaRoutes
 import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
 import com.gowayki.nesh.app.features.map.presentation.RouteDirection
 import com.gowayki.nesh.core.theme.src.AppTextStyles
@@ -107,21 +109,37 @@ fun RouteDetailScreen(
     var idaStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
     var loadingStops by remember { mutableStateOf(true) }
     var returnStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
+    // Ruta cuyos paraderos se están mostrando. Si hay fallback, debe ser la
+    // misma que se muestra en la cabecera para no mezclar identidades.
+    var effectiveRoute by remember { mutableStateOf(selectedRoute) }
+    var refrescoBackend by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(selectedRoute?.id, selectedRoute?.routeId, selectedRoute?.returnRouteId) {
+    // El asset local se muestra al instante, pero cuando llega la versión de
+    // la BD recargamos los paraderos sin que el usuario tenga que salir.
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.flow.merge(
+            RouteStopsStore.actualizaciones(),
+            RouteGeometryStore.actualizaciones(),
+        ).collect { refrescoBackend++ }
+    }
+
+    LaunchedEffect(selectedRoute?.id, selectedRoute?.routeId, selectedRoute?.returnRouteId, refrescoBackend) {
         loadingStops = true
         var effective = selectedRoute
         var ida = effective?.routeId?.let { RouteStopsStore.stopsFor(it) }.orEmpty()
 
         // Si la ruta seleccionada no tiene paraderos cargados, usa la primera
-        // sub-ruta que sí tenga datos para que la pantalla nunca quede vacía.
+        // sub-ruta del catálogo (BD) que sí tenga datos para que la pantalla nunca quede vacía.
         if (ida.isEmpty()) {
-            val fallback = ArequipaRoutes.all.firstOrNull { route ->
+            runCatching { RouteCatalogStore.refresh() }
+            val candidates = RouteCatalogStore.subrutas().ifEmpty {
+                SelectedRouteHolder.catalog.value
+            }
+            val fallback = candidates.firstOrNull { route ->
                 route.isSub && route.routeId != null &&
                     RouteStopsStore.stopsFor(route.routeId!!).isNotEmpty()
             }
             if (fallback != null) {
-                SelectedRouteHolder.select(fallback)
                 effective = fallback
                 ida = fallback.routeId?.let { RouteStopsStore.stopsFor(it) }.orEmpty()
             }
@@ -129,6 +147,7 @@ fun RouteDetailScreen(
 
         idaStops = ida
         returnStops = effective?.returnRouteId?.let { RouteStopsStore.stopsFor(it) }.orEmpty()
+        effectiveRoute = effective
         loadingStops = false
     }
 
@@ -278,14 +297,14 @@ fun RouteDetailScreen(
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.md)) {
                                 Text(
-                                    text = selectedRoute?.name ?: "Selecciona una ruta",
+                                    text = effectiveRoute?.name ?: "Selecciona una ruta",
                                     style = AppTextStyles.waykiTitle.copy(fontSize = 24.sp),
                                     color = directionColor,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = selectedRoute?.routeId ?: "Ruta sin nombre",
+                                    text = effectiveRoute?.routeId ?: "Ruta sin nombre",
                                     style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
                                     color = AppColors.slate
                                 )

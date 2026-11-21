@@ -27,11 +27,13 @@ import com.gowayki.nesh.app.di.AppDi
 import com.gowayki.nesh.core.session.UserSession
 import com.gowayki.nesh.app.di.ChatDi
 import com.gowayki.nesh.app.features.communication.domain.repository.ChatRepository
+import com.gowayki.nesh.data.repository.KtorChatRepository
 import com.gowayki.nesh.app.features.communication.presentation.chat.ChatScreen
 import com.gowayki.nesh.app.features.communication.presentation.chat.NewGroupViewModel
 import com.gowayki.nesh.app.features.communication.presentation.chat.NewGroupScreen
 import com.gowayki.nesh.app.features.communication.presentation.chat.CommunicationVoiceViewModel
 import com.gowayki.nesh.app.features.communication.presentation.chat.CommunicationVoicePopup
+import com.gowayki.nesh.app.features.map.presentation.SubrouteLabels
 import com.gowayki.nesh.app.features.reports.presentation.screens.ReportsScreen
 import com.gowayki.nesh.app.features.sign_in.presentation.StateFlow.AuthViewModel
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.LoginScreen
@@ -83,11 +85,25 @@ fun WaykiNav(
     val communicationVoiceVm: CommunicationVoiceViewModel = viewModel {
         CommunicationVoiceViewModel(chatRepository = AppDi.getOrNull<ChatRepository>())
     }
-    // Triple clic desde cualquier módulo lleva al SOS.
-    LaunchedEffect(sosVm.ui.sosTripRequestSeq) {
-        if (sosVm.ui.sosTripRequestSeq > 0 &&
-            nav.currentBackStackEntry?.destination?.route != Routes.SOS
-        ) {
+    val sesionRepo = remember { AppDi.get<ChatRepository>() }
+
+    /** Cierra sesión de verdad: token, socket y todo el historial del back stack. */
+    fun cerrarSesion() {
+        // Primero el repositorio guarda el metadata por cuenta y cierra el
+        // socket; después se limpia la sesión en memoria.
+        (sesionRepo as? KtorChatRepository)?.cerrarSesion()
+        UserSession.clear()
+        nav.navigate(Routes.WELCOME) {
+            popUpTo(0) { inclusive = true }
+            launchSingleTop = true
+        }
+    }
+
+    // Triple clic desde cualquier módulo lleva al SOS. Se observa en su propio
+    // alcance: si se leyera directo aquí, cada cambio de estado del SOS
+    // recompondría el NavHost completo (scroll y cambios de módulo con lag).
+    SosTripWatcher(sosVm) { secuencia ->
+        if (secuencia > 0 && nav.currentBackStackEntry?.destination?.route != Routes.SOS) {
             nav.navigate(Routes.SOS)
         }
     }
@@ -147,8 +163,8 @@ fun WaykiNav(
             LaunchedEffect(state.user) {
                 if (state.user != null) {
                     vm.consumeUser()
-                    // Si te logueas con exito, te vas de frente al mapa/reportes
-                    nav.navigate(Routes.HOME) { popUpTo(Routes.WELCOME) { inclusive = false } }
+                    // Si te logueas con exito, te vas al inicio como raíz (sin volver a bienvenida con atrás).
+                    nav.navigate(Routes.HOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
                 }
             }
         }
@@ -168,7 +184,7 @@ fun WaykiNav(
                 if (state.user != null) {
                     vm.consumeUser()
                     ToastManager.show("Registro exitoso. Se detectaron rutas cercanas usando la app.")
-                    nav.navigate(Routes.HOME) { popUpTo(Routes.WELCOME) { inclusive = false } }
+                    nav.navigate(Routes.HOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
                 }
             }
         }
@@ -198,7 +214,7 @@ fun WaykiNav(
             LaunchedEffect(state.user) {
                 if (state.user != null) {
                     vm.consumeUser()
-                    nav.navigate(Routes.HOME) { popUpTo(Routes.WELCOME) { inclusive = false } }
+                    nav.navigate(Routes.HOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
                 }
             }
         }
@@ -211,10 +227,7 @@ fun WaykiNav(
                 onSosClick = { /* TODO: SOS */ },
                 onMapClick = { /* ya ests en reportes */ },
                 onSettingsClick = { /* TODO: ajustes */ },
-                onLogoutClick = {
-                    UserSession.clear()
-                    nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
-                },
+                onLogoutClick = { cerrarSesion() },
                 sosVm = sosVm,
             )
         }
@@ -228,19 +241,16 @@ fun WaykiNav(
                 onRecorridoClick = { goTab(Routes.ROUTE_DETAIL) },
                 onMapaClick = { goTab(Routes.MAP) },
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
-                onLogoutClick = {
-                    UserSession.clear()
-                    nav.navigate(Routes.WELCOME) {
-                        popUpTo(Routes.WELCOME) { inclusive = true }
-                    }
-                }
+                onLogoutClick = { cerrarSesion() }
             )
         }
         
         composable(Routes.COMMUNICATION) {
             val chatRepo = remember { AppDi.get<ChatRepository>() }
             val scope = rememberCoroutineScope()
+            val pendingDeletions by chatRepo.eliminacionesPendientes().collectAsState(initial = emptyList())
             com.gowayki.nesh.app.features.communication.presentation.screens.CommunicationScreen(
+                pendingDeletions = pendingDeletions,
                 onConversationClick = { conversationId ->
                     scope.launch { chatRepo.markAsRead(conversationId) }
                     nav.navigate(Routes.chat(conversationId))
@@ -250,11 +260,45 @@ fun WaykiNav(
                 onClearChat = { id ->
                     scope.launch { chatRepo.clearMessages(id) }
                 },
-                onDeleteChat = { id ->
-                    scope.launch { chatRepo.deleteConversation(id) }
+                onHideChat = { id ->
+                    scope.launch {
+                        val result = chatRepo.ocultarConversacion(id)
+                        if (result.isFailure) ToastManager.show(result.exceptionOrNull()?.message ?: "No se pudo ocultar el chat")
+                    }
                 },
-                onDeleteGroup = { id ->
-                    scope.launch { chatRepo.deleteGroup(id) }
+                onRestoreChat = { id ->
+                    scope.launch {
+                        val result = chatRepo.restaurarConversacion(id)
+                        if (result.isFailure) ToastManager.show(result.exceptionOrNull()?.message ?: "No se pudo restaurar el chat")
+                    }
+                },
+                onRequestGroupDeletion = { id ->
+                    scope.launch {
+                        val result = chatRepo.solicitarEliminacionGrupo(id)
+                        if (result.isFailure) {
+                            ToastManager.show(result.exceptionOrNull()?.message ?: "No se pudo solicitar la eliminación")
+                        } else {
+                            ToastManager.show("El grupo se eliminará en 72 horas")
+                        }
+                    }
+                },
+                onCancelGroupDeletion = { id ->
+                    scope.launch {
+                        val result = chatRepo.cancelarEliminacionGrupo(id)
+                        if (result.isFailure) {
+                            ToastManager.show(result.exceptionOrNull()?.message ?: "No se pudo cancelar la eliminación")
+                        } else {
+                            ToastManager.show("Se canceló la eliminación del grupo")
+                        }
+                    }
+                },
+                onLeaveGroup = { id ->
+                    scope.launch {
+                        val result = chatRepo.leaveGroup(id)
+                        if (result.isFailure) {
+                            ToastManager.show(result.exceptionOrNull()?.message ?: "No se pudo salir del grupo")
+                        }
+                    }
                 },
                 onTabSelected = { tab ->
                     when (tab) {
@@ -268,12 +312,7 @@ fun WaykiNav(
                 onRecorridoClick = { goTab(Routes.ROUTE_DETAIL) },
                 onMapaClick = { goTab(Routes.MAP) },
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
-                onLogoutClick = {
-                    UserSession.clear()
-                    nav.navigate(Routes.WELCOME) {
-                        popUpTo(Routes.WELCOME) { inclusive = true }
-                    }
-                }
+                onLogoutClick = { cerrarSesion() }
             )
         }
         
@@ -288,10 +327,7 @@ fun WaykiNav(
                 onRecorridoClick = {},
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
                 onMapaClick = { goTab(Routes.MAP) },
-                onLogoutClick = {
-                    UserSession.clear()
-                    nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
-                },
+                onLogoutClick = { cerrarSesion() },
                 onTabSelected = { tab ->
                     when (tab) {
                         0 -> goTab(Routes.HOME)
@@ -311,6 +347,8 @@ fun WaykiNav(
             val conversationId = entry.arguments?.read { getString("conversationId") }.orEmpty()
             val chatVm = remember(conversationId) { ChatDi.chatViewModel(conversationId) }
             val chatRepo = remember { AppDi.get<ChatRepository>() }
+            // Carga los conductores disponibles para el botón "Añadir miembros".
+            val addMembersVm = remember { NewGroupViewModel(chatRepo) }
             val scope = rememberCoroutineScope()
 
             // La conversación puede ser nueva (recién creada), así que la
@@ -319,17 +357,24 @@ fun WaykiNav(
                 .collectAsState(initial = emptyList())
             val archivedConversations by remember { chatRepo.archived() }
                 .collectAsState(initial = emptyList())
+            // Los chats abiertos desde "Ocultos" también deben conservar su
+            // identidad de grupo, rol y estado de salida.
+            val hiddenConversations by remember { chatRepo.hiddenConversations() }
+                .collectAsState(initial = emptyList())
             val conversation = conversations.firstOrNull { it.id == conversationId }
                 ?: archivedConversations.firstOrNull { it.id == conversationId }
+                ?: hiddenConversations.firstOrNull { it.id == conversationId }
             val isArchived = archivedConversations.any { it.id == conversationId }
 
             ChatScreen(
                 title = conversation?.title ?: "Conversación",
                 isGroup = conversation?.isGroup ?: false,
-                memberCount = conversation?.members?.size ?: 0,
+                memberCount = if (chatVm.participants.isNotEmpty()) chatVm.participants.size else (conversation?.members?.size ?: 0),
+                members = chatVm.participants,
+                colleagues = addMembersVm.colleagues,
                 messages = chatVm.messages,
-                draft = chatVm.draft,
-                sending = chatVm.sending,
+                draftProvider = { chatVm.draft },
+                sendingProvider = { chatVm.sending },
                 onDraftChange = chatVm::onDraftChange,
                 onSend = chatVm::send,
                 conversationId = conversationId,
@@ -339,10 +384,22 @@ fun WaykiNav(
                     scope.launch { chatRepo.updateConversationPhoto(conversationId, path) }
                 },
                 onDeleteMessage = { messageId ->
-                    scope.launch { chatRepo.deleteMessage(conversationId, messageId, false) }
+                    scope.launch {
+                        val result = chatRepo.deleteMessage(conversationId, messageId, false)
+                        ToastManager.show(
+                            if (result.isSuccess) "Mensaje eliminado de tu chat"
+                            else "No se pudo eliminar el mensaje"
+                        )
+                    }
                 },
                 onDeleteMessageForAll = { messageId ->
-                    scope.launch { chatRepo.deleteMessage(conversationId, messageId, true) }
+                    scope.launch {
+                        val result = chatRepo.deleteMessage(conversationId, messageId, true)
+                        ToastManager.show(
+                            if (result.isSuccess) "Mensaje eliminado de tu chat"
+                            else "No se pudo eliminar el mensaje"
+                        )
+                    }
                 },
                 archived = isArchived,
                 onArchive = {
@@ -355,10 +412,77 @@ fun WaykiNav(
                 onClearChat = {
                     scope.launch { chatRepo.clearMessages(conversationId) }
                 },
-                onDeleteChat = {
-                    scope.launch { chatRepo.deleteConversation(conversationId) }
-                    nav.popBackStack()
+                onHideChat = {
+                    scope.launch {
+                        val result = chatRepo.ocultarConversacion(conversationId)
+                        if (result.isSuccess) {
+                            nav.popBackStack()
+                        } else {
+                            ToastManager.show(result.exceptionOrNull()?.message ?: "No se pudo ocultar el chat")
+                        }
+                    }
                 },
+                onLeaveGroup = {
+                    scope.launch {
+                        val result = chatRepo.leaveGroup(conversationId)
+                        if (result.isFailure) {
+                            ToastManager.show(result.exceptionOrNull()?.message ?: "No se pudo salir del grupo")
+                        }
+                    }
+                },
+                onRequestGroupDeletion = {
+                    scope.launch {
+                        val result = chatRepo.solicitarEliminacionGrupo(conversationId)
+                        if (result.isSuccess) {
+                            ToastManager.show("El grupo se eliminará en 72 horas")
+                        } else {
+                            ToastManager.show(result.exceptionOrNull()?.message ?: "No se pudo solicitar la eliminación")
+                        }
+                    }
+                },
+                onCancelGroupDeletion = {
+                    scope.launch {
+                        val result = chatRepo.cancelarEliminacionGrupo(conversationId)
+                        if (result.isSuccess) {
+                            ToastManager.show("Se canceló la eliminación del grupo")
+                        } else {
+                            ToastManager.show(result.exceptionOrNull()?.message ?: "No se pudo cancelar la eliminación")
+                        }
+                    }
+                },
+                onAddMembers = { nuevos ->
+                    scope.launch {
+                        val result = chatRepo.addMembers(conversationId, nuevos)
+                        if (result.isSuccess) {
+                            chatVm.loadParticipants()
+                            ToastManager.show("Se añadieron ${nuevos.size} miembro${if (nuevos.size == 1) "" else "s"}")
+                        } else {
+                            ToastManager.show(result.exceptionOrNull()?.message ?: "No se pudieron añadir los miembros")
+                        }
+                    }
+                },
+                onRefreshColleagues = {
+                    (chatRepo as? KtorChatRepository)?.fetchColleagues()
+                },
+                onAssignRole = { userId, rol ->
+                    scope.launch {
+                        val result = chatRepo.asignarRol(conversationId, userId, rol)
+                        if (result.isSuccess) {
+                            chatVm.loadParticipants()
+                            (chatRepo as? KtorChatRepository)?.refreshConversations()
+                            ToastManager.show(
+                                if (rol == "ADMIN") "Ahora es administrador" else "Ya no es administrador"
+                            )
+                        } else {
+                            ToastManager.show(result.exceptionOrNull()?.message ?: "No se pudo cambiar el rol")
+                        }
+                    }
+                },
+                miRol = conversation?.miRol,
+                createdBy = conversation?.createdBy,
+                hasLeft = conversation?.hasLeft ?: false,
+                eliminacionPendiente = conversation?.eliminacionPendiente ?: false,
+                subrouteLabel = SubrouteLabels.nameOf(conversation?.claveRuta),
                 onBack = { nav.popBackStack() }
             )
         }
@@ -382,7 +506,8 @@ fun WaykiNav(
                         }
                     }
                 },
-                onBack = { nav.popBackStack() }
+                onBack = { nav.popBackStack() },
+                subrouteLabel = groupVm.subrouteLabel
             )
         }
 
@@ -406,9 +531,7 @@ fun WaykiNav(
                 onRecorridoClick = { goTab(Routes.ROUTE_DETAIL) },
                 onMapaClick = {},
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
-                onLogoutClick = {
-                    nav.navigate(Routes.WELCOME) { popUpTo(Routes.WELCOME) { inclusive = true } }
-                }
+                onLogoutClick = { cerrarSesion() }
             )
         }
 
@@ -441,4 +564,11 @@ fun WaykiNav(
     SosAudioPopup(sosVm)
     CommunicationVoicePopup(communicationVoiceVm)
     }
+}
+
+/** Lee solo el contador de SOS en su propio alcance para no recompensar la navegación. */
+@Composable
+private fun SosTripWatcher(vm: SosViewModel, onTrip: (Int) -> Unit) {
+    val secuencia = vm.ui.sosTripRequestSeq
+    LaunchedEffect(secuencia) { onTrip(secuencia) }
 }

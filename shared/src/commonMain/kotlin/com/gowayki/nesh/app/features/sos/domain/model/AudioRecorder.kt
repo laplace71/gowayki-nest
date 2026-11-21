@@ -40,8 +40,17 @@ interface AudioRecorder {
     // Reproduce un archivo de audio grabado
     suspend fun playAudio(filePath: String): Result<Unit>
 
-    // Detiene la reproducción
+    // Detiene la reproducción y reinicia la posición
     suspend fun stopPlayback(): Result<Unit>
+
+    /** Pausa la reproducción conservando la posición (para el botón play/pausa). */
+    suspend fun pausePlayback(): Result<Unit>
+
+    /** Continúa la reproducción desde donde se pausó. */
+    suspend fun resumePlayback(): Result<Unit>
+
+    /** Salta a una posición de la nota de voz (en milisegundos). */
+    suspend fun seekPlayback(positionMillis: Long): Result<Unit>
 
     // Verifica si tiene permisos de grabación
     suspend fun hasRecordPermission(): Boolean
