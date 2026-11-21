@@ -48,8 +48,14 @@ nombres desde local:
 
 1. `RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`,
    `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD` — clave de firma.
-2. `BACKEND_URL` — URL `https://` del backend. El inicio de sesión envía DNI y
-   PIN, así que el build rechaza cualquier `http://` que no sea localhost.
+2. `BACKEND_URL` — URL del backend. Lo normal es `https://`: el inicio de
+   sesión envía DNI y PIN y el build rechaza `http://` (CWE-319).
+3. `BACKEND_ALLOW_HTTP` — variable **no secreta** del repo (no un secret).
+   Hoy el backend de la beta es la IP `31.220.72.2` sin TLS, así que está
+   puesta a `1` como opt-in temporal y asumido: con ese valor se permite
+   `http://` y las notas avisan de que el tráfico va sin cifrar. Poniéndola a
+   `0` se vuelve a exigir HTTPS; cuando el backend tenga TLS, configura
+   `BACKEND_URL` con la URL `https://` y borra la variable.
 
 Si falta la clave de firma, el CI **falla** en lugar de caer en un keystore
 público o temporal. Antes de subir el APK se comprueba que su `versionCode` es
