@@ -9,16 +9,16 @@ name: APK beta
 # - Push de un tag v*: crea una release propia (v1.0.0, v1.1.0, ...).
 # - Manual: pestaña Actions > "APK beta" > Run workflow.
 #
-# Firma: NO es opcional. Android no instala un APK sin firma, así que el step
-# "Firmar y alinear el APK" corre siempre. Lo que puede variar es el keystore,
-# en este orden:
-#   1. secretos RELEASE_KEYSTORE_* -> firma privada, para publicar en serio
-#      (Play Store). Requiere ser admin del repo para cargarlos.
-#   2. androidApp/keystore/wayki-beta.jks -> firma estable y pública, la que se
-#      usa hoy: cada beta se instala encima de la anterior sin desinstalar.
-#   3. keystore temporal -> solo si no existe ninguno de los dos. El APK se
-#      instala, pero cada build tiene firma distinta y Android rechaza la
-#      actualización encima: hay que desinstalar antes de instalar la nueva.
+# Firma: NO es opcional y NO es pública. Se usan los secretos
+# RELEASE_KEYSTORE_* del repo; si no están configurados, el workflow falla en
+# vez de caer en un keystore commiteado o temporal. Un keystore cuyo privado
+# puede leer cualquiera con acceso de lectura al repo permite falsificar una
+# "beta oficial" y Android no podría distinguirla (CWE-321).
+#
+# versionCode y firma se comprueban contra el estado de la release beta antes
+# de publicar (scripts/release-state.sh), tanto aquí como en publicar-apk.sh:
+# una publicación nunca puede degradar el código ni cambiar la firma de la
+# beta ya instalada.
 
 on:
   push:
@@ -27,7 +27,11 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: apk-${{ github.ref }}
+  # Todas las publicaciones que van a la release "beta" comparten un grupo,
+  # vengan de un push a main o de un Run workflow en otra rama. Así no pueden
+  # terminar en orden distinto el movimiento del tag y la subida del asset.
+  # Las releases de tag v* tienen su propio grupo.
+  group: apk-${{ github.ref_type == 'tag' && github.ref || 'beta' }}
   cancel-in-progress: true
 
 permissions:
@@ -40,6 +44,9 @@ env:
 jobs:
   publicar:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # para scripts/release-state.sh
+      BACKEND_URL: ${{ secrets.BACKEND_URL }}  # HTTPS; lo consume generateAppConfig
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -64,6 +71,16 @@ jobs:
         id: meta
         run: |
           set -euo pipefail
+          # Ninguna release se publica con el backend por defecto: el login
+          # envía DNI y PIN, así que exige una URL HTTPS configurada (CWE-319).
+          if [ -z "${BACKEND_URL:-}" ]; then
+            echo "::error::Falta el secreto BACKEND_URL. Configúralo con la URL HTTPS del backend antes de publicar."
+            exit 1
+          fi
+          case "$BACKEND_URL" in
+            https://*) ;;
+            *) echo "::error::BACKEND_URL debe empezar por https:// (CWE-319)"; exit 1 ;;
+          esac
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             tag="$GITHUB_REF_NAME"
             version="${tag#v}"
@@ -78,20 +95,18 @@ jobs:
             asset="$BETA_ASSET"
             prerelease=true
           fi
+
           {
             echo "tag=$tag"
             echo "version=$version"
             echo "asset=$asset"
-            echo "code=$((1000 + GITHUB_RUN_NUMBER))"
+            # Una sola secuencia monotónica para CI y publicaciones locales.
+            echo "code=$(./scripts/release-state.sh next-code "$BETA_TAG")"
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
 
-          # Commit de la beta anterior: de ahí sale el changelog.
-          prev=""
-          if git rev-parse -q --verify "refs/tags/$BETA_TAG" >/dev/null 2>&1; then
-            prev=$(git rev-parse "refs/tags/$BETA_TAG")
-          fi
-          echo "prev=$prev" >> "$GITHUB_OUTPUT"
+          # El task de Gradle valida que BACKEND_URL sea HTTPS (CWE-319).
+          echo "prev=$(git rev-parse "$BETA_TAG" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
 
       - name: Construir APK de release
         run: >
@@ -106,6 +121,7 @@ jobs:
           KS_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          CODE: ${{ steps.meta.outputs.code }}
         run: |
           set -euo pipefail
           apk_origen=$(find androidApp/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)
@@ -114,25 +130,13 @@ jobs:
           salida="$RUNNER_TEMP/${{ steps.meta.outputs.asset }}"
           keystore="$RUNNER_TEMP/wayki.keystore"
 
-          if [ -n "${KS_BASE64:-}" ]; then
-            printf '%s' "$KS_BASE64" | base64 -d > "$keystore"
-            echo "Firmando con RELEASE_KEYSTORE_BASE64 (firma estable)."
-          elif [ -f androidApp/keystore/wayki-beta.jks ]; then
-            cp androidApp/keystore/wayki-beta.jks "$keystore"
-            KS_PASS="${BETA_KEYSTORE_PASSWORD:-wayki-beta}"
-            KEY_ALIAS="${BETA_KEY_ALIAS:-wayki}"
-            KEY_PASS="${BETA_KEY_PASSWORD:-wayki-beta}"
-            echo "Firmando con el keystore beta del repo (firma estable)."
-          else
-            keytool -genkeypair -v -keystore "$keystore" \
-              -storepass wayki-beta -keypass wayki-beta -alias wayki \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Wayki Nest, OU=Wayki, O=Wayki, L=Arequipa, ST=Arequipa, C=PE"
-            KS_PASS=wayki-beta
-            KEY_ALIAS=wayki
-            KEY_PASS=wayki-beta
-            echo "::warning::Sin keystore fijo: la firma cambia en cada build y Android no dejará instalar la beta encima de la anterior. Configura RELEASE_KEYSTORE_BASE64 o añade androidApp/keystore/wayki-beta.jks."
+          if [ -z "${KS_BASE64:-}" ] || [ -z "${KS_PASS:-}" ] || \
+             [ -z "${KEY_ALIAS:-}" ] || [ -z "${KEY_PASS:-}" ]; then
+            echo "::error::Faltan los secretos RELEASE_KEYSTORE_BASE64, RELEASE_KEYSTORE_PASSWORD, RELEASE_KEY_ALIAS o RELEASE_KEY_PASSWORD. Configúralos antes de publicar; no se usa una clave pública de respaldo."
+            exit 1
           fi
+          printf '%s' "$KS_BASE64" | base64 -d > "$keystore"
+          echo "Firmando con el keystore privado de los secretos del repo."
 
           "$build_tools/zipalign" -f -p 4 "$apk_origen" "$RUNNER_TEMP/alineado.apk"
           "$build_tools/apksigner" sign \
@@ -141,7 +145,23 @@ jobs:
             --ks-key-alias "$KEY_ALIAS" \
             --out "$salida" "$RUNNER_TEMP/alineado.apk"
           "$build_tools/apksigner" verify "$salida"
-          echo "apk=$salida" >> "$GITHUB_OUTPUT"
+
+          # Datos verificables para las notas y para el control de publicación.
+          sha256=$(sha256sum "$salida" | cut -d' ' -f1)
+          bytes=$(stat -c%s "$salida")
+          cert=$("$build_tools/apksigner" verify --print-certs "$salida" | \
+            sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          [ -n "$cert" ] || { echo "::error::No se pudo leer la huella SHA-256 del certificado"; exit 1; }
+
+          # Rechaza un APK más antiguo o firmado con otra clave que el beta vigente.
+          ./scripts/release-state.sh assert "$CODE" "$cert" "$BETA_TAG"
+
+          {
+            echo "apk=$salida"
+            echo "sha256=$sha256"
+            echo "bytes=$bytes"
+            echo "cert=$cert"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Generar notas de la release
         id: notas
@@ -149,16 +169,23 @@ jobs:
           PREV: ${{ steps.meta.outputs.prev }}
           VERSION: ${{ steps.meta.outputs.version }}
           ASSET: ${{ steps.meta.outputs.asset }}
+          CODE: ${{ steps.meta.outputs.code }}
+          SHA256: ${{ steps.firmar.outputs.sha256 }}
+          BYTES: ${{ steps.firmar.outputs.bytes }}
+          CERT: ${{ steps.firmar.outputs.cert }}
         run: |
           set -euo pipefail
+          short_sha=$(git rev-parse --short "$GITHUB_SHA")
 
           if [ -n "$PREV" ] && [ "$(git rev-list --count "$PREV..$GITHUB_SHA")" -gt 0 ]; then
-            cambios=$(git log --no-merges --pretty='- %s' "$PREV..$GITHUB_SHA" | head -40)
+            cambios=$(git log --no-merges --pretty='- %s (`%h`)' "$PREV..$GITHUB_SHA" | head -40)
             comparar="https://github.com/$GITHUB_REPOSITORY/compare/${PREV}...${GITHUB_SHA}"
           else
             cambios="- Sin cambios de código desde la beta anterior."
             comparar=""
           fi
+
+          tamano=$(awk -v b="$BYTES" 'BEGIN { printf "%.1f MB", b / 1048576 }')
 
           {
             echo "## Wayki Nest $VERSION"
@@ -179,6 +206,22 @@ jobs:
             echo "2. Permite *instalar apps de origen desconocido* cuando Android lo pida."
             echo "3. Si ya tienes una beta instalada, se actualiza encima: no hace falta desinstalar."
             echo
+            echo "| Dato | Valor |"
+            echo "| --- | --- |"
+            echo "| Versión | $VERSION (versionCode $CODE) |"
+            echo "| Tamaño | $tamano |"
+            echo "| Requisitos | Android 7.0 (API 24) o superior |"
+            echo "| Commit | [\`$short_sha\`](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA) |"
+            echo "| SHA-256 | \`$SHA256\` |"
+            echo "| Certificado | \`$CERT\` |"
+            echo
+            echo "### Verificar la descarga"
+            echo
+            echo '```bash'
+            echo "sha256sum $ASSET"
+            echo "# debe imprimir el SHA-256 de la tabla de arriba"
+            echo '```'
+            echo
             echo "### Notas"
             echo
             echo "- Build de pruebas (canal *beta*): no usar en producción ni publicar en Play Store."
@@ -187,12 +230,6 @@ jobs:
 
           echo "body=$RUNNER_TEMP/notas.md" >> "$GITHUB_OUTPUT"
 
-      - name: Mover el tag beta al commit actual
-        if: github.ref_type != 'tag'
-        run: |
-          git tag -f "$BETA_TAG" "$GITHUB_SHA"
-          git push -f origin "refs/tags/$BETA_TAG"
-
       - name: Publicar en Releases
         uses: softprops/action-gh-release@v2
         with:
@@ -200,4 +237,13 @@ jobs:
           name: Wayki Nest ${{ steps.meta.outputs.version }}
           prerelease: ${{ steps.meta.outputs.prerelease }}
           body_path: ${{ steps.notas.outputs.body }}
+          overwrite_files: true
           files: ${{ steps.firmar.outputs.apk }}
+
+      - name: Mover el tag beta al commit actual
+        if: github.ref_type != 'tag'
+        run: |
+          # El asset ya está publicado: el tag avanza después, nunca antes,
+          # para que movimiento de tag y subida no puedan invertir su orden.
+          git tag -f "$BETA_TAG" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$BETA_TAG"

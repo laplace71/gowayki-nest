@@ -1,3 +1,4 @@
+import org.gradle.api.GradleException
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -85,11 +86,38 @@ kotlin {
 
 apply(from = rootProject.file("gradle/convertSvgIcons.gradle"))
 
+// Todas las claves de configuración que se inyectan desde fuera del repo:
+// GitHub Secrets -> variables de entorno en CI; shell/.env en local.
+// Se declaran como providers (y como inputs del task) para que un cambio en
+// cualquiera de ellas invalide el AppConfig generado, aunque no cambie el
+// .env ni el código fuente. Antes solo se declaraba el .env como input y un
+// BACKEND_URL distinto entre dos builds podía dejar el APK anterior embebido.
+val appConfigKeys = listOf(
+    "BACKEND_URL",
+    "SUPABASE_URL",
+    "SUPABASE_ANON_KEY",
+    "GOOGLE_WEB_CLIENT_ID",
+)
+
 val generateAppConfigTask = tasks.register("generateAppConfig") {
     val envFile = rootProject.file(".env")
     val configFile = file("src/commonMain/kotlin/com/gowayki/nesh/core/config/AppConfig.kt")
     if (envFile.exists()) inputs.file(envFile)
     outputs.file(configFile)
+
+    // Providers creados en configuración y capturados como valores locales:
+    // el doLast no debe referenciar el objeto script (configuration cache).
+    val propertyNames = appConfigKeys.associateWith { "wayki." + it.lowercase().replace('_', '.') }
+    val envProviders = appConfigKeys.associateWith { providers.environmentVariable(it).orElse("") }
+    val propProviders = appConfigKeys.associateWith {
+        providers.gradleProperty(propertyNames.getValue(it)).orElse("")
+    }
+
+    // (audit) Registrar TODAS las variables -no solo el .env- como inputs.
+    appConfigKeys.forEach { key ->
+        inputs.property("env.$key", envProviders.getValue(key))
+        inputs.property("prop.$key", propProviders.getValue(key))
+    }
 
     doLast {
         val envMap = mutableMapOf<String, String>()
@@ -103,18 +131,24 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
             }
         }
 
-        // En CI no existe .env (está gitignoreado): las variables de entorno
-        // permiten inyectar la misma configuración sin tocar el repo.
-        fun envOr(key: String): String = envMap[key] ?: System.getenv(key) ?: ""
+        // Misma fuente declarada como input arriba: el valor que se comprueba
+        // es exactamente el que se escribe en el AppConfig generado.
+        fun envOr(key: String): String {
+            envProviders.getValue(key).get()
+                .takeIf { it.isNotBlank() }?.let { return it }
+            propProviders.getValue(key).get()
+                .takeIf { it.isNotBlank() }?.let { return it }
+            return envMap[key] ?: ""
+        }
 
-        // Si no existe .env o faltan variables, usar valores por defecto del AppConfig.kt actual
+        // Si no existe .env o faltan variables, usar valores del AppConfig.kt actual
         val existingConfig = if (configFile.exists()) configFile.readText() else ""
-        
+
         fun extractValue(key: String): String {
-            val pattern = Regex("""const val """ + key + """\s*:\s*String\s*=\s*"([^"]+)""")
+            val pattern = Regex("""const val """ + key + """\s*:\s*String\s*=\s*"([^"]+)"""")
             return pattern.find(existingConfig)?.groupValues?.get(1) ?: ""
         }
-        
+
         val supabaseUrl = envOr("SUPABASE_URL").ifBlank { extractValue("SUPABASE_URL") }
         val supabaseAnonKey = envOr("SUPABASE_ANON_KEY").ifBlank { extractValue("SUPABASE_ANON_KEY") }
         val googleWebClientId = envOr("GOOGLE_WEB_CLIENT_ID").ifBlank { extractValue("GOOGLE_WEB_CLIENT_ID") }
@@ -124,9 +158,27 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
         val finalSupabaseUrl = supabaseUrl.ifBlank { "https://bvxgdlawivdoiornfigo.supabase.co" }
         val finalSupabaseAnonKey = supabaseAnonKey.ifBlank { "sb_publishable_-_Vc3gCY-q48pGHTjmFaog_zYFLbf8c" }
         val finalGoogleWebClientId = googleWebClientId.ifBlank { "21304726166-16dakb4a1qfjl6d4qpsifnlr3m1q4sl3.apps.googleusercontent.com" }
-        // VPS de producción: las Releases se compilan sin .env, así que este
-        // default es el backend que queda embebido en el APK publicado.
-        val finalBackendUrl = backendUrl.ifBlank { "http://31.220.72.2:8080/api" }
+        // (audit CWE-319) Antes este default era http:// y el APK publicado
+        // enviaba DNI y PIN en texto plano. El backend debe terminar TLS.
+        val finalBackendUrl = backendUrl.ifBlank { "https://31.220.72.2/api" }
+
+        // Nunca se embebe un backend http:// en el APK: el login y el registro
+        // envían el DNI y el PIN (CWE-319). Solo se tolera localhost para
+        // desarrollo contra un servidor en la propia máquina.
+        fun requireHttps(value: String, key: String) {
+            if (!value.startsWith("http://")) return
+            val isLocal = value.startsWith("http://localhost") ||
+                value.startsWith("http://127.0.0.1") ||
+                value.startsWith("http://[::1]")
+            if (isLocal) return
+            throw GradleException(
+                "$key=$value usa http://. El inicio de sesión envía DNI y PIN en " +
+                    "texto plano; configura $key (o ${propertyNames.getValue(key)}) con una URL https://. " +
+                    "Solo se permite http:// para localhost/127.0.0.1 en desarrollo."
+            )
+        }
+        requireHttps(finalBackendUrl, "BACKEND_URL")
+        requireHttps(finalSupabaseUrl, "SUPABASE_URL")
 
         val content = """
             |package com.gowayki.nesh.core.config
