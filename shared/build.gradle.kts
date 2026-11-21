@@ -112,12 +112,18 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
     val propProviders = appConfigKeys.associateWith {
         providers.gradleProperty(propertyNames.getValue(it)).orElse("")
     }
+    // Opt-in explícito para el canal beta: el backend actual es una IP sin TLS.
+    // Sin esta señal, http:// sigue siendo rechazado (CWE-319).
+    val allowHttpProvider = providers.environmentVariable("BACKEND_ALLOW_HTTP").orElse("")
+    val allowHttpPropProvider = providers.gradleProperty("wayki.backend.allowHttp").orElse("")
 
     // (audit) Registrar TODAS las variables -no solo el .env- como inputs.
     appConfigKeys.forEach { key ->
         inputs.property("env.$key", envProviders.getValue(key))
         inputs.property("prop.$key", propProviders.getValue(key))
     }
+    inputs.property("env.BACKEND_ALLOW_HTTP", allowHttpProvider)
+    inputs.property("prop.BACKEND_ALLOW_HTTP", allowHttpPropProvider)
 
     doLast {
         val envMap = mutableMapOf<String, String>()
@@ -162,19 +168,29 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
         // enviaba DNI y PIN en texto plano. El backend debe terminar TLS.
         val finalBackendUrl = backendUrl.ifBlank { "https://31.220.72.2/api" }
 
-        // Nunca se embebe un backend http:// en el APK: el login y el registro
-        // envían el DNI y el PIN (CWE-319). Solo se tolera localhost para
-        // desarrollo contra un servidor en la propia máquina.
+        // Opt-in temporal y explícito para la beta: BACKEND_ALLOW_HTTP=1 (o
+        // -Pwayki.backend.allowHttp=true). El backend actual es una IP sin TLS;
+        // mientras no exista HTTPS, el riesgo CWE-319 queda asumido y se
+        // advierte en las notas de la release. Sin la señal, http:// se rechaza.
+        fun httpAllowed(): Boolean {
+            val flag = allowHttpProvider.get().ifBlank { allowHttpPropProvider.get() }
+            return flag.equals("1", ignoreCase = true) || flag.equals("true", ignoreCase = true)
+        }
+
+        // Nunca se embebe un backend http:// en el APK salvo dos excepciones
+        // explícitas: localhost (desarrollo) y el opt-in de la beta.
         fun requireHttps(value: String, key: String) {
             if (!value.startsWith("http://")) return
             val isLocal = value.startsWith("http://localhost") ||
                 value.startsWith("http://127.0.0.1") ||
                 value.startsWith("http://[::1]")
             if (isLocal) return
+            if (key == "BACKEND_URL" && httpAllowed()) return
             throw GradleException(
                 "$key=$value usa http://. El inicio de sesión envía DNI y PIN en " +
                     "texto plano; configura $key (o ${propertyNames.getValue(key)}) con una URL https://. " +
-                    "Solo se permite http:// para localhost/127.0.0.1 en desarrollo."
+                    "Solo se permite http:// en localhost o si activas BACKEND_ALLOW_HTTP=1 " +
+                    "(riesgo asumido) / -Pwayki.backend.allowHttp=true."
             )
         }
         requireHttps(finalBackendUrl, "BACKEND_URL")

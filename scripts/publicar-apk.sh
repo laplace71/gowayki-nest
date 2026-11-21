@@ -12,7 +12,8 @@
 #   export RELEASE_KEYSTORE_PASSWORD=...
 #   export RELEASE_KEY_ALIAS=...
 #   export RELEASE_KEY_PASSWORD=...
-#   export BACKEND_URL=https://...       # debe ser HTTPS (CWE-319)
+#   export BACKEND_URL=http://31.220.72.2:8080/api
+#   export BACKEND_ALLOW_HTTP=1          # opt-in beta mientras no haya TLS
 #
 # Antes este script generaba su propio keystore y usaba un versionCode basado
 # en el reloj, distinto del del CI: una beta local podía bloquear las betas
@@ -29,12 +30,21 @@ raiz="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$raiz"
 
 if [[ -z "${BACKEND_URL:-}" ]]; then
-  echo "ERROR: exporta BACKEND_URL con la URL HTTPS del backend antes de publicar." >&2
+  echo "ERROR: exporta BACKEND_URL con la URL del backend antes de publicar." >&2
   exit 1
 fi
+insecure_backend=no
 case "$BACKEND_URL" in
   https://*) ;;
-  *) echo "ERROR: BACKEND_URL debe empezar por https:// (CWE-319)" >&2; exit 1 ;;
+  http://*)
+    if [[ "${BACKEND_ALLOW_HTTP:-}" != "1" && "${BACKEND_ALLOW_HTTP:-}" != "true" ]]; then
+      echo "ERROR: BACKEND_URL usa http:// (DNI y PIN sin cifrar). Usa https:// o exporta BACKEND_ALLOW_HTTP=1 para asumir el riesgo." >&2
+      exit 1
+    fi
+    insecure_backend=yes
+    echo "AVISO: BACKEND_URL usa http://; DNI y PIN viajan sin cifrar (riesgo asumido, CWE-319 abierto)." >&2
+    ;;
+  *) echo "ERROR: BACKEND_URL debe empezar por http:// o https://" >&2; exit 1 ;;
 esac
 
 if [[ "$TAG" == "beta" ]]; then
@@ -142,6 +152,10 @@ notas="$raiz/build/releases/notas.md"
   echo
   echo "### Notas"
   echo
+  if [ "$insecure_backend" = "yes" ]; then
+    echo "- ⚠️ Esta beta usa \`http://\`: DNI y PIN viajan sin cifrar (CWE-319, riesgo asumido mientras el backend no tenga TLS)."
+    echo
+  fi
   echo "- Build de pruebas (canal *beta*): no usar en producción ni publicar en Play Store."
   echo "- Este asset se reemplaza en cada publicación de la misma release."
 } > "$notas"

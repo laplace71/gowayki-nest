@@ -46,7 +46,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # para scripts/release-state.sh
-      BACKEND_URL: ${{ secrets.BACKEND_URL }}  # HTTPS; lo consume generateAppConfig
+      BACKEND_URL: ${{ secrets.BACKEND_URL }}  # lo consume generateAppConfig
+      # Opt-in del canal beta: hoy el backend es una IP sin TLS. Borrar esta
+      # variable (o ponerla a 0) vuelve a exigir HTTPS y revierte CWE-319.
+      BACKEND_ALLOW_HTTP: ${{ vars.BACKEND_ALLOW_HTTP }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -72,15 +75,26 @@ jobs:
         run: |
           set -euo pipefail
           # Ninguna release se publica con el backend por defecto: el login
-          # envía DNI y PIN, así que exige una URL HTTPS configurada (CWE-319).
+          # envía DNI y PIN (CWE-319). Se exige HTTPS salvo opt-in explícito
+          # del canal beta mediante la variable del repo BACKEND_ALLOW_HTTP=1.
           if [ -z "${BACKEND_URL:-}" ]; then
-            echo "::error::Falta el secreto BACKEND_URL. Configúralo con la URL HTTPS del backend antes de publicar."
+            echo "::error::Falta el secreto BACKEND_URL. Configúralo antes de publicar."
             exit 1
           fi
+          insecure_backend=no
           case "$BACKEND_URL" in
             https://*) ;;
-            *) echo "::error::BACKEND_URL debe empezar por https:// (CWE-319)"; exit 1 ;;
+            http://*)
+              if [[ "${BACKEND_ALLOW_HTTP:-}" != "1" && "${BACKEND_ALLOW_HTTP:-}" != "true" ]]; then
+                echo "::error::BACKEND_URL usa http:// (DNI y PIN sin cifrar). Usa https:// o activa la variable del repo BACKEND_ALLOW_HTTP=1 para asumir el riesgo."
+                exit 1
+              fi
+              insecure_backend=yes
+              echo "::warning::BACKEND_URL usa http://: DNI y PIN viajan sin cifrar (riesgo asumido para la beta; CWE-319 queda abierto)."
+              ;;
+            *) echo "::error::BACKEND_URL debe empezar por http:// o https://"; exit 1 ;;
           esac
+          echo "insecure_backend=$insecure_backend" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             tag="$GITHUB_REF_NAME"
             version="${tag#v}"
@@ -105,7 +119,6 @@ jobs:
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
 
-          # El task de Gradle valida que BACKEND_URL sea HTTPS (CWE-319).
           echo "prev=$(git rev-parse "$BETA_TAG" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
 
       - name: Construir APK de release
@@ -173,6 +186,7 @@ jobs:
           SHA256: ${{ steps.firmar.outputs.sha256 }}
           BYTES: ${{ steps.firmar.outputs.bytes }}
           CERT: ${{ steps.firmar.outputs.cert }}
+          INSECURE_BACKEND: ${{ steps.meta.outputs.insecure_backend }}
         run: |
           set -euo pipefail
           short_sha=$(git rev-parse --short "$GITHUB_SHA")
@@ -224,6 +238,10 @@ jobs:
             echo
             echo "### Notas"
             echo
+            if [ "$INSECURE_BACKEND" = "yes" ]; then
+              echo "- ⚠️ Esta beta usa \`http://\`: DNI y PIN viajan sin cifrar (CWE-319, riesgo asumido mientras el backend no tenga TLS)."
+              echo
+            fi
             echo "- Build de pruebas (canal *beta*): no usar en producción ni publicar en Play Store."
             echo "- Este asset se reemplaza en cada push a \`main\`; el histórico queda en [Actions](https://github.com/$GITHUB_REPOSITORY/actions/workflows/apk.yml)."
           } > "$RUNNER_TEMP/notas.md"
