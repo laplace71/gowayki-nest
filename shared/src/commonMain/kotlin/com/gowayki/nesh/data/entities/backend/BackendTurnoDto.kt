@@ -19,6 +19,9 @@ data class BackendTurnoDto(
     val lineaId: Int? = null,
     val lineaNombre: String? = null,
     val lineaColorHex: String? = null,
+    val subrutaId: Int? = null,
+    val subrutaCodigo: String? = null,
+    val subrutaNombre: String? = null,
     val fecha: String? = null,
     val horaInicio: String? = null,
     val horaFin: String? = null,
@@ -34,6 +37,9 @@ data class BackendUnidadDto(
     val placa: String? = null,
     val lineaId: Int? = null,
     val lineaNombre: String? = null,
+    val subrutaId: Int? = null,
+    val subrutaCodigo: String? = null,
+    val subrutaNombre: String? = null,
     val estado: String? = null,
     val posicionActual: PosicionGpsDto? = null,
 )
@@ -63,6 +69,8 @@ data class PosicionGpsDto(
 data class AsignarTurnoRequestDto(
     val choferId: String,
     val unidadId: Int,
+    val subrutaId: Int? = null,
+    val subrutaCodigo: String? = null,
     val fecha: String? = null,
     val horaInicio: String? = null,
     val horaFin: String? = null,

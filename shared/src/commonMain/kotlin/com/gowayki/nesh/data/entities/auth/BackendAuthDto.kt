@@ -35,6 +35,8 @@ data class UsuarioResponseDto(
 data class LoginResponseDto(
     val exito: Boolean,
     val mensaje: String? = null,
-    val usuario: UsuarioResponseDto? = null
+    val usuario: UsuarioResponseDto? = null,
+    /** JWT para el chat: se manda como `Authorization: Bearer <token>`. */
+    val token: String? = null
 )
 

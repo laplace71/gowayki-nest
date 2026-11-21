@@ -5,7 +5,13 @@ import platform.Foundation.NSUserDefaults
 actual object RouteSelectionStore {
     private const val KEY = "wayki_selected_route_id"
 
-    actual suspend fun save(routeId: String) {
+    actual suspend fun save(
+        routeId: String,
+        routeName: String,
+        idaRouteId: String?,
+        returnRouteId: String?,
+        direction: String
+    ) {
         runCatching {
             NSUserDefaults.standardUserDefaults.setObject(routeId, KEY)
         }

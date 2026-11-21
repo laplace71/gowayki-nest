@@ -23,6 +23,9 @@ class ConversationsViewModel(private val repo: ChatRepository) : ViewModel() {
     var archived by mutableStateOf<List<Conversation>>(emptyList())
         private set
 
+    var hidden by mutableStateOf<List<Conversation>>(emptyList())
+        private set
+
     var loading by mutableStateOf(true)
         private set
 
@@ -34,13 +37,17 @@ class ConversationsViewModel(private val repo: ChatRepository) : ViewModel() {
 
     init {
         viewModelScope.launch {
+            // Los ids son las keys del LazyColumn: nunca emitir repetidos.
             repo.conversations().collect { list ->
-                conversations = list
+                conversations = list.distinctBy { it.id }
                 loading = false
             }
         }
         viewModelScope.launch {
-            repo.archived().collect { list -> archived = list }
+            repo.archived().collect { list -> archived = list.distinctBy { it.id } }
+        }
+        viewModelScope.launch {
+            repo.hiddenConversations().collect { list -> hidden = list.distinctBy { it.id } }
         }
     }
 
@@ -50,8 +57,7 @@ class ConversationsViewModel(private val repo: ChatRepository) : ViewModel() {
             val byCategory = when (category) {
                 1 -> c.isGroup
                 2 -> !c.isGroup
-                // "Todos": los chats de grupo borrados quedan solo en "Grupos".
-                else -> !c.hiddenFromAll
+                else -> true
             }
             val byText = query.isBlank() ||
                 c.title.contains(query, ignoreCase = true) ||
@@ -72,9 +78,24 @@ class ConversationsViewModel(private val repo: ChatRepository) : ViewModel() {
         viewModelScope.launch { repo.clearMessages(conversationId) }
     }
 
-    /** Elimina la conversación de la lista (funciona para grupo y privado). */
-    fun deleteConversation(conversationId: String) {
-        viewModelScope.launch { repo.deleteConversation(conversationId) }
+    /** Oculta la conversación solo para este usuario (no borra nada para los demás). */
+    fun hideConversation(conversationId: String) {
+        viewModelScope.launch { repo.ocultarConversacion(conversationId) }
+    }
+
+    /** Restaura un chat que el usuario había ocultado. */
+    fun restoreConversation(conversationId: String) {
+        viewModelScope.launch { repo.restaurarConversacion(conversationId) }
+    }
+
+    /** Elimina el grupo de la UI al instante; purga física en BD a las 72 horas. */
+    fun requestGroupDeletion(conversationId: String) {
+        viewModelScope.launch { repo.solicitarEliminacionGrupo(conversationId) }
+    }
+
+    /** Cancela la eliminación definitiva antes de que se cumpla el plazo. */
+    fun cancelGroupDeletion(conversationId: String) {
+        viewModelScope.launch { repo.cancelarEliminacionGrupo(conversationId) }
     }
 
     fun archiveConversation(conversationId: String) {
@@ -105,11 +126,24 @@ class ChatViewModel(
     var sending by mutableStateOf(false)
         private set
 
+    var participants by mutableStateOf<List<GroupMember>>(emptyList())
+        private set
+
     init {
         viewModelScope.launch {
-            repo.messages(conversationId).collect { list -> messages = list }
+            // Blindaje: si el repositorio alguna vez emite ids repetidos, el
+            // LazyColumn del chat revienta por key duplicada. La UI nunca debe
+            // recibir dos mensajes con el mismo id.
+            repo.messages(conversationId).collect { list -> messages = list.distinctBy { it.id } }
         }
         viewModelScope.launch { repo.markAsRead(conversationId) }
+        loadParticipants()
+    }
+
+    fun loadParticipants() {
+        viewModelScope.launch {
+            repo.getParticipants(conversationId).onSuccess { participants = it }
+        }
     }
 
     fun onDraftChange(value: String) { draft = value }
@@ -157,6 +191,8 @@ class NewGroupViewModel(private val repo: ChatRepository) : ViewModel() {
     var colleagues: List<GroupMember> by mutableStateOf(emptyList())
         private set
 
+    val subrouteLabel: String? = repo.activeSubrouteLabel()
+
     init {
         (repo as? com.gowayki.nesh.data.repository.FakeChatRepository)?.availableColleagues()?.let { colleagues = it }
         val ktorRepo = repo as? com.gowayki.nesh.data.repository.KtorChatRepository
@@ -164,9 +200,7 @@ class NewGroupViewModel(private val repo: ChatRepository) : ViewModel() {
             colleagues = ktorRepo.availableColleagues()
             ktorRepo.fetchColleagues()
             viewModelScope.launch {
-                ktorRepo.colleaguesFlow.collect {
-                    if (it.isNotEmpty()) colleagues = it
-                }
+                ktorRepo.colleaguesFlow.collect { colleagues = it }
             }
         }
     }

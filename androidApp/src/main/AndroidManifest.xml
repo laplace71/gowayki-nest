@@ -57,6 +57,24 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
+
+        <!-- Widget: lista de recorrido -->
+        <receiver
+            android:name=".widget.RecorridoWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.gowayki.nesh.action.REFRESH_RECORRIDO_WIDGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_recorrido_info" />
+        </receiver>
+
+        <service
+            android:name=".widget.RecorridoWidgetService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
     </application>
 
 </manifest>

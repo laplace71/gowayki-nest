@@ -45,11 +45,13 @@ object UserSession {
         currentUser = user
         if (user.dni.isNotBlank()) {
             activeDni = user.dni
+            runCatching { LastDniStore.write(user.dni) }
         }
     }
 
     fun clear() {
         currentUser = null
+        AuthTokenState.clear()
         TurnoSession.clear()
     }
 }

@@ -42,6 +42,9 @@ class FakeChatRepository(
     private val _archived = MutableStateFlow<List<Conversation>>(emptyList())
     private val _messages = MutableStateFlow<Map<String, List<Message>>>(emptyMap())
 
+    /** Conversaciones que el usuario ocultó: se conservan para restaurarlas. */
+    private val _hidden = MutableStateFlow<List<Conversation>>(emptyList())
+
     /** Colegas que se pueden invitar a un grupo. */
     private val colleagues: List<GroupMember> = listOf(
         GroupMember("u-l12", "Marco Rojas", "MR", isOnline = true),
@@ -59,9 +62,14 @@ class FakeChatRepository(
 
     override fun archived(): Flow<List<Conversation>> = _archived.asStateFlow()
 
+    override fun hiddenConversations(): Flow<List<Conversation>> = _hidden.asStateFlow()
+
+    /** Mensajes borrados localmente: siguen en la "BD" de ejemplo pero no se muestran. */
+    private val mensajesBorrados = mutableSetOf<String>()
+
     override fun messages(conversationId: String): Flow<List<Message>> =
         _messages
-            .map { all -> all[conversationId].orEmpty() }
+            .map { all -> all[conversationId].orEmpty().filterNot { it.id in mensajesBorrados } }
             .distinctUntilChanged()
 
     override suspend fun sendMessage(
@@ -184,33 +192,56 @@ class FakeChatRepository(
         return Result.success(Unit)
     }
 
-    override suspend fun deleteConversation(conversationId: String): Result<Unit> {
-        // Un grupo no se elimina al borrar el chat: se oculta de "Todos",
-        // se vacía su historial y sigue disponible en "Grupos". Para quitarlo
-        // por completo se usa deleteGroup.
-        val isGroup = (_conversations.value.firstOrNull { it.id == conversationId }
-            ?: _archived.value.firstOrNull { it.id == conversationId })?.isGroup == true
-        if (isGroup) {
-            _messages.update { all -> all + (conversationId to emptyList()) }
-            fun reset(list: List<Conversation>): List<Conversation> = list.map { c ->
-                if (c.id == conversationId) {
-                    c.copy(
-                        preview = "Sin mensajes",
-                        lastMessageAtMillis = 0L,
-                        unreadCount = 0,
-                        hiddenFromAll = true
-                    )
-                } else {
-                    c
-                }
-            }
-            _conversations.update { reset(it) }
-            _archived.update { reset(it) }
-        } else {
-            _conversations.update { list -> list.filterNot { it.id == conversationId } }
-            _archived.update { list -> list.filterNot { it.id == conversationId } }
-            _messages.update { all -> all - conversationId }
+    override suspend fun ocultarConversacion(conversationId: String): Result<Unit> {
+        // Ocultar es personal: la conversación pasa a la lista de ocultas y no
+        // vuelve por sí sola. Los mensajes no se tocan (se restauran con ella).
+        val conv = _conversations.value.firstOrNull { it.id == conversationId }
+            ?: _archived.value.firstOrNull { it.id == conversationId }
+            ?: return Result.failure(IllegalArgumentException("La conversación ya no está en tu lista"))
+
+        _conversations.update { list -> list.filterNot { it.id == conversationId } }
+        _archived.update { list -> list.filterNot { it.id == conversationId } }
+        _hidden.update { listOf(conv) + it.filterNot { c -> c.id == conversationId } }
+        persist()
+        return Result.success(Unit)
+    }
+
+    override suspend fun restaurarConversacion(conversationId: String): Result<Unit> {
+        val conv = _hidden.value.firstOrNull { it.id == conversationId }
+            ?: return Result.failure(IllegalArgumentException("Ese chat no está oculto"))
+
+        _hidden.update { list -> list.filterNot { it.id == conversationId } }
+        _conversations.update { listOf(conv) + it }
+        persist()
+        return Result.success(Unit)
+    }
+
+    override suspend fun solicitarEliminacionGrupo(conversationId: String): Result<Unit> {
+        // El backend espera 72 horas: aquí solo queda el aviso de pendiente.
+        val ahora = (currentTimeMillis() + 72L * 3600L * 1000L).toString()
+        fun marcar(list: List<Conversation>) = list.map {
+            if (it.id == conversationId) it.copy(
+                eliminacionPendiente = true,
+                eliminacionProgramadaPara = ahora
+            ) else it
         }
+        _conversations.update { marcar(it) }
+        _archived.update { marcar(it) }
+        _hidden.update { marcar(it) }
+        persist()
+        return Result.success(Unit)
+    }
+
+    override suspend fun cancelarEliminacionGrupo(conversationId: String): Result<Unit> {
+        fun limpiar(list: List<Conversation>) = list.map {
+            if (it.id == conversationId) it.copy(
+                eliminacionPendiente = false,
+                eliminacionProgramadaPara = null
+            ) else it
+        }
+        _conversations.update { limpiar(it) }
+        _archived.update { limpiar(it) }
+        _hidden.update { limpiar(it) }
         persist()
         return Result.success(Unit)
     }
@@ -232,7 +263,7 @@ class FakeChatRepository(
             val c = _archived.value[idx]
             _archived.update { it.filterNot { x -> x.id == conversationId } }
             // Al desarchivar vuelve a la lista principal.
-            _conversations.update { listOf(c.copy(hiddenFromAll = false)) + it }
+            _conversations.update { listOf(c) + it }
             persist()
         }
         return Result.success(Unit)
@@ -249,21 +280,61 @@ class FakeChatRepository(
     }
 
     override suspend fun deleteMessage(conversationId: String, messageId: String, deleteForEveryone: Boolean): Result<Unit> {
+        mensajesBorrados += messageId
         _messages.update { all ->
-            val current = all[conversationId].orEmpty().filterNot { m ->
-                if (deleteForEveryone) m.id == messageId else (m.id == messageId && m.isMine)
-            }
+            val current = all[conversationId].orEmpty().filterNot { it.id == messageId }
             all + (conversationId to current)
         }
         persist()
         return Result.success(Unit)
     }
 
-    override suspend fun deleteGroup(conversationId: String): Result<Unit> {
-        // Elimina el grupo por completo (conversación, historial y copia archivada).
-        _conversations.update { list -> list.filterNot { it.id == conversationId } }
-        _archived.update { list -> list.filterNot { it.id == conversationId } }
-        _messages.update { all -> all - conversationId }
+    override suspend fun leaveGroup(conversationId: String): Result<Unit> {
+        // Como en el backend: sales del grupo, pero el chat queda en tu lista para
+        // que puedas leerlo y borrarlo cuando quieras.
+        _conversations.update { list ->
+            list.map { if (it.id == conversationId) it.copy(hasLeft = true, unreadCount = 0, miRol = null) else it }
+        }
+        _archived.update { list ->
+            list.map { if (it.id == conversationId) it.copy(hasLeft = true, unreadCount = 0, miRol = null) else it }
+        }
+        persist()
+        return Result.success(Unit)
+    }
+
+    override suspend fun getParticipants(conversationId: String): Result<List<GroupMember>> {
+        val conv = (_conversations.value + _archived.value + _hidden.value)
+            .firstOrNull { it.id == conversationId }
+            ?: return Result.failure(IllegalArgumentException("Conversación no encontrada"))
+        return Result.success(conv.members)
+    }
+
+    override suspend fun addMembers(conversationId: String, members: List<GroupMember>): Result<Unit> {
+        fun update(list: List<Conversation>) = list.map { c ->
+            if (c.id == conversationId) {
+                c.copy(members = (c.members + members).distinctBy { it.userId })
+            } else {
+                c
+            }
+        }
+        _conversations.update(::update)
+        _archived.update(::update)
+        persist()
+        return Result.success(Unit)
+    }
+
+    override suspend fun asignarRol(conversationId: String, userId: String, rol: String): Result<Unit> {
+        fun update(list: List<Conversation>) = list.map { c ->
+            if (c.id == conversationId) {
+                c.copy(members = c.members.map { m ->
+                    if (m.userId == userId) m.copy(rol = rol) else m
+                })
+            } else {
+                c
+            }
+        }
+        _conversations.update(::update)
+        _archived.update(::update)
         persist()
         return Result.success(Unit)
     }
@@ -287,9 +358,7 @@ class FakeChatRepository(
                 if (c.id != conversationId) c
                 else c.copy(
                     preview = if (message.kind == MessageKind.AUDIO) "Audio" else message.text,
-                    lastMessageAtMillis = message.sentAtMillis,
-                    // Un mensaje nuevo vuelve a mostrar el chat en "Todos".
-                    hiddenFromAll = false
+                    lastMessageAtMillis = message.sentAtMillis
                 )
             }
         }
@@ -300,15 +369,30 @@ class FakeChatRepository(
         val saved = chatJson.decodeFromString<PersistedChatState>(raw)
         _conversations.value = saved.conversations
         _archived.value = saved.archived
+        _hidden.value = saved.hidden
+        mensajesBorrados.clear()
+        mensajesBorrados.addAll(saved.mensajesBorrados)
         _messages.value = saved.messages.mapValues { (_, list) ->
-            list.map { if (it.status == MessageStatus.SENDING) it.copy(status = MessageStatus.DELIVERED) else it }
+            list
+                .filterNot { it.id in mensajesBorrados }
+                .map { if (it.status == MessageStatus.SENDING) it.copy(status = MessageStatus.DELIVERED) else it }
         }
         true
     }.getOrDefault(false)
 
     private fun persist() {
         runCatching {
-            ChatStore.write(chatJson.encodeToString(PersistedChatState(_conversations.value, _archived.value, _messages.value)))
+            ChatStore.write(
+                chatJson.encodeToString(
+                    PersistedChatState(
+                        conversations = _conversations.value,
+                        archived = _archived.value,
+                        hidden = _hidden.value,
+                        messages = _messages.value,
+                        mensajesBorrados = mensajesBorrados.toSet(),
+                    )
+                )
+            )
         }
     }
 
@@ -393,7 +477,11 @@ class FakeChatRepository(
     private data class PersistedChatState(
         val conversations: List<Conversation>,
         val archived: List<Conversation> = emptyList(),
-        val messages: Map<String, List<Message>>
+        /** Chats ocultos por el usuario: solo viven en su dispositivo. */
+        val hidden: List<Conversation> = emptyList(),
+        val messages: Map<String, List<Message>>,
+        /** Ids borrados en este dispositivo; el backend no borra mensajes sueltos. */
+        val mensajesBorrados: Set<String> = emptySet()
     )
 
     companion object {

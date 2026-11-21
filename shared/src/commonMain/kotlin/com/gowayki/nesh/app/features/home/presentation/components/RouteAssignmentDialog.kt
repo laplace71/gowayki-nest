@@ -47,7 +47,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.gowayki.nesh.app.common.ui.shared.ToastManager
 import com.gowayki.nesh.app.common.ui.shared.WaykiPrimaryButton
-import com.gowayki.nesh.app.features.map.domain.model.ArequipaRoutes
 import com.gowayki.nesh.app.features.map.domain.model.CombiRoute
 import com.gowayki.nesh.core.config.BetaFlags
 import com.gowayki.nesh.core.session.TurnoSession
@@ -68,10 +67,10 @@ import kotlinx.coroutines.launch
 
 private sealed class FilaRuta {
     data class Empresa(val nombre: String) : FilaRuta()
-    data class Linea(val nombre: String, val color: Color) : FilaRuta()
+    data class Linea(val id: Int, val nombre: String, val color: Color) : FilaRuta()
     data class Subrutas(val rutas: List<CombiRoute>) : FilaRuta()
     data class Unidad(val data: BackendUnidadDto, val ocupada: Boolean) : FilaRuta()
-    data class Vacia(val linea: String) : FilaRuta()
+    data class Vacia(val id: Int, val linea: String) : FilaRuta()
 }
 
 /**
@@ -86,6 +85,7 @@ fun RouteAssignmentDialog(
     visible: Boolean,
     onDismiss: () -> Unit,
     onAssigned: (BackendTurnoDto) -> Unit = {},
+    obligatorio: Boolean = false,
 ) {
     if (!visible) return
 
@@ -100,15 +100,28 @@ fun RouteAssignmentDialog(
     var loading by remember { mutableStateOf(false) }
     var assigning by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // Elección explícita del chofer dentro de este diálogo. La selección global
+    // de SelectedRouteHolder puede venir de una pantalla anterior y no significa
+    // que el chofer haya elegido esa subruta para la unidad actual.
+    var subrutaElegida by remember { mutableStateOf<String?>(null) }
+
+    // Cambiar de unidad descarta la subruta elegida para la anterior: así un
+    // vehículo con otra subruta asignada no hereda la elección del anterior.
+    LaunchedEffect(unidadSeleccionada?.id) {
+        subrutaElegida = null
+    }
 
     LaunchedEffect(visible) {
         if (!visible) return@LaunchedEffect
         step = 0
         query = ""
         unidadSeleccionada = null
+        subrutaElegida = null
         error = null
         loading = true
         TurnoSession.refresh()
+        // Cargar catálogo de subrutas desde BD (reemplaza hardcode local)
+        runCatching { SelectedRouteHolder.refreshCatalog(force = true) }
         if (BetaFlags.selfAssignRoutes) {
             lineas = BackendLineasApi.lineas(force = true)
             unidades = BackendTurnosApi.unidadesTodas()
@@ -117,8 +130,9 @@ fun RouteAssignmentDialog(
     }
 
     val ocupadas = TurnoSession.unidadesOcupadas
+    val catalogSubrutas by SelectedRouteHolder.catalog.collectAsState()
 
-    val filas = remember(lineas, unidades, query, ocupadas) {
+    val filas = remember(lineas, unidades, query, ocupadas, catalogSubrutas) {
         val lineMap = lineas.associateBy { it.id }
         val unitsByLine = unidades.groupBy { it.lineaId }
         val filteredLineas = if (query.isBlank()) {
@@ -142,9 +156,9 @@ fun RouteAssignmentDialog(
                     val code = linea.nombre?.trim()
                         ?.removePrefix("Línea")?.removePrefix("Linea")?.trim()
                         ?.split(" ")?.firstOrNull()?.uppercase()
-                    list.add(FilaRuta.Linea(linea.nombre ?: "Línea ${linea.id}", colorFromHex(linea.colorHex)))
+                    list.add(FilaRuta.Linea(linea.id, linea.nombre ?: "Línea ${linea.id}", colorFromHex(linea.colorHex)))
                     val subrutas = if (code != null) {
-                        ArequipaRoutes.all.filter { it.isSub && it.parent == code }
+                        SelectedRouteHolder.subrutasForLine(code)
                     } else {
                         emptyList()
                     }
@@ -153,7 +167,7 @@ fun RouteAssignmentDialog(
                     }
                     val us = unitsByLine[linea.id] ?: emptyList()
                     if (us.isEmpty()) {
-                        list.add(FilaRuta.Vacia(linea.nombre ?: "Línea ${linea.id}"))
+                        list.add(FilaRuta.Vacia(linea.id, linea.nombre ?: "Línea ${linea.id}"))
                     } else {
                         us.forEach { u -> list.add(FilaRuta.Unidad(u, u.id in ocupadas)) }
                     }
@@ -163,8 +177,12 @@ fun RouteAssignmentDialog(
     }
 
     Dialog(
-        onDismissRequest = { if (!assigning) onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        onDismissRequest = { if (!assigning && !obligatorio) onDismiss() },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = !obligatorio,
+            dismissOnClickOutside = !obligatorio,
+        ),
     ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
@@ -309,9 +327,11 @@ fun RouteAssignmentDialog(
 
                     Spacer(Modifier.height(20.dp))
                     WaykiPrimaryButton(text = "Continuar", onClick = onDismiss, showArrow = false)
-                    Spacer(Modifier.height(4.dp))
-                    TextButton(onClick = { step = 1 }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Cambiar de ruta", color = AppColors.primary, fontWeight = FontWeight.Bold)
+                    if (!obligatorio) {
+                        Spacer(Modifier.height(4.dp))
+                        TextButton(onClick = { step = 1 }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Cambiar de ruta", color = AppColors.primary, fontWeight = FontWeight.Bold)
+                        }
                     }
                     return@Column
                 }
@@ -389,7 +409,10 @@ fun RouteAssignmentDialog(
                                 when (fila) {
                                     is FilaRuta.Empresa -> EmpresaHeader(fila.nombre)
                                     is FilaRuta.Linea -> LineaHeader(fila.nombre, fila.color)
-                                    is FilaRuta.Subrutas -> SubrutasRow(fila.rutas)
+                                    is FilaRuta.Subrutas -> SubrutasRow(
+                                        rutas = fila.rutas,
+                                        onSelect = { subrutaElegida = it.id },
+                                    )
                                     is FilaRuta.Unidad -> UnidadCard(
                                         unidad = fila.data,
                                         ocupada = fila.ocupada,
@@ -426,10 +449,46 @@ fun RouteAssignmentDialog(
                         scope.launch {
                             assigning = true
                             error = null
-                            BackendTurnosApi.asignar(choferId, unidad.id)
+                            val lineCode = unidad.lineaNombre?.trim()
+                                ?.removePrefix("Línea")?.removePrefix("Linea")?.trim()
+                                ?.split(" ")?.firstOrNull()?.uppercase()
+                            val catalogo = SelectedRouteHolder.catalog.value
+                            fun codigo(v: String?) = v?.trim()?.removePrefix("SB-")
+                                ?.takeIf { it.isNotBlank() }
+
+                            // 1) Si el chofer tocó una subruta de ESTA línea, gana.
+                            // 2) Si no, gana la subruta asignada al vehículo, aunque
+                            //    no esté en el catálogo (se manda su código tal cual).
+                            // 3) Solo al final se usa un default de la línea.
+                            val elegida = subrutaElegida?.let { id ->
+                                catalogo.firstOrNull { it.id.equals(id, true) }
+                            }
+                            val eleccionValida = elegida != null &&
+                                (lineCode == null || elegida.parent.equals(lineCode, true))
+                            val codigoElegido = if (eleccionValida) {
+                                codigo(elegida?.routeId) ?: codigo(elegida?.id)
+                            } else {
+                                null
+                            }
+                            val codigoVehiculo = codigo(unidad.subrutaCodigo)
+                            val codigoDefault = lineCode?.let { lc ->
+                                SelectedRouteHolder.subrutasForLine(lc).firstOrNull()
+                            }?.let { codigo(it.routeId) ?: codigo(it.id) }
+                            val codigoTurno = codigoElegido ?: codigoVehiculo ?: codigoDefault
+
+                            BackendTurnosApi.asignar(
+                                choferId = choferId,
+                                unidadId = unidad.id,
+                                subrutaCodigo = codigoTurno,
+                            )
                                 .onSuccess { turno ->
                                     TurnoSession.set(turno)
-                                    SelectedRouteHolder.selectLineByName(turno.lineaNombre)
+                                    val subCode = turno.subrutaCodigo?.takeIf { it.isNotBlank() }
+                                        ?: codigoTurno
+                                        ?: unidad.subrutaCodigo
+                                    if (subCode != null) {
+                                        SelectedRouteHolder.selectById(subCode)
+                                    }
                                     ToastManager.show("Turno iniciado: ${TurnoSession.resumen}")
                                     assigning = false
                                     onAssigned(turno)
@@ -464,7 +523,7 @@ private fun EmpresaHeader(nombre: String) {
 }
 
 @Composable
-private fun SubrutasRow(rutas: List<CombiRoute>) {
+private fun SubrutasRow(rutas: List<CombiRoute>, onSelect: (CombiRoute) -> Unit) {
     val selected by SelectedRouteHolder.selected.collectAsState()
     Row(
         modifier = Modifier
@@ -483,6 +542,7 @@ private fun SubrutasRow(rutas: List<CombiRoute>) {
                     .background(fondo)
                     .clickable {
                         SelectedRouteHolder.select(ruta)
+                        onSelect(ruta)
                         ToastManager.show("Ruta seleccionada: ${ruta.name}")
                     }
                     .padding(horizontal = 12.dp, vertical = 6.dp)
@@ -595,8 +655,10 @@ private fun colorFromHex(hex: String?): Color {
 
 private fun filaKey(fila: FilaRuta): String = when (fila) {
     is FilaRuta.Empresa -> "e_${fila.nombre}"
-    is FilaRuta.Linea -> "l_${fila.nombre}"
-    is FilaRuta.Subrutas -> "s_${fila.rutas.firstOrNull()?.parent}_${fila.rutas.size}"
+    // Por id, no por nombre: dos líneas pueden llamarse igual.
+    is FilaRuta.Linea -> "l_${fila.id}"
+    // Lista completa de ids: dos filas del mismo padre pueden tener igual tamaño.
+    is FilaRuta.Subrutas -> "s_" + fila.rutas.joinToString(",") { it.id }
     is FilaRuta.Unidad -> "u_${fila.data.id}"
-    is FilaRuta.Vacia -> "v_${fila.linea}"
+    is FilaRuta.Vacia -> "v_${fila.id}"
 }

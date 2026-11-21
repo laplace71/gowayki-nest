@@ -151,7 +151,9 @@ fun WaykiSidebarContent(
         DrawerMenuItem(
             icon = FeatherIcons.Radio,
             title = "Comunicación",
-            subtitle = if (TurnoSession.hasTurno) "Canal de ${TurnoSession.lineaNombre}" else "Canal de tu línea",
+            subtitle = TurnoSession.subrutaNombre?.let { "Canal de $it" }
+                ?: com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder.selected.value?.name?.let { "Canal de $it" }
+                ?: "Canal de tu subruta",
             isSelected = selectedTab == 1,
             onClick = onCommunicationClick
         )

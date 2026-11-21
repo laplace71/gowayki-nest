@@ -103,6 +103,7 @@ fun SosAudioPopup(vm: SosViewModel) {
             onPlayPause = {
                 if (isPlaying) vm.stopPlayback() else vm.playLastRecording()
             },
+            onSeek = { vm.seekAudioTo(it) },
             onSend = { showTargetDialog = true },
             onDiscard = { vm.discardRecordedAudio() },
             onDismissError = { vm.clearAudioError() },
