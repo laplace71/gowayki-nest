@@ -145,6 +145,13 @@ class KtorChatRepository : ChatRepository {
         return clave
     }
 
+    /** Igual que [effectiveClaveRuta] pero sin efectos: no ancla ni persiste. */
+    private fun claveVisible(dto: ConversacionResponseDto): String? {
+        dto.claveRuta?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+        if (!dto.esGrupo) return null
+        return manualGroupSubroutes[dto.id]
+    }
+
     fun fetchColleagues() {
         val myId = UserSession.currentUserId ?: return
         scope.launch {
@@ -390,7 +397,10 @@ class KtorChatRepository : ChatRepository {
             val ultimo = parseIsoToMillis(dto.ultimoMensaje?.createdAt)
             if (ultimo == null || ultimo <= corte) return false
         }
-        val clave = effectiveClaveRuta(dto)
+        // Solo lectura: el filtro lo usa también el badge cada 20 s. Llamar a
+        // effectiveClaveRuta aquí anclaba grupos sin clave a la subruta actual
+        // antes de que el chofer abriese Comunicación.
+        val clave = claveVisible(dto)
         if (isLineLevelChat(dto.titulo, clave)) return false
         if (isRouteGroupDto(dto.copy(claveRuta = clave))) {
             return activeRoute != null && matchesRouteGroup(clave, dto.titulo, activeRoute)
@@ -399,12 +409,11 @@ class KtorChatRepository : ChatRepository {
     }
 
     private fun observeSelectedRoute() {
+        // Escuchamos el evento explícito de confirmación, no el StateFlow:
+        // si el usuario vuelve a elegir la MISMA subruta tras reactivar la
+        // cuenta, el id no cambia y un collect por estado se lo saltaría.
         scope.launch {
-            var lastId: String? = null
-            SelectedRouteHolder.selected.collect { route ->
-                val id = route?.id
-                if (id == lastId) return@collect
-                lastId = id
+            SelectedRouteHolder.routeConfirmed.collect {
                 joinedRouteClave = null
                 refreshConversations(ensureRouteGroup = true)
                 fetchColleagues()
@@ -1289,6 +1298,9 @@ class KtorChatRepository : ChatRepository {
      * repositorio compartido bajo la sesión nueva.
      */
     fun cerrarSesion() {
+        // La memoria de "ya unido a esta ruta" es de sesión: al salir se limpia
+        // para que un re-registro pueda volver a unirse al grupo de ruta.
+        joinedRouteClave = null
         val usuario = com.gowayki.nesh.core.session.UserSession.currentUserId
         if (!usuario.isNullOrBlank()) {
             // También se guarda la lista vacía: si se restauraron todos los

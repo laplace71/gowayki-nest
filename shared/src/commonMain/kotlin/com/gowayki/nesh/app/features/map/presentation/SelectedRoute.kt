@@ -7,7 +7,10 @@ import com.gowayki.nesh.app.features.map.domain.model.CombiRoute
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -41,6 +44,14 @@ object SelectedRouteHolder {
 
     /** Sentido compartido entre "Tu recorrido" y el mapa. */
     val direction: StateFlow<RouteDirection> = _direction.asStateFlow()
+
+    /**
+     * Evento explícito de confirmación de subruta. Se emite aunque el id sea
+     * el mismo de antes: el repositorio de chat lo usa para re-unirse al grupo
+     * de ruta tras una reactivación de cuenta.
+     */
+    private val _routeConfirmed = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val routeConfirmed: SharedFlow<String> = _routeConfirmed.asSharedFlow()
 
     private val _catalog = MutableStateFlow<List<CombiRoute>>(emptyList())
     /** Catálogo dinámico de subrutas (desde BD). */
@@ -119,12 +130,15 @@ object SelectedRouteHolder {
     }
 
     fun select(route: CombiRoute?) {
+        val mismaRuta = _selected.value?.id?.equals(route?.id, ignoreCase = true) == true
         userSelected = true
-        // Resetea el sentido al cambiar de ruta.
-        _direction.value = RouteDirection.IDA
+        // Solo se resetea el sentido al CAMBIAR de ruta: si se re-elige la
+        // misma, el mapa y Recorrido deben conservar Ida/Vuelta.
+        if (!mismaRuta) _direction.value = RouteDirection.IDA
         _selected.value = route
         if (route != null) {
             persistSelection()
+            _routeConfirmed.tryEmit(route.id)
         }
     }
 

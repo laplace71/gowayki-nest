@@ -152,33 +152,34 @@ object RouteStopsStore {
     private suspend fun postProcess(stops: List<SitRouteStop>): List<SitRouteStop> {
         if (stops.isEmpty()) return emptyList()
 
-        // 1) Identidad y deduplicación ANTES de tocar el texto visible.
-        // Dos paraderos distintos pueden caer en la misma calle; usar el
-        // nombre para deduplicar los fusionaba. El id del upstream es estable.
         val conInicio = stops.mapIndexed { i, stop ->
             if (i == 0 && (stop.name.isBlank() || stop.name.equals("Innominada", ignoreCase = true))) {
                 stop.copy(name = "Inicio de ruta")
             } else stop
         }
-        val dedup = conInicio
-            .filterNot { it.name.isBlank() || it.name.equals("Innominada", ignoreCase = true) }
-            .distinctBy { stop ->
-                stop.id.takeIf { it.isNotBlank() }
-                    ?: "${stop.latitude}|${stop.longitude}"
-            }
 
-        // 2) Solo ahora se enriquece el nombre para mostrar.
-        return dedup.map { stop ->
+        // 1) Enriquecer TODOS, también los que venían sin nombre: muchos tienen
+        // calle real (Pte. Grau, Av. Los Incas) y antes se descartaban aquí.
+        val enriquecidos = conInicio.map { stop ->
             val descripcion = StopDescriptions.describe(stop.latitude, stop.longitude, "")
             val nombre = when {
                 descripcion.isBlank() -> stop.name
-                stop.name.startsWith("Paradero", ignoreCase = true) ||
+                stop.name.isBlank() || stop.name.equals("Innominada", ignoreCase = true) ||
+                    stop.name.startsWith("Paradero", ignoreCase = true) ||
                     stop.name.equals("Inicio de ruta", ignoreCase = true) -> descripcion
                 stop.name.contains(descripcion, ignoreCase = true) -> stop.name
                 else -> "${stop.name} · $descripcion"
             }
             stop.copy(name = nombre)
         }
+
+        // 2) Deduplicar por identidad estable, nunca por texto visible.
+        return enriquecidos
+            .filterNot { it.name.isBlank() }
+            .distinctBy { stop ->
+                stop.id.takeIf { it.isNotBlank() }
+                    ?: "${stop.latitude}|${stop.longitude}"
+            }
     }
 
     @OptIn(ExperimentalResourceApi::class)
