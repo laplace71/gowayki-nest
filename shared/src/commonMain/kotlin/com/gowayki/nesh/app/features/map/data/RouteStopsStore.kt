@@ -173,9 +173,12 @@ object RouteStopsStore {
             stop.copy(name = nombre)
         }
 
-        // 2) Deduplicar por identidad estable, nunca por texto visible.
+        // 2) Quitar los placeholders que NO resolvieron a ninguna calle/lugar.
+        // Los que tenían nombre genérico pero sí consiguieron descripción ya
+        // tienen ese texto y se conservan. El primero siempre tuvo "Inicio de
+        // ruta" como respaldo.
         return enriquecidos
-            .filterNot { it.name.isBlank() }
+            .filterNot { it.name.isBlank() || it.name.equals("Innominada", ignoreCase = true) }
             .distinctBy { stop ->
                 stop.id.takeIf { it.isNotBlank() }
                     ?: "${stop.latitude}|${stop.longitude}"
