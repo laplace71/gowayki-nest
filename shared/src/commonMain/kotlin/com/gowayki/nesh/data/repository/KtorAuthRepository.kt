@@ -1,10 +1,12 @@
 package com.gowayki.nesh.data.repository
 
 import com.gowayki.nesh.core.network.HttpClientFactory
+import com.gowayki.nesh.core.session.AuthTokenState
 import com.gowayki.nesh.core.session.UserSession
 import com.gowayki.nesh.data.entities.auth.LoginRequestDto
 import com.gowayki.nesh.data.entities.auth.LoginResponseDto
 import com.gowayki.nesh.data.entities.auth.RegisterRequestDto
+import com.gowayki.nesh.domain.model.AuthError
 import com.gowayki.nesh.domain.model.User
 import com.gowayki.nesh.domain.repository.AuthRepository
 import io.ktor.client.call.body
@@ -12,6 +14,8 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class KtorAuthRepository : AuthRepository {
 
@@ -22,8 +26,8 @@ class KtorAuthRepository : AuthRepository {
         return loginWithDni(UserSession.activeDni, pin)
     }
 
-    override suspend fun loginWithDni(dni: String, pin: String): Result<User> {
-        return try {
+    override suspend fun loginWithDni(dni: String, pin: String): Result<User> = withContext(Dispatchers.IO) {
+        try {
             val response: HttpResponse = client.post("$baseUrl/auth/login") {
                 setBody(LoginRequestDto(dni = dni.trim(), pin = pin.trim()))
             }
@@ -38,27 +42,34 @@ class KtorAuthRepository : AuthRepository {
                         dni = body.usuario.dni,
                         phone = body.usuario.telefono
                     )
+                    // Sin token el chat respondería 401: se guarda antes de dar
+                    // la sesión por iniciada.
+                    AuthTokenState.save(body.token)
                     UserSession.saveUser(user)
                     Result.success(user)
                 } else {
-                    Result.failure(Exception(body.mensaje ?: "Error de autenticación"))
+                    Result.failure(
+                        AuthError.Rechazado(body.mensaje ?: "No pudimos iniciar sesión. Inténtalo otra vez.")
+                    )
                 }
             } else {
-                val errorMsg = try {
-                    val errorBody = response.body<LoginResponseDto>()
-                    errorBody.mensaje ?: "Credenciales o PIN incorrectos"
+                val mensaje = try {
+                    response.body<LoginResponseDto>().mensaje
                 } catch (_: Exception) {
-                    "Error de autenticación (${response.status.value})"
+                    null
                 }
-                Result.failure(Exception(errorMsg))
+                Result.failure(clasificarErrorDeLogin(response.status.value, mensaje))
             }
+        } catch (e: AuthError) {
+            Result.failure(e)
         } catch (e: Exception) {
-            Result.failure(Exception(e.message ?: "No se pudo conectar con el servidor"))
+            Result.failure(desdeExcepcion(e))
         }
     }
 
-    override suspend fun register(name: String, dni: String, phone: String, email: String, pin: String): Result<User> {
-        return try {
+    override suspend fun register(name: String, dni: String, phone: String, email: String, pin: String): Result<User> =
+        withContext(Dispatchers.IO) {
+        try {
             val response: HttpResponse = client.post("$baseUrl/auth/registro") {
                 setBody(
                     RegisterRequestDto(
@@ -86,18 +97,20 @@ class KtorAuthRepository : AuthRepository {
                     dni = dto.dni,
                     phone = dto.telefono,
                 )
+                AuthTokenState.save(body.token)
                 UserSession.saveUser(user)
                 Result.success(user)
             } else {
                 Result.failure(
-                    Exception(
-                        body?.mensaje
-                            ?: "No se pudo registrar la cuenta (${response.status.value})"
+                    AuthError.Rechazado(
+                        body?.mensaje ?: "No pudimos crear la cuenta. Inténtalo otra vez."
                     )
                 )
             }
+        } catch (e: AuthError) {
+            Result.failure(e)
         } catch (e: Exception) {
-            Result.failure(Exception(e.message ?: "No se pudo conectar con el servidor"))
+            Result.failure(desdeExcepcion(e))
         }
     }
 
@@ -110,4 +123,69 @@ class KtorAuthRepository : AuthRepository {
         UserSession.saveUser(currentUser)
         return Result.success(currentUser)
     }
+
+    // ---------- Traducción de errores ----------
+
+    /**
+     * Cualquier fallo que no venga del servidor es de red o de la propia app.
+     * Nunca se muestra el mensaje original: trae la IP y detalles internos.
+     */
+    private fun desdeExcepcion(e: Exception): AuthError =
+        if (esFalloDeRed(e)) {
+            AuthError.SinConexion()
+        } else {
+            AuthError.Rechazado("No pudimos completar la solicitud. Inténtalo otra vez.")
+        }
+
+    private fun esFalloDeRed(e: Throwable): Boolean {
+        var actual: Throwable? = e
+        while (actual != null) {
+            if (actual::class.simpleName.orEmpty() in FALLOS_DE_RED) return true
+            actual = actual.cause
+        }
+        return false
+    }
+
+    private companion object {
+        val FALLOS_DE_RED = setOf(
+            "IOException",
+            "ConnectException",
+            "SocketTimeoutException",
+            "UnknownHostException",
+            "UnresolvedAddressException",
+            "HttpRequestTimeoutException",
+            "ConnectTimeoutException",
+        )
+    }
+}
+
+/** "…Intentos restantes antes de bloqueo temporal: 3" → 3. */
+private val RESTANTES = Regex("""restantes[^0-9]*(\d+)""", RegexOption.IGNORE_CASE)
+
+/**
+ * Convierte la respuesta de error del backend en un motivo legible.
+ *
+ * El backend responde 423 cuando la cuenta está bloqueada y 401 con
+ * "PIN incorrecto. Intentos restantes…: N" cuando el PIN falla. De ese texto
+ * sale el número exacto de intentos que guarda la base de datos.
+ */
+internal fun clasificarErrorDeLogin(status: Int, mensaje: String?): AuthError {
+    val texto = mensaje?.trim()?.takeIf { it.isNotBlank() }
+
+    if (status == 423 || texto?.contains("bloqueada", ignoreCase = true) == true) {
+        return AuthError.CuentaBloqueada(
+            texto ?: "La cuenta está bloqueada temporalmente. Inténtalo más tarde."
+        )
+    }
+
+    val restantes = RESTANTES.find(texto.orEmpty())
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toIntOrNull()
+
+    if (texto != null && texto.contains("PIN incorrecto", ignoreCase = true)) {
+        return AuthError.PinIncorrecto(texto, restantes)
+    }
+
+    return AuthError.Rechazado(texto ?: "No pudimos iniciar sesión. Inténtalo otra vez.")
 }

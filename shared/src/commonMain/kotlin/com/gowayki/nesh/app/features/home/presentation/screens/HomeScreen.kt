@@ -52,9 +52,11 @@ import com.gowayki.nesh.app.features.home.presentation.components.RouteAssignmen
 import com.gowayki.nesh.app.common.ui.shared.WaykiReveal
 import com.gowayki.nesh.app.common.ui.shared.WaykiPerf
 import com.gowayki.nesh.app.common.ui.shared.WaykiSidebarContent
+import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import com.gowayki.nesh.app.features.map.data.RouteStopsStore
 import com.gowayki.nesh.app.features.map.data.SitRouteStop
 import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
+import com.gowayki.nesh.app.features.map.presentation.SubrouteLabels
 import com.gowayki.nesh.app.features.map.domain.model.CombiRoute
 import com.gowayki.nesh.core.theme.src.AppTextStyles
 import com.gowayki.nesh.core.theme.src.core.AppColors
@@ -92,10 +94,14 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     var showRouteDialog by remember { mutableStateOf(false) }
+    var rutaObligatoria by remember { mutableStateOf(false) }
     val selectedRoute by SelectedRouteHolder.selected.collectAsState()
     val direction by SelectedRouteHolder.direction.collectAsState()
     var routeStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
     var idaStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
+
+    // Atrás/deslizar al costado en inicio no debe cerrar sesión: solo se sale con "Cerrar sesión".
+    BackHandler(enabled = true) { }
 
     // Parallax effect: usar derivedStateOf para evitar recomposición en cada scroll
     val parallaxTranslationY by remember {
@@ -116,10 +122,10 @@ fun HomeScreen(
         } else {
             emptyList()
         }
-    }
-    androidx.compose.runtime.LaunchedEffect(selectedRoute) {
-        val r = selectedRoute
-        idaStops = if (r?.routeId != null) {
+        // Reutilizar el mismo resultado para idaStops si es la misma ruta.
+        idaStops = if (r?.routeId != null && r.routeId == routeId) {
+            routeStops
+        } else if (r?.routeId != null) {
             runCatching { RouteStopsStore.stopsFor(r.routeId!!) }.getOrDefault(emptyList())
         } else {
             emptyList()
@@ -138,6 +144,9 @@ fun HomeScreen(
         TurnoSession.refresh()
         if (!TurnoSession.promptShown) {
             TurnoSession.promptShown = true
+            // Con turno asignado, la confirmación de "seguir en esta ruta" es
+            // obligatoria: no se cierra tocando fuera ni con el botón atrás.
+            rutaObligatoria = TurnoSession.turno != null
             showRouteDialog = true
         }
 
@@ -454,7 +463,7 @@ fun HomeScreen(
                                 }
                                 Spacer(modifier = Modifier.height(10.dp))
                                 androidx.compose.material3.TextButton(
-                                    onClick = { showRouteDialog = true },
+                                    onClick = { rutaObligatoria = false; showRouteDialog = true },
                                     modifier = Modifier.align(Alignment.End)
                                 ) {
                                     Text(
@@ -468,59 +477,30 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(24.dp))
                     }
 
-                    // Otras combis de la línea, según los turnos activos reales.
-                    val miTurno = TurnoSession.turno
-                    val companeros = if (miTurno != null) {
-                        TurnoSession.activeTurnos.filter {
-                            it.lineaId == miTurno.lineaId && it.choferId != miTurno.choferId
-                        }
-                    } else {
-                        emptyList()
-                    }
-                    Text(
-                        text = if (miTurno?.lineaNombre != null) "Combis en ${miTurno.lineaNombre}" else "Combis en tu línea",
-                        style = AppTextStyles.waykiLabelMedium,
-                        color = AppColors.ink
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    androidx.compose.material3.Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = AppRadius.card,
-                        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = AppColors.cream),
-                        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
-                            if (companeros.isEmpty()) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .background(AppColors.primary.copy(alpha = 0.12f), CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = SolidGroup.Bus,
-                                            contentDescription = null,
-                                            tint = AppColors.primary,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(14.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "Esperando otras combis",
-                                            style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
-                                            color = AppColors.ink
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = "Aún no hay otros conductores en ruta dentro de tu línea.",
-                                            style = AppTextStyles.waykiMini,
-                                            color = AppColors.slate
-                                        )
-                                    }
-                                }
-                            } else {
+                    // Choferes en mi MISMA SUBRUTA concreta (turnos activos reales).
+                    val miRuta = SelectedRouteHolder.selected.value?.takeIf { it.isSub }
+                    val companeros = TurnoSession.companerosEnSubruta(miRuta)
+                    val nombreSubruta = TurnoSession.turno?.subrutaNombre?.takeIf { it.isNotBlank() }
+                        ?: miRuta?.name?.takeIf { it.isNotBlank() }
+                        ?: TurnoSession.turno?.subrutaCodigo?.let { SubrouteLabels.nameOf(it) }
+
+                    // Si no hay nadie en mi subruta, no se muestra nada.
+                    if (companeros.isNotEmpty()) {
+                        Text(
+                            text = if (nombreSubruta != null) "Choferes en $nombreSubruta" else "Choferes en tu subruta",
+                            style = AppTextStyles.waykiLabelMedium,
+                            color = AppColors.ink,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        androidx.compose.material3.Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = AppRadius.card,
+                            colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = AppColors.cream),
+                            elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(18.dp)) {
                                 companeros.forEachIndexed { index, turno ->
                                     if (index > 0) {
                                         Spacer(modifier = Modifier.height(12.dp))
@@ -591,10 +571,18 @@ fun HomeScreen(
 
     RouteAssignmentDialog(
         visible = showRouteDialog,
-        onDismiss = { showRouteDialog = false },
-        onAssigned = {
+        obligatorio = rutaObligatoria,
+        onDismiss = {
             showRouteDialog = false
-            SelectedRouteHolder.selectLineByName(it.lineaNombre)
+            rutaObligatoria = false
+        },
+        onAssigned = { turno ->
+            showRouteDialog = false
+            rutaObligatoria = false
+            val subCode = turno.subrutaCodigo?.takeIf { it.isNotBlank() }
+            if (subCode != null) {
+                SelectedRouteHolder.selectById(subCode)
+            }
         },
     )
 }
