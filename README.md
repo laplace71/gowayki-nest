@@ -31,11 +31,25 @@ Cualquier colaborador con permiso de escritura en el repo, sin configurar nada:
   SDK de Android y los secretos de firma exportados).
 
 Todas las publicaciones que van a `beta` comparten el mismo grupo de
-`concurrency`: si entran dos, se cancela la anterior y solo publica la última.
+`concurrency`: **no se cancela** la que ya está corriendo (una subida a medias
+dejaría notas y APK describiendo versiones distintas); los demás runs esperan,
+y GitHub puede descartar uno que aún está en espera si llega uno más nuevo.
+Además, CI y publicación local toman un **lock exclusivo** en el repo de
+destino antes de compilar y comprueban que siguen siendo dueños justo antes de
+subir ([`scripts/release-state.sh`](scripts/release-state.sh)). El lock usa la
+API de GitHub con `GH_TOKEN`, así que sirve igual en clones HTTPS, forks y
+worktrees, y nunca publica commits sin subir. **No caduca por tiempo**: si el
+publicador original murió, confirma que paró y ejecuta
+`WAYKI_FORCE_UNLOCK=1 scripts/release-state.sh lock-recover`. La recuperación no
+cancela una escritura que ya superó su `lock-check`: antes de usarla, asegúrate
+de que el publicador original se detuvo por completo (no basta con matar el
+proceso a medias). Cada `upload`/`edit`/`create` y el movimiento del tag
+re-verifican la propiedad del lock inmediatamente antes de escribir.
+
 El `versionCode` sale de **una sola secuencia monotónica** compartida por CI y
-publicación local ([`scripts/release-state.sh`](scripts/release-state.sh)): se
-siembra con el tiempo Unix y nunca baja del último código publicado + 1, así
-ninguna beta puede degenerar en un downgrade que Android rechace.
+publicación local: se siembra con el tiempo Unix y nunca baja del último código
+publicado + 1, así ninguna beta puede degenerar en un downgrade que Android
+rechace.
 
 ### Firma y configuración
 

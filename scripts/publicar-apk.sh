@@ -29,6 +29,16 @@ BETA_TAG="beta"
 raiz="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$raiz"
 
+# Las notas se generan desde HEAD. Si el build incluyera cambios sin commitear,
+# el APK publicado no coincidiría con el commit que anuncian las notas.
+cambios_pendientes=$(git status --porcelain)
+if [ -n "$cambios_pendientes" ]; then
+  echo "ERROR: hay cambios sin commitear; el APK no coincidiría con las notas de la release." >&2
+  echo "$cambios_pendientes" >&2
+  echo "Commitea (o guarda con git stash) antes de publicar." >&2
+  exit 1
+fi
+
 if [[ -z "${BACKEND_URL:-}" ]]; then
   echo "ERROR: exporta BACKEND_URL con la URL del backend antes de publicar." >&2
   exit 1
@@ -55,8 +65,22 @@ else
   asset="wayki-nest-${version}.apk"
 fi
 
+# Es prerelease si el tag/version lleva sufijo (beta, rc…). Un tag suelto
+# v1.0.0 es estable; v1.0.0-beta3 es prerelease aunque TAG != "beta".
+case "$version" in
+  *-*) es_prerelease=true ;;
+  *)   es_prerelease=false ;;
+esac
+
 # Unica secuencia monotónica, compartida con el CI (nunca reloj/100 ni run number).
 version_code="$(./scripts/release-state.sh next-code "$BETA_TAG")"
+
+# Solo un escritor a la vez: CI y publicación local comparten el mismo lock.
+# Se libera en el trap, incluso si la compilación o la subida falla.
+./scripts/release-state.sh lock-acquire
+# Trap inmediato: cualquier salida posterior (incluida la validación de
+# secretos) debe liberar el lock, no solo los errores de compilación.
+trap './scripts/release-state.sh lock-release' EXIT
 
 # --- Keystore privado (el mismo que usa el CI) ------------------------------
 if [[ -z "${RELEASE_KEYSTORE_BASE64:-}" || -z "${RELEASE_KEYSTORE_PASSWORD:-}" || \
@@ -66,7 +90,7 @@ if [[ -z "${RELEASE_KEYSTORE_BASE64:-}" || -z "${RELEASE_KEYSTORE_PASSWORD:-}" |
   exit 1
 fi
 keystore="$(mktemp "${TMPDIR:-/tmp}/wayki-release.XXXXXX.jks")"
-trap 'rm -f "$keystore"' EXIT
+trap 'rm -f "$keystore"; ./scripts/release-state.sh lock-release' EXIT
 printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 -d > "$keystore"
 
 # --- Build ------------------------------------------------------------------
@@ -91,15 +115,25 @@ rm -f "$raiz/build/releases/alineado.apk"
 
 # --- Datos verificables y control de publicación ----------------------------
 short_sha=$(git rev-parse --short HEAD)
-sha256=$(sha256sum "$salida" | cut -d' ' -f1)
-bytes=$(stat -c%s "$salida")
+build_sha=$(git rev-parse HEAD)
+# macOS (BSD) no trae sha256sum ni `stat -c`: usar herramientas portables.
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256=$(sha256sum "$salida" | cut -d' ' -f1)
+elif command -v shasum >/dev/null 2>&1; then
+  sha256=$(shasum -a 256 "$salida" | cut -d' ' -f1)
+else
+  echo "ERROR: se necesita sha256sum (Linux) o shasum (macOS)." >&2
+  exit 1
+fi
+bytes=$(wc -c < "$salida" | tr -d '[:space:]')
 cert=$("$build_tools/apksigner" verify --print-certs "$salida" | \
   sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
 [[ -n "$cert" ]] || { echo "ERROR: no se pudo leer la huella SHA-256 del certificado" >&2; exit 1; }
 tamano=$(awk -v b="$bytes" 'BEGIN { printf "%.1f MB", b / 1048576 }')
 
-# No publicar un APK más antiguo ni con otra firma que el beta vigente.
-./scripts/release-state.sh assert "$version_code" "$cert" "$BETA_TAG"
+# No publicar un APK más antiguo (ni con otra firma) que CUALQUIER release
+# publicada, incluida la release de destino cuando es un tag v*.
+./scripts/release-state.sh assert "$version_code" "$cert" "$TAG"
 
 # --- Notas de la release ----------------------------------------------------
 prev=$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null || true)
@@ -161,16 +195,40 @@ notas="$raiz/build/releases/notas.md"
 } > "$notas"
 
 # --- Release ----------------------------------------------------------------
+# Cada escritura re-verifica la propiedad del lock pegada al comando: el lock
+# se tomó antes del build y pudo cambiar de manos (recuperación manual) mientras
+# se compilaba. Sin un token, `gh release view` no cuenta como escritura.
+pub() {
+  ./scripts/release-state.sh lock-check
+  "$@"
+}
+
+es_draft=$(gh release view "$TAG" -R "$REPO" --json isDraft -q .isDraft 2>/dev/null || echo false)
+
 if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
-  gh release upload "$TAG" "$salida" -R "$REPO" --clobber
-  gh release edit "$TAG" -R "$REPO" --title "Wayki Nest $version" --notes-file "$notas"
+  pub gh release upload "$TAG" "$salida" -R "$REPO" --clobber
+  # Publicar de verdad (una draft no expone el asset) y fijar prerelease.
+  # Un draft puede reservar el tag sin crear el ref de Git: al publicarlo,
+  # GitHub crea el tag desde --target. Si no lo enviamos, el tag nace en el
+  # commit guardado en la draft (quizá distinto del APK que acabamos de
+  # compilar) y el source archive no coincide con las notas.
+  edit_opts=(--draft=false --prerelease="$es_prerelease")
+  if [ "$es_draft" = "true" ]; then
+    # Sin --verify-tag: gh 2.23 (Debian 12) no lo acepta en `release edit`
+    # y el valor por defecto ya es false en versiones que sí lo tienen.
+    edit_opts+=(--target "$build_sha")
+  fi
+  pub gh release edit "$TAG" -R "$REPO" \
+    --title "Wayki Nest $version" --notes-file "$notas" \
+    "${edit_opts[@]}"
 else
-  gh release create "$TAG" "$salida" -R "$REPO" \
+  pub gh release create "$TAG" "$salida" -R "$REPO" \
     --title "Wayki Nest $version" \
     --notes-file "$notas" \
-    --prerelease \
-    --target main
+    --prerelease="$es_prerelease" \
+    --target "$build_sha"
 fi
+./scripts/release-state.sh lock-check
 
 echo
 echo "Listo: https://github.com/$REPO/releases/tag/$TAG"
