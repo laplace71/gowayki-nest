@@ -177,7 +177,8 @@ fun ChatScreen(
             previewNueva = ""
         } else {
             mensajesNuevos += cantidad
-            previewNueva = "$autor: $texto"
+            // Evita "Ana: Ana" cuando el texto alternativo ya es el nombre.
+            previewNueva = if (texto == autor) texto else "$autor: $texto"
         }
         ultimoVistoId = id
     }

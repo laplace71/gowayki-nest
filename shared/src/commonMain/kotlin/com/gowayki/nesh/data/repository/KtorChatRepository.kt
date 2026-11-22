@@ -119,7 +119,7 @@ class KtorChatRepository : ChatRepository {
 
     init {
         restore()
-        refreshConversations(ensureRouteGroup = true)
+        refreshConversations(ensureRouteGroup = true, anchorManualGroups = true)
         startWebSocketListener()
         startPolling()
         observeSelectedRoute()
@@ -430,13 +430,19 @@ class KtorChatRepository : ChatRepository {
                     // Si se perdió la asignación oficial NO hacemos join: la
                     // selección global todavía apunta a la ruta anterior y
                     // reeditar el grupo sería un reingreso no deseado.
-                    refreshConversations(ensureRouteGroup = !codigo.isNullOrBlank())
+                    refreshConversations(
+                        ensureRouteGroup = !codigo.isNullOrBlank(),
+                        anchorManualGroups = !codigo.isNullOrBlank(),
+                    )
                     fetchColleagues()
                 }
         }
     }
 
-    fun refreshConversations(ensureRouteGroup: Boolean = false) {
+    fun refreshConversations(
+        ensureRouteGroup: Boolean = false,
+        anchorManualGroups: Boolean = false,
+    ) {
         val myId = UserSession.currentUserId ?: return
         // El backend no lista los chats ocultos: al volver a entrar con la
         // misma cuenta recuperamos sus ids/títulos del guardado por cuenta.
@@ -474,7 +480,7 @@ class KtorChatRepository : ChatRepository {
             }
 
             BackendChatApi.conversaciones().onSuccess { list ->
-                filterAndEmitConversations(list)
+                filterAndEmitConversations(list, anchorManualGroups)
                 if (ensureRouteGroup && clave != null) fetchColleagues()
             }
         }
@@ -504,7 +510,10 @@ class KtorChatRepository : ChatRepository {
         persist()
     }
 
-    private fun filterAndEmitConversations(list: List<ConversacionResponseDto>) {
+    private fun filterAndEmitConversations(
+        list: List<ConversacionResponseDto>,
+        anchorManualGroups: Boolean = false,
+    ) {
         purgeEliminacionesVencidas()
         // El backend ya excluye las conversaciones que el usuario ocultó.
         // Los grupos de ruta de otra subruta tampoco se muestran: cada subruta
@@ -513,7 +522,7 @@ class KtorChatRepository : ChatRepository {
         val filtered = list.filter { visibleOnThisDevice(it, activeRoute) }
         val existingById = (_conversations.value + _archived.value).associateBy { it.id }
         val mapped = filtered.map { dto ->
-            val fresh = mapDtoToConversation(dto)
+            val fresh = mapDtoToConversation(dto, anchorManualGroups)
             val existing = existingById[dto.id]
             if (existing != null) {
                 val lastLocal = _messages.value[dto.id]?.lastOrNull()?.sentAtMillis ?: 0L
@@ -574,7 +583,8 @@ class KtorChatRepository : ChatRepository {
     }
 
     override fun conversations(): Flow<List<Conversation>> {
-        refreshConversations(ensureRouteGroup = false)
+        // Abrir la bandeja es interacción explícita: se anclan los grupos manuales.
+        refreshConversations(ensureRouteGroup = false, anchorManualGroups = true)
         return _conversations.asStateFlow()
     }
 
@@ -1225,8 +1235,7 @@ class KtorChatRepository : ChatRepository {
             senderId = dto.emisorId,
             senderName = dto.emisorNombre ?: if (isMine) UserSession.displayName else "Conductor",
             text = if (dto.tipo == "SISTEMA") {
-                dto.contenidoTexto?.takeIf { it.isNotBlank() }
-                    ?: (dto.emisorNombre ?: if (isMine) UserSession.displayName else "Conductor")
+                textoPreview(dto)
             } else {
                 dto.contenidoTexto ?: if (dto.tipo == "AUDIO") "Nota de voz" else ""
             },
@@ -1247,12 +1256,14 @@ class KtorChatRepository : ChatRepository {
         )
     }
 
-    private fun mapDtoToConversation(dto: ConversacionResponseDto): Conversation {
-        val previewText = when {
-            dto.ultimoMensaje?.tipo == "AUDIO" -> "Audio · ${dto.ultimoMensaje.audioDuracionSegundos ?: 0}s"
-            dto.ultimoMensaje?.contenidoTexto != null -> dto.ultimoMensaje.contenidoTexto
-            else -> "Sin mensajes"
-        }
+    private fun textoPreview(dto: MensajeResponseDto?): String {
+        if (dto == null) return "Sin mensajes"
+        if (dto.tipo == "AUDIO") return "Audio · ${dto.audioDuracionSegundos ?: 0}s"
+        return dto.contenidoTexto?.takeIf { it.isNotBlank() } ?: dto.emisorNombre ?: "Sin mensajes"
+    }
+
+    private fun mapDtoToConversation(dto: ConversacionResponseDto, anchorManualGroups: Boolean = false): Conversation {
+        val previewText = textoPreview(dto.ultimoMensaje)
         val count = (dto.totalParticipantes ?: 1).coerceAtLeast(1)
         val membersList = if (dto.esGrupo) {
             List(count) { i ->
@@ -1273,7 +1284,7 @@ class KtorChatRepository : ChatRepository {
             lastMessageId = dto.ultimoMensaje?.id,
             members = membersList,
             tipoConversacion = dto.tipoConversacion,
-            claveRuta = effectiveClaveRuta(dto),
+            claveRuta = if (anchorManualGroups) effectiveClaveRuta(dto) else claveVisible(dto),
             createdBy = dto.createdBy,
             miRol = dto.miRol,
             eliminacionPendiente = dto.eliminacionPendiente,
