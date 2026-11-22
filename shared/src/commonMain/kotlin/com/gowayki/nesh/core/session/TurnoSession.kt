@@ -101,18 +101,32 @@ object TurnoSession {
             try {
                 val holder = com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
                 runCatching { holder.refreshCatalog() }
-                turno = BackendTurnosApi.turnoActivo(choferId)
-                val subrutaId = turno?.subrutaCodigo?.takeIf { it.isNotBlank() }
-                val seleccionActual = holder.selected.value
-                val yaSeleccionada = subrutaId != null && (
-                    seleccionActual?.id.equals(subrutaId, ignoreCase = true) ||
-                        seleccionActual?.routeId.equals(subrutaId, ignoreCase = true)
-                    )
-                // `selectById` reinicia el sentido a IDA: solo se llama cuando
-                // la subruta asignada cambia de verdad, no en cada refresco.
-                if (subrutaId != null && !yaSeleccionada) {
-                    holder.selectById(subrutaId)
-                }
+
+                val consulta = BackendTurnosApi.turnoActivo(choferId)
+                consulta
+                    .onSuccess { nuevo ->
+                        turno = nuevo
+                        val subrutaId = nuevo?.subrutaCodigo?.takeIf { it.isNotBlank() }
+                        val seleccionActual = holder.selected.value
+                        val yaSeleccionada = subrutaId != null && (
+                            seleccionActual?.id.equals(subrutaId, ignoreCase = true) ||
+                                seleccionActual?.routeId.equals(subrutaId, ignoreCase = true)
+                            )
+                        // `selectById` reinicia el sentido a IDA: solo se llama
+                        // cuando la subruta asignada cambia de verdad, no en
+                        // cada refresco. La asignación de "Mi ruta / unidad"
+                        // es la fuente oficial: si cambió, se impone aunque
+                        // hubiera una selección manual.
+                        if (subrutaId != null && !yaSeleccionada) {
+                            holder.selectById(subrutaId)
+                        }
+                    }
+                    .onFailure { e ->
+                        // Se conserva el turno anterior: un fallo puntual de
+                        // red no debe vaciar la tarjeta del Home.
+                        error = e.message ?: "No se pudo consultar tu turno"
+                    }
+
                 activeTurnos = BackendTurnosApi.turnosActivos()
             } catch (e: Exception) {
                 error = e.message ?: "No se pudo consultar tu turno"

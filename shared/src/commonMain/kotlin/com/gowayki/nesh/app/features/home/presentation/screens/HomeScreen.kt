@@ -3,6 +3,7 @@ package com.gowayki.nesh.app.features.home.presentation.screens
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,7 +39,9 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,6 +60,7 @@ import com.gowayki.nesh.app.common.ui.shared.WaykiSidebarContent
 import com.gowayki.nesh.app.common.ui.shared.BackHandler
 import com.gowayki.nesh.app.features.map.data.RouteStopsStore
 import com.gowayki.nesh.app.features.map.data.SitRouteStop
+import com.gowayki.nesh.app.features.map.data.RouteImageLoader
 import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
 import com.gowayki.nesh.app.features.map.presentation.SubrouteLabels
 import com.gowayki.nesh.app.features.map.domain.model.CombiRoute
@@ -97,8 +103,24 @@ fun HomeScreen(
     var rutaObligatoria by remember { mutableStateOf(false) }
     val selectedRoute by SelectedRouteHolder.selected.collectAsState()
     val direction by SelectedRouteHolder.direction.collectAsState()
+    val catalog by SelectedRouteHolder.catalog.collectAsState()
     var routeStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
     var idaStops by remember { mutableStateOf<List<SitRouteStop>>(emptyList()) }
+
+    // Subruta oficial del turno ("Mi ruta / unidad"). Se resuelve contra el
+    // catálogo para que la tarjeta del Home no dependa de una selección
+    // manual vieja: si el turno cambia, la tarjeta cambia con él.
+    val codigoTurno = TurnoSession.turno?.subrutaCodigo
+        ?.trim()
+        ?.removePrefix("SB-")?.removePrefix("sb-")?.trim()
+        ?.takeIf { it.isNotBlank() }
+    val rutaTurno = remember(codigoTurno, catalog) {
+        if (codigoTurno == null) null else catalog.firstOrNull {
+            it.routeId == codigoTurno ||
+                it.id.removePrefix("SB-").equals(codigoTurno, ignoreCase = true)
+        }
+    }
+    val rutaActiva = rutaTurno ?: selectedRoute
 
     // Atrás/deslizar al costado en inicio no debe cerrar sesión: solo se sale con "Cerrar sesión".
     BackHandler(enabled = true) { }
@@ -110,8 +132,8 @@ fun HomeScreen(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(selectedRoute, direction) {
-        val r = selectedRoute
+    androidx.compose.runtime.LaunchedEffect(rutaActiva, direction) {
+        val r = rutaActiva
         val routeId = if (direction == com.gowayki.nesh.app.features.map.presentation.RouteDirection.RETORNO) {
             r?.returnRouteId ?: r?.routeId
         } else {
@@ -132,25 +154,13 @@ fun HomeScreen(
         }
     }
 
-    // Bienvenida breve + inicialización de turno + avisos de almuerzo
-    // Todo en un solo LaunchedEffect para evitar múltiples corrutinas
+    // Bienvenida breve + avisos de almuerzo.
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        // 1. Bienvenida
         if (AppSettings.notificationsEnabled.value && AppSettings.isOnRoute.value) {
             ToastManager.show("Ruta 12 a 7 min atrás • Ruta 5 a 3 min adelante")
         }
 
-        // 2. Turno real del chofer
-        TurnoSession.refresh()
-        if (!TurnoSession.promptShown) {
-            TurnoSession.promptShown = true
-            // Con turno asignado, la confirmación de "seguir en esta ruta" es
-            // obligatoria: no se cierra tocando fuera ni con el botón atrás.
-            rutaObligatoria = TurnoSession.turno != null
-            showRouteDialog = true
-        }
-
-        // 3. Avisos de almuerzo - usar una corrutina separada que no cause recomposición
+        // Avisos de almuerzo - usar una corrutina separada que no cause recomposición
         coroutineScope.launch {
             var lunchNotified = ""
             var endNotified = ""
@@ -182,6 +192,33 @@ fun HomeScreen(
                 kotlinx.coroutines.delay(30000)
             }
         }
+    }
+
+    // Turno real del chofer + compañeros de la misma subruta.
+    // Se consulta al entrar al Home, cuando cambia el usuario logueado y cada
+    // 20 s: así el cambio de ruta/unidad (panel o "Mi ruta / unidad") y la
+    // lista de choferes se actualizan sin reiniciar la app.
+    val userId = UserSession.currentUser?.id
+    androidx.compose.runtime.LaunchedEffect(userId) {
+        if (userId == null) return@LaunchedEffect
+        TurnoSession.refresh()
+        if (!TurnoSession.promptShown) {
+            TurnoSession.promptShown = true
+            // Con turno asignado, la confirmación de "seguir en esta ruta" es
+            // obligatoria: no se cierra tocando fuera ni con el botón atrás.
+            rutaObligatoria = TurnoSession.turno != null
+            showRouteDialog = true
+        }
+        while (true) {
+            kotlinx.coroutines.delay(20_000)
+            runCatching { TurnoSession.refresh() }
+        }
+    }
+
+    // Si el turno cambia (asignación, "seguir en ruta", panel), refrescar la
+    // lista de turnos activos para que aparezcan/desaparezcan los compañeros.
+    androidx.compose.runtime.LaunchedEffect(TurnoSession.turno?.id) {
+        runCatching { TurnoSession.refreshActiveTurnos() }
     }
 
     ModalNavigationDrawer(
@@ -322,7 +359,7 @@ fun HomeScreen(
                             val lineaResumen = if (turno != null) {
                                 TurnoSession.resumen
                             } else {
-                                selectedRoute?.name?.substringBefore(" · ")
+                                rutaActiva?.name?.substringBefore(" · ")
                             }
                             if (lineaResumen != null) {
                                 Spacer(Modifier.width(AppSpacing.sm))
@@ -399,14 +436,68 @@ fun HomeScreen(
                             }
                         }
 
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Indicador visible de la subruta concreta en la que está
+                        // el chofer. La fuente es el turno oficial, no lo que se
+                        // haya explorado en el mapa.
+                        val subrutaCodigo = TurnoSession.turno?.subrutaCodigo?.trim()
+                        val subrutaNombre = TurnoSession.turno?.subrutaNombre?.takeIf { it.isNotBlank() }
+                            ?: rutaActiva?.name?.takeIf { it.isNotBlank() }
+                        if (subrutaNombre != null || subrutaCodigo != null) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(AppColors.cream.copy(alpha = 0.16f))
+                                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(9.dp),
+                            ) {
+                                Icon(
+                                    imageVector = SolidGroup.Bus,
+                                    contentDescription = null,
+                                    tint = AppColors.cream,
+                                    modifier = Modifier.size(17.dp),
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Tu subruta activa",
+                                        style = AppTextStyles.waykiMini.copy(fontSize = 10.sp),
+                                        color = AppColors.cream.copy(alpha = 0.75f),
+                                    )
+                                    Text(
+                                        text = subrutaNombre ?: subrutaCodigo!!,
+                                        style = AppTextStyles.waykiMini.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                        ),
+                                        color = AppColors.cream,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                if (subrutaCodigo != null) {
+                                    Text(
+                                        text = subrutaCodigo.removePrefix("SB-").removePrefix("sb-"),
+                                        style = AppTextStyles.waykiMini.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                        ),
+                                        color = AppColors.cream,
+                                    )
+                                }
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(12.dp))
 
                         // Tarjeta principal (visible al instante; la entrada la
                         // anima WaykiReveal, sin pantallas de carga artificiales).
                         RouteCard(
-                            route = selectedRoute,
+                            route = rutaActiva,
                             stops = routeStops,
-                            offsetMinutes = if (direction == com.gowayki.nesh.app.features.map.presentation.RouteDirection.RETORNO) routeDurationMinutes(idaStops, selectedRoute) else 0,
+                            offsetMinutes = if (direction == com.gowayki.nesh.app.features.map.presentation.RouteDirection.RETORNO) routeDurationMinutes(idaStops, rutaActiva) else 0,
                             isOnRoute = AppSettings.isOnRoute.value,
                             onClick = onRecorridoClick,
                             modifier = Modifier.fillMaxWidth()
@@ -478,7 +569,10 @@ fun HomeScreen(
                     }
 
                     // Choferes en mi MISMA SUBRUTA concreta (turnos activos reales).
-                    val miRuta = SelectedRouteHolder.selected.value?.takeIf { it.isSub }
+                    // La subruta oficial del turno manda: así los compañeros
+                    // siempre son los de ESA subruta, aunque el usuario haya
+                    // explorado otra ruta en el mapa.
+                    val miRuta = rutaTurno ?: selectedRoute?.takeIf { it.isSub }
                     val companeros = TurnoSession.companerosEnSubruta(miRuta)
                     val nombreSubruta = TurnoSession.turno?.subrutaNombre?.takeIf { it.isNotBlank() }
                         ?: miRuta?.name?.takeIf { it.isNotBlank() }
@@ -651,6 +745,11 @@ private fun RouteCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val compliance = compliancePercent(isOnRoute)
+    // La foto se descarga del backend (bytes guardados en la BD de rutas).
+    var fotoRuta by remember(route?.routeId) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(route?.routeId) {
+        fotoRuta = RouteImageLoader.load(route?.routeId)
+    }
     val points = todayControlPoints(route, stops, offsetMinutes)
     val next = nextControlPoint(points)
     val oneWay = routeDurationMinutes(stops, route)
@@ -668,18 +767,30 @@ private fun RouteCard(
         Column(modifier = Modifier.padding(20.dp)) {
             // Cabecera
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Foto de la combi de esta ruta, servida por el backend desde la BD.
+                // Si no hay foto, se mantiene el icono de bus de siempre.
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(52.dp)
+                        .clip(CircleShape)
                         .background(AppColors.primary, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = SolidGroup.Bus,
-                        contentDescription = null,
-                        tint = AppColors.cream,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    if (fotoRuta != null) {
+                        Image(
+                            bitmap = fotoRuta!!,
+                            contentDescription = "Foto de ${route?.name ?: "la ruta"}",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            imageVector = SolidGroup.Bus,
+                            contentDescription = null,
+                            tint = AppColors.cream,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
