@@ -798,6 +798,25 @@ private fun MessageBubble(
 ) {
     val isMine = message.isMine
 
+    // Avisos de sistema ("salió / se unió"): chip centrado, sin globo ni autor.
+    if (message.kind == MessageKind.SYSTEM) {
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = message.text,
+                style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
+                color = AppColors.slate,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(AppColors.slate.copy(alpha = 0.10f))
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+            )
+        }
+        return
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()

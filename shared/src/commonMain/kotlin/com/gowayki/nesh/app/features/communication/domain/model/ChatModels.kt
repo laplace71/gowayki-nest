@@ -22,7 +22,7 @@ enum class MessageStatus {
 /** Tipo de mensaje: texto simple o audio (el diseño ya usa notas de voz). */
 @Serializable
 enum class MessageKind {
-    TEXT, AUDIO
+    TEXT, AUDIO, SYSTEM
 }
 
 /**
