@@ -150,30 +150,35 @@ object RouteStopsStore {
     }
 
     private suspend fun postProcess(stops: List<SitRouteStop>): List<SitRouteStop> {
-        // Nombres genéricos ("Paradero 2") → descripción real del lugar.
-        val conDescripcion = stops.map { stop ->
+        if (stops.isEmpty()) return emptyList()
+
+        // 1) Identidad y deduplicación ANTES de tocar el texto visible.
+        // Dos paraderos distintos pueden caer en la misma calle; usar el
+        // nombre para deduplicar los fusionaba. El id del upstream es estable.
+        val conInicio = stops.mapIndexed { i, stop ->
+            if (i == 0 && (stop.name.isBlank() || stop.name.equals("Innominada", ignoreCase = true))) {
+                stop.copy(name = "Inicio de ruta")
+            } else stop
+        }
+        val dedup = conInicio
+            .filterNot { it.name.isBlank() || it.name.equals("Innominada", ignoreCase = true) }
+            .distinctBy { stop ->
+                stop.id.takeIf { it.isNotBlank() }
+                    ?: "${stop.latitude}|${stop.longitude}"
+            }
+
+        // 2) Solo ahora se enriquece el nombre para mostrar.
+        return dedup.map { stop ->
             val descripcion = StopDescriptions.describe(stop.latitude, stop.longitude, "")
             val nombre = when {
                 descripcion.isBlank() -> stop.name
-                stop.name.isBlank() || stop.name.equals("Innominada", ignoreCase = true) ||
-                    stop.name.startsWith("Paradero", ignoreCase = true) -> descripcion
+                stop.name.startsWith("Paradero", ignoreCase = true) ||
+                    stop.name.equals("Inicio de ruta", ignoreCase = true) -> descripcion
                 stop.name.contains(descripcion, ignoreCase = true) -> stop.name
                 else -> "${stop.name} · $descripcion"
             }
             stop.copy(name = nombre)
         }
-        val first = conDescripcion.firstOrNull() ?: return emptyList()
-        val initial = if (first.name.isBlank() || first.name.equals("Innominada", ignoreCase = true)) {
-            first.copy(name = "Inicio de ruta")
-        } else first
-        val initialKey = initial.stopKey()
-        val remainder = conDescripcion.asSequence()
-            .drop(1)
-            .filterNot { it.name.isBlank() || it.name.equals("Innominada", ignoreCase = true) }
-            .distinctBy { it.stopKey() }
-            .filterNot { it.stopKey() == initialKey }
-            .toList()
-        return listOf(initial) + remainder
     }
 
     @OptIn(ExperimentalResourceApi::class)
@@ -188,14 +193,4 @@ object RouteStopsStore {
             }.also { assetJson = it }
         }
     }
-
-    private fun SitRouteStop.stopKey(): String =
-        "${name.normalized()}|${district.orEmpty().normalized()}"
-
-    private fun String.normalized(): String = lowercase()
-        .replace("av.", "avenida")
-        .replace(Regex("\\bav\\b"), "avenida")
-        .replace("jr.", "jirón")
-        .replace(Regex("\\s+"), " ")
-        .trim()
 }

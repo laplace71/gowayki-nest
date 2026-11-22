@@ -332,7 +332,13 @@ fun MapScreen(
     LaunchedEffect(route?.id) {
         navigating = false
         enteredRoute = false
+        var ticks = 0
         while (true) {
+            // Los compañeros del mapa dependen de /turnos/activos, no solo de
+            // la lista de unidades: refrescar también esa lista aquí.
+            if (++ticks % 5 == 0) {
+                runCatching { com.gowayki.nesh.core.session.TurnoSession.refreshActiveTurnos() }
+            }
             val lineaId = com.gowayki.nesh.core.session.TurnoSession.turno?.lineaId
             val unidades = if (lineaId != null) {
                 com.gowayki.nesh.data.repository.BackendTurnosApi.unidadesPorLinea(lineaId)
@@ -497,13 +503,13 @@ fun MapScreen(
                             .size(42.dp)
                             .clip(CircleShape)
                             .background(AppColors.ink)
-                            .clickable {
-    com.gowayki.nesh.app.common.ui.shared.ToastManager.show("Escoge tu ruta actual de micro en Ajustes")
-    onSettingsClick()
-},
+                            // Abre el selector de líneas también cuando ya hay una
+                            // ruta global seleccionada (el botón del card solo está
+                            // en la rama sin selección).
+                            .clickable { showRouteSheet = true },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(FeatherIcons.Sliders, "Ajustes", tint = AppColors.cream, modifier = Modifier.size(20.dp))
+                        Icon(FeatherIcons.Sliders, "Elegir línea", tint = AppColors.cream, modifier = Modifier.size(20.dp))
                     }
 
                     WaykiBackButton(onClick = onBack)

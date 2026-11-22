@@ -132,25 +132,9 @@ fun RouteAssignmentDialog(
     var subrutaElegida by remember { mutableStateOf<String?>(null) }
     val selectedGlobal by SelectedRouteHolder.selected.collectAsState()
 
-    // Preselecciona la subruta del turno para que se vea DÓNDE estás ahora.
-    // Solo lo hace si el chofer aún no tocó ninguna: una vez que elige, su
-    // elección manda.
-    LaunchedEffect(TurnoSession.turno?.subrutaCodigo, selectedGlobal?.id) {
-        val actual = TurnoSession.turno?.subrutaCodigo?.trim()
-            ?: selectedGlobal?.id?.trim()
-        if (!actual.isNullOrBlank() && subrutaElegida == null) {
-            subrutaElegida = actual
-        }
-    }
-
-    // Sin turno activo, la referencia es la subruta que ya tiene la combi.
-    // Al elegir unidad se marca esa subruta si el chofer no tocó otra antes.
-    LaunchedEffect(unidadSeleccionada?.id) {
-        val code = unidadSeleccionada?.subrutaCodigo?.trim()
-        if (!code.isNullOrBlank() && subrutaElegida == null) {
-            subrutaElegida = code
-        }
-    }
+    // `subrutaElegida` guarda SOLO lo que el chofer tocó. La ruta actual se
+    // muestra con la etiqueta «Actual» (actualGlobal) y, si no hay override
+    // explícito, se toma de la unidad elegida al confirmar.
 
     LaunchedEffect(visible) {
         if (!visible) return@LaunchedEffect

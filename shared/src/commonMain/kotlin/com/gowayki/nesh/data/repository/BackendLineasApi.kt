@@ -61,7 +61,10 @@ object BackendLineasApi {
                 .getOrElse { emptyList() }
         }
 
-    /** Geometría por routeId (ida o retorno) desde BD: lista de [lat,lon]. */
+    /**
+     * Geometría por routeId (ida o retorno) desde BD: cada punto es [lng, lat]
+     * (GeoJSON). RouteGeometryStore lo convierte a (lat, lng) antes de usarlo.
+     */
     suspend fun geometriaPorRouteId(routeId: String): List<List<Double>> =
         withContext(Dispatchers.Default) {
             runCatching { client.get("$baseUrl/rutas/$routeId/geometria").body<List<List<Double>>>() }

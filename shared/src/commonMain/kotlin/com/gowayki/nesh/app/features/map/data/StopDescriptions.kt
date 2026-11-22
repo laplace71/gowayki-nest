@@ -96,7 +96,9 @@ object StopDescriptions {
             cercano.detalle.isNotBlank() -> "Cerca de ${cercano.nombre} · ${cercano.detalle}"
             else -> "Cerca de ${cercano.nombre}"
         }
-        cache[clave] = texto
+        // No se cachea un texto vacío: al tocar el paradero se pasa un mensaje
+        // de respaldo distinto y debía poder resolverlo de nuevo.
+        if (texto.isNotBlank()) cache[clave] = texto
         return texto
     }
 

@@ -416,9 +416,12 @@ class KtorChatRepository : ChatRepository {
         scope.launch {
             snapshotFlow { com.gowayki.nesh.core.session.TurnoSession.turno?.subrutaCodigo }
                 .distinctUntilChanged()
-                .collect { _ ->
+                .collect { codigo ->
                     joinedRouteClave = null
-                    refreshConversations(ensureRouteGroup = true)
+                    // Si se perdió la asignación oficial NO hacemos join: la
+                    // selección global todavía apunta a la ruta anterior y
+                    // reeditar el grupo sería un reingreso no deseado.
+                    refreshConversations(ensureRouteGroup = !codigo.isNullOrBlank())
                     fetchColleagues()
                 }
         }
@@ -689,7 +692,9 @@ class KtorChatRepository : ChatRepository {
         // subrutas que la pantalla no muestra. Se aplica el mismo filtro.
         scope.launch {
             while (true) {
-                delay(5_000)
+                // 20 s (3/min) en vez de 5 s (12/min): el inbox ya se refresca
+                // por WebSocket y por el poll de mensajes, esto es solo respaldo.
+                delay(20_000)
                 if (UserSession.currentUserId != null) {
                     BackendChatApi.conversaciones().onSuccess { dtos ->
                         val activa = getActiveConcreteSubroute()
