@@ -1224,7 +1224,12 @@ class KtorChatRepository : ChatRepository {
             conversationId = dto.conversacionId,
             senderId = dto.emisorId,
             senderName = dto.emisorNombre ?: if (isMine) UserSession.displayName else "Conductor",
-            text = dto.contenidoTexto ?: if (dto.tipo == "AUDIO") "Nota de voz" else "",
+            text = if (dto.tipo == "SISTEMA") {
+                dto.contenidoTexto?.takeIf { it.isNotBlank() }
+                    ?: (dto.emisorNombre ?: if (isMine) UserSession.displayName else "Conductor")
+            } else {
+                dto.contenidoTexto ?: if (dto.tipo == "AUDIO") "Nota de voz" else ""
+            },
             kind = when (dto.tipo) {
                 "AUDIO" -> MessageKind.AUDIO
                 "SISTEMA" -> MessageKind.SYSTEM
@@ -1281,7 +1286,8 @@ class KtorChatRepository : ChatRepository {
             list.map { c ->
                 if (c.id != conversationId) c
                 else c.copy(
-                    preview = if (message.kind == MessageKind.AUDIO) "Audio" else message.text,
+                    preview = if (message.kind == MessageKind.AUDIO) "Audio"
+                    else message.text.ifBlank { message.senderName },
                     lastMessageAtMillis = message.sentAtMillis,
                     lastMessageId = message.id
                 )

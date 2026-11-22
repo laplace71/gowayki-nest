@@ -805,7 +805,7 @@ private fun MessageBubble(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = message.text,
+                text = message.text.ifBlank { message.senderName },
                 style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
                 color = AppColors.slate,
                 modifier = Modifier
