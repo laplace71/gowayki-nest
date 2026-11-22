@@ -148,18 +148,14 @@ val generateAppConfigTask = tasks.register("generateAppConfig") {
             return envMap[key] ?: ""
         }
 
-        // Si no existe .env o faltan variables, usar valores del AppConfig.kt actual
-        val existingConfig = if (configFile.exists()) configFile.readText() else ""
-
-        fun extractValue(key: String): String {
-            val pattern = Regex("""const val """ + key + """\s*:\s*String\s*=\s*"([^"]+)"""")
-            return pattern.find(existingConfig)?.groupValues?.get(1) ?: ""
-        }
-
-        val supabaseUrl = envOr("SUPABASE_URL").ifBlank { extractValue("SUPABASE_URL") }
-        val supabaseAnonKey = envOr("SUPABASE_ANON_KEY").ifBlank { extractValue("SUPABASE_ANON_KEY") }
-        val googleWebClientId = envOr("GOOGLE_WEB_CLIENT_ID").ifBlank { extractValue("GOOGLE_WEB_CLIENT_ID") }
-        val backendUrl = envOr("BACKEND_URL").ifBlank { extractValue("BACKEND_URL") }
+        // El AppConfig generado es un OUTPUT, nunca una fuente: releerlo aquí
+        // hacía que al quitar -Pwayki.backend.url (o la variable de entorno)
+        // se conservara el valor anterior en vez del default. Con esto el
+        // resultado depende solo de las fuentes declaradas como inputs.
+        val supabaseUrl = envOr("SUPABASE_URL")
+        val supabaseAnonKey = envOr("SUPABASE_ANON_KEY")
+        val googleWebClientId = envOr("GOOGLE_WEB_CLIENT_ID")
+        val backendUrl = envOr("BACKEND_URL")
 
         // Si aún faltan, usar defaults hardcodeados
         val finalSupabaseUrl = supabaseUrl.ifBlank { "https://bvxgdlawivdoiornfigo.supabase.co" }
