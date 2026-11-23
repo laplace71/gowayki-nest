@@ -15,40 +15,71 @@ Los tags `v*` generan una release propia (`v1.0.0`, `v1.1.0`, …). Los `.apk`
 nunca se commitean al repo: GitHub rechaza archivos de más de 100 MB.
 
 Las notas de la release se generan solas: changelog desde la beta anterior
-(commits de `main`) e instrucciones de instalación.
+(commits de `main`), instrucciones de instalación y una tabla verificable con
+versión, `versionCode`, tamaño, commit, SHA-256 del APK y huella SHA-256 del
+certificado.
 
 ### Quién puede publicar
 
 Cualquier colaborador con permiso de escritura en el repo, sin configurar nada:
 
 - **Merge a `main`** (o push directo): el CI publica solo. No hace falta que tu
-  máquina esté encendida ni tener secretos configurados: usa el `GITHUB_TOKEN`
-  del repo y el keystore beta commiteado.
+  máquina esté encendida; usa el `GITHUB_TOKEN` del repo.
 - **A mano**: *Actions > APK beta > Run workflow*, eligiendo la rama. Ojo:
   publica el código de esa rama tal cual, aunque no esté mergeado.
-- **Desde local**: `./scripts/publicar-apk.sh` (requiere `gh` autenticado con
-  permiso de escritura y el SDK de Android).
+- **Desde local**: `./scripts/publicar-apk.sh` (requiere `gh` autenticado, el
+  SDK de Android y los secretos de firma exportados).
 
-Si entran dos merges seguidos, el run anterior se cancela y solo se publica el
-último commit. El `versionCode` sale de `1000 + número de run`, así que siempre
-sube y cada beta se instala encima de la anterior.
+Todas las publicaciones que van a `beta` comparten el mismo grupo de
+`concurrency`: **no se cancela** la que ya está corriendo (una subida a medias
+dejaría notas y APK describiendo versiones distintas); los demás runs esperan,
+y GitHub puede descartar uno que aún está en espera si llega uno más nuevo.
+Además, CI y publicación local toman un **lock exclusivo** en el repo de
+destino antes de compilar y comprueban que siguen siendo dueños justo antes de
+subir ([`scripts/release-state.sh`](scripts/release-state.sh)). El lock usa la
+API de GitHub con `GH_TOKEN`, así que sirve igual en clones HTTPS, forks y
+worktrees, y nunca publica commits sin subir. **No caduca por tiempo**: si el
+publicador original murió, confirma que paró y ejecuta
+`WAYKI_FORCE_UNLOCK=1 scripts/release-state.sh lock-recover`. La recuperación no
+cancela una escritura que ya superó su `lock-check`: antes de usarla, asegúrate
+de que el publicador original se detuvo por completo (no basta con matar el
+proceso a medias). Cada `upload`/`edit`/`create` y el movimiento del tag
+re-verifican la propiedad del lock inmediatamente antes de escribir.
 
-### Firma
+El `versionCode` sale de **una sola secuencia monotónica** compartida por CI y
+publicación local: se siembra con el tiempo Unix y nunca baja del último código
+publicado + 1, así ninguna beta puede degenerar en un downgrade que Android
+rechace.
+
+### Firma y configuración
 
 Para que Android instale una beta encima de la anterior, todas deben estar
-firmadas con el mismo keystore. Se usa, en este orden:
+firmadas con la **misma clave privada**. Esa clave no está en el repo: un
+keystore cuyo privado puede leer cualquiera con acceso de lectura permitiría
+falsificar una "beta oficial" y Android no podría distinguirla (CWE-321).
+Se configura una vez como secretos del repo y se exportan con los mismos
+nombres desde local:
 
-1. Secretos `RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`,
-   `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD` (requiere ser admin del repo).
-2. `androidApp/keystore/wayki-beta.jks`, el keystore beta del repo: alias
-   `wayki`, contraseña `wayki-beta` (se puede sobreescribir con las variables
-   `BETA_KEYSTORE_PASSWORD`, `BETA_KEY_ALIAS` y `BETA_KEY_PASSWORD`).
-   Es público a propósito (builds de prueba): no usar para publicar en Play
-   Store; para eso, genera un keystore privado y súbelo como secretos.
-   Si algún día cambia ese archivo, el certificado cambia y todos tendrán que
-   desinstalar una vez antes de instalar la beta nueva.
-3. Un keystore temporal: sirve para probar, pero obliga a desinstalar antes de
-   instalar la siguiente beta.
+1. `RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`,
+   `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD` — clave de firma.
+2. `BACKEND_URL` — URL del backend. Lo normal es `https://`: el inicio de
+   sesión envía DNI y PIN y el build rechaza `http://` (CWE-319).
+3. `BACKEND_ALLOW_HTTP` — variable **no secreta** del repo (no un secret).
+   Hoy el backend de la beta es la IP `31.220.72.2` sin TLS, así que está
+   puesta a `1` como opt-in temporal y asumido: con ese valor se permite
+   `http://` y las notas avisan de que el tráfico va sin cifrar. Poniéndola a
+   `0` se vuelve a exigir HTTPS; cuando el backend tenga TLS, configura
+   `BACKEND_URL` con la URL `https://` y borra la variable.
+
+Si falta la clave de firma, el CI **falla** en lugar de caer en un keystore
+público o temporal. Antes de subir el APK se comprueba que su `versionCode` es
+mayor que el de la beta publicada y que su huella de certificado coincide; si
+no, la publicación se aborta.
+
+> Si instalaste una beta antigua firmada con el keystore público que estaba en
+> el repo, desinstálala una vez e instala la nueva: el cambio a una clave
+> privada es irreversible para esa instalación. Es el coste único de que una
+> beta falsificada ya no pueda suplantar a la oficial.
 
 ## Iconos (SVG → XML)
 
@@ -58,4 +89,3 @@ firmadas con el mismo keystore. Se usa, en este orden:
 
 Salida: `shared/src/commonMain/composeResources/drawable/*.xml`  
 Requisito: Node.js (`npx svg2vectordrawable`)
-
