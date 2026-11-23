@@ -88,4 +88,4 @@ no, la publicación se aborta.
 3. Usa el recurso: `painterResource(Res.drawable.nombre_archivo)`
 
 Salida: `shared/src/commonMain/composeResources/drawable/*.xml`  
-Requisito: Node.js (`npx svg2vectordrawable`)
+Requisito: Node.js (`npx svg2vectordrawable`).
