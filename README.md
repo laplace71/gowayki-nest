@@ -49,7 +49,7 @@ re-verifican la propiedad del lock inmediatamente antes de escribir.
 El `versionCode` sale de **una sola secuencia monotónica** compartida por CI y
 publicación local: se siembra con el tiempo Unix y nunca baja del último código
 publicado + 1, así ninguna beta puede degenerar en un downgrade que Android
-rechace.
+rechace
 
 ### Firma y configuración
 
