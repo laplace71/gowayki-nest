@@ -65,6 +65,7 @@ import compose.icons.feathericons.Lock
 import compose.icons.feathericons.Map
 import compose.icons.feathericons.MapPin
 import compose.icons.feathericons.Moon
+import compose.icons.feathericons.Trash2
 import compose.icons.feathericons.Volume2
 import com.gowayki.nesh.core.AppSettings
 import com.gowayki.nesh.core.session.TurnoSession
@@ -85,6 +86,7 @@ fun SettingsScreen(
     onMapaClick: () -> Unit = {},
     onRoutePickerClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
+    onDeleteAccount: () -> Unit = {},
     // Instancia SOS compartida del NavHost: sobrevive al cambio entre módulos.
     sosVm: SosViewModel = viewModel()
 ) {
@@ -103,6 +105,7 @@ fun SettingsScreen(
     var darkModeEnabled by remember { mutableStateOf(ThemeManager.isDark.value) }
     var showPinDialog by remember { mutableStateOf(false) }
     var showRouteDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
     var newPin by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) { TurnoSession.refresh() }
@@ -384,6 +387,14 @@ fun SettingsScreen(
                     value = AppSettings.shiftStartTime.value,
                     onClick = { showShiftStartDialog = true }
                 )
+
+                SettingActionItem(
+                    icon = FeatherIcons.Trash2,
+                    title = "Eliminar cuenta",
+                    subtitle = "Sales de los chats; tus mensajes siguen para los demás",
+                    value = null,
+                    onClick = { showDeleteDialog = true }
+                )
             }
 
             Spacer(modifier = Modifier.height(28.dp))
@@ -440,9 +451,19 @@ fun SettingsScreen(
                 SettingActionItem(
                     icon = FeatherIcons.MapPin,
                     title = "Ruta actual de micro",
-                    subtitle = "Escoge tu ruta actual de micro",
+                    subtitle = if (com.gowayki.nesh.core.session.TurnoSession.hasTurno) {
+                        "Tu ruta la define 'Mi ruta / unidad'"
+                    } else {
+                        "Escoge tu ruta actual de micro"
+                    },
                     value = SelectedRouteHolder.selected.collectAsState().value?.name,
-                    onClick = onRoutePickerClick
+                    onClick = {
+                        if (!com.gowayki.nesh.core.session.TurnoSession.hasTurno) {
+                            onRoutePickerClick()
+                        } else {
+                            ToastManager.show("Cambia tu ruta en 'Mi ruta / unidad'")
+                        }
+                    }
                 )
 
                 SettingSwitchItem(
@@ -852,10 +873,39 @@ fun SettingsScreen(
             )
         }
 
+        if (showDeleteDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteDialog = false },
+                title = { Text("Eliminar cuenta") },
+                text = {
+                    Text(
+                        "Sales de todos los grupos y pierdes acceso a tus chats. " +
+                            "Tus mensajes siguen en el historial de los demás. " +
+                            "Podrás volver a registrarte con tu DNI para restaurar tu cuenta."
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showDeleteDialog = false
+                        onDeleteAccount()
+                    }) { Text("Eliminar cuenta", color = AppColors.error) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteDialog = false }) { Text("Cancelar") }
+                }
+            )
+        }
+
         RouteAssignmentDialog(
             visible = showRouteDialog,
             onDismiss = { showRouteDialog = false },
-            onAssigned = { showRouteDialog = false },
+            onAssigned = { turno ->
+                showRouteDialog = false
+                // La subruta recién asignada manda también en el mapa/recorrido.
+                turno.subrutaCodigo?.takeIf { it.isNotBlank() }?.let {
+                    SelectedRouteHolder.selectById(it)
+                }
+            },
         )
     }
 }

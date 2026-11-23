@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.PinScreen
 import com.gowayki.nesh.app.common.ui.shared.ToastManager
+import com.gowayki.nesh.domain.repository.AuthRepository
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.RegisterScreen
 import com.gowayki.nesh.app.features.welcome.presentation.screens.WelcomeScreen
 import kotlinx.coroutines.launch
@@ -86,6 +87,7 @@ fun WaykiNav(
         CommunicationVoiceViewModel(chatRepository = AppDi.getOrNull<ChatRepository>())
     }
     val sesionRepo = remember { AppDi.get<ChatRepository>() }
+    val scope = rememberCoroutineScope()
 
     /** Cierra sesión de verdad: token, socket y todo el historial del back stack. */
     fun cerrarSesion() {
@@ -96,6 +98,21 @@ fun WaykiNav(
         nav.navigate(Routes.WELCOME) {
             popUpTo(0) { inclusive = true }
             launchSingleTop = true
+        }
+    }
+
+    /** Elimina la cuenta (borrado lógico) y vuelve al inicio. */
+    fun eliminarCuenta() {
+        scope.launch {
+            val resultado = AppDi.get<AuthRepository>().deleteAccount()
+            if (resultado.isSuccess) {
+                ToastManager.show("Cuenta eliminada. Vuelve a registrarte cuando quieras.")
+                cerrarSesion()
+            } else {
+                ToastManager.show(
+                    "No se pudo eliminar la cuenta: ${resultado.exceptionOrNull()?.message ?: "intenta de nuevo"}"
+                )
+            }
         }
     }
 
@@ -542,6 +559,7 @@ fun WaykiNav(
                 onMapaClick = { nav.navigate(Routes.MAP) },
                 onRoutePickerClick = { nav.navigate(Routes.ROUTE_PICKER) },
                 onProfileClick = { nav.navigate(Routes.PROFILE) },
+                onDeleteAccount = { eliminarCuenta() },
                 sosVm = sosVm,
             )
         }

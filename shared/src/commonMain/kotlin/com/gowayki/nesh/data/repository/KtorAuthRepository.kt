@@ -26,7 +26,7 @@ class KtorAuthRepository : AuthRepository {
         return loginWithDni(UserSession.activeDni, pin)
     }
 
-    override suspend fun loginWithDni(dni: String, pin: String): Result<User> = withContext(Dispatchers.IO) {
+    override suspend fun loginWithDni(dni: String, pin: String): Result<User> = withContext(Dispatchers.Default) {
         try {
             val response: HttpResponse = client.post("$baseUrl/auth/login") {
                 setBody(LoginRequestDto(dni = dni.trim(), pin = pin.trim()))
@@ -68,7 +68,7 @@ class KtorAuthRepository : AuthRepository {
     }
 
     override suspend fun register(name: String, dni: String, phone: String, email: String, pin: String): Result<User> =
-        withContext(Dispatchers.IO) {
+        withContext(Dispatchers.Default) {
         try {
             val response: HttpResponse = client.post("$baseUrl/auth/registro") {
                 setBody(
@@ -111,6 +111,19 @@ class KtorAuthRepository : AuthRepository {
             Result.failure(e)
         } catch (e: Exception) {
             Result.failure(desdeExcepcion(e))
+        }
+    }
+
+    override suspend fun deleteAccount(): Result<Unit> = withContext(Dispatchers.Default) {
+        try {
+            val response: HttpResponse = client.post("$baseUrl/auth/eliminar-cuenta")
+            if (response.status.isSuccess()) {
+                Result.success(Unit)
+            } else {
+                Result.failure(IllegalStateException("No se pudo eliminar la cuenta (HTTP ${response.status.value})"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 

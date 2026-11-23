@@ -39,7 +39,7 @@ object RouteStopsStore {
     private val localCache = mutableMapOf<String, List<SitRouteStop>>()
     private val apiCache = mutableMapOf<String, List<SitRouteStop>>()
     private val apiMutex = Mutex()
-    private val refreshScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val refreshScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val _actualizaciones = MutableSharedFlow<String>(extraBufferCapacity = 16)
 
     /** Aviso de que una ruta tiene datos nuevos viniendo del backend. */
@@ -56,7 +56,7 @@ object RouteStopsStore {
             // actualización contra la BD para que la app no se quede con datos
             // viejos para siempre.
             refrescarEnSegundoPlano(routeId)
-            return local
+            return postProcess(local)
         }
 
         val remoteNew = stopsFromNewApi(routeId)
@@ -149,19 +149,40 @@ object RouteStopsStore {
         return stops
     }
 
-    private fun postProcess(stops: List<SitRouteStop>): List<SitRouteStop> {
-        val first = stops.firstOrNull() ?: return emptyList()
-        val initial = if (first.name.isBlank() || first.name.equals("Innominada", ignoreCase = true)) {
-            first.copy(name = "Inicio de ruta")
-        } else first
-        val initialKey = initial.stopKey()
-        val remainder = stops.asSequence()
-            .drop(1)
+    private suspend fun postProcess(stops: List<SitRouteStop>): List<SitRouteStop> {
+        if (stops.isEmpty()) return emptyList()
+
+        val conInicio = stops.mapIndexed { i, stop ->
+            if (i == 0 && (stop.name.isBlank() || stop.name.equals("Innominada", ignoreCase = true))) {
+                stop.copy(name = "Inicio de ruta")
+            } else stop
+        }
+
+        // 1) Enriquecer TODOS, también los que venían sin nombre: muchos tienen
+        // calle real (Pte. Grau, Av. Los Incas) y antes se descartaban aquí.
+        val enriquecidos = conInicio.map { stop ->
+            val descripcion = StopDescriptions.describe(stop.latitude, stop.longitude, "")
+            val nombre = when {
+                descripcion.isBlank() -> stop.name
+                stop.name.isBlank() || stop.name.equals("Innominada", ignoreCase = true) ||
+                    stop.name.startsWith("Paradero", ignoreCase = true) ||
+                    stop.name.equals("Inicio de ruta", ignoreCase = true) -> descripcion
+                stop.name.contains(descripcion, ignoreCase = true) -> stop.name
+                else -> "${stop.name} · $descripcion"
+            }
+            stop.copy(name = nombre)
+        }
+
+        // 2) Quitar los placeholders que NO resolvieron a ninguna calle/lugar.
+        // Los que tenían nombre genérico pero sí consiguieron descripción ya
+        // tienen ese texto y se conservan. El primero siempre tuvo "Inicio de
+        // ruta" como respaldo.
+        return enriquecidos
             .filterNot { it.name.isBlank() || it.name.equals("Innominada", ignoreCase = true) }
-            .distinctBy { it.stopKey() }
-            .filterNot { it.stopKey() == initialKey }
-            .toList()
-        return listOf(initial) + remainder
+            .distinctBy { stop ->
+                stop.id.takeIf { it.isNotBlank() }
+                    ?: "${stop.latitude}|${stop.longitude}"
+            }
     }
 
     @OptIn(ExperimentalResourceApi::class)
@@ -176,14 +197,4 @@ object RouteStopsStore {
             }.also { assetJson = it }
         }
     }
-
-    private fun SitRouteStop.stopKey(): String =
-        "${name.normalized()}|${district.orEmpty().normalized()}"
-
-    private fun String.normalized(): String = lowercase()
-        .replace("av.", "avenida")
-        .replace(Regex("\\bav\\b"), "avenida")
-        .replace("jr.", "jirón")
-        .replace(Regex("\\s+"), " ")
-        .trim()
 }

@@ -7,13 +7,26 @@ import com.gowayki.nesh.app.features.map.domain.model.CombiRoute
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /** Sentido del recorrido seleccionado en la app (IDA o VUELTA). */
 enum class RouteDirection { IDA, RETORNO }
+
+/** Geometría y paraderos cacheados para restaurar el mapa al volver a entrar. */
+data class RouteGeometryCache(
+    val idaPoints: List<Pair<Double, Double>> = emptyList(),
+    val returnPoints: List<Pair<Double, Double>> = emptyList(),
+    val matchedIdaPoints: List<Pair<Double, Double>> = emptyList(),
+    val matchedReturnPoints: List<Pair<Double, Double>> = emptyList(),
+    val idaStops: List<com.gowayki.nesh.app.features.map.data.SitRouteStop> = emptyList(),
+    val returnStops: List<com.gowayki.nesh.app.features.map.data.SitRouteStop> = emptyList(),
+)
 
 /**
  * Holder global (singleton) de la ruta de combi seleccionada por el usuario.
@@ -31,6 +44,14 @@ object SelectedRouteHolder {
 
     /** Sentido compartido entre "Tu recorrido" y el mapa. */
     val direction: StateFlow<RouteDirection> = _direction.asStateFlow()
+
+    /**
+     * Evento explícito de confirmación de subruta. Se emite aunque el id sea
+     * el mismo de antes: el repositorio de chat lo usa para re-unirse al grupo
+     * de ruta tras una reactivación de cuenta.
+     */
+    private val _routeConfirmed = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val routeConfirmed: SharedFlow<String> = _routeConfirmed.asSharedFlow()
 
     private val _catalog = MutableStateFlow<List<CombiRoute>>(emptyList())
     /** Catálogo dinámico de subrutas (desde BD). */
@@ -51,6 +72,10 @@ object SelectedRouteHolder {
     val hasEnteredRoute: Boolean
         get() = userSelected || restoredFromStore
 
+    /** El usuario eligió una subruta explícitamente (no viene del turno). */
+    val userSelectedRoute: Boolean
+        get() = userSelected
+
     /** Carga catálogo de subrutas desde BD (con respaldo empaquetado). */
     suspend fun refreshCatalog(force: Boolean = false) {
         val subs = RouteCatalogStore.refresh(force)
@@ -62,6 +87,9 @@ object SelectedRouteHolder {
             if (def != null) _selected.value = def
         }
     }
+
+    /** Código C2/C3… desde el nombre real de la línea del catálogo. */
+    fun codigoParaNombre(nombre: String?): String? = RouteCatalogStore.codigoParaNombre(nombre)
 
     /** Subrutas disponibles de una línea (C2, C3...). */
     fun subrutasForLine(lineCode: String): List<CombiRoute> {
@@ -102,12 +130,15 @@ object SelectedRouteHolder {
     }
 
     fun select(route: CombiRoute?) {
+        val mismaRuta = _selected.value?.id?.equals(route?.id, ignoreCase = true) == true
         userSelected = true
-        // Resetea el sentido al cambiar de ruta.
-        _direction.value = RouteDirection.IDA
+        // Solo se resetea el sentido al CAMBIAR de ruta: si se re-elige la
+        // misma, el mapa y Recorrido deben conservar Ida/Vuelta.
+        if (!mismaRuta) _direction.value = RouteDirection.IDA
         _selected.value = route
         if (route != null) {
             persistSelection()
+            _routeConfirmed.tryEmit(route.id)
         }
     }
 
@@ -242,8 +273,21 @@ object SelectedRouteHolder {
         _returnPoints.value = ret
     }
 
+    private var _cachedGeometry: RouteGeometryCache? = null
+
+    fun cachedGeometry(routeId: String?): RouteGeometryCache? =
+        if (_cachedRouteId == routeId) _cachedGeometry else null
+
+    fun cacheGeometry(routeId: String?, geometry: RouteGeometryCache) {
+        _cachedRouteId = routeId
+        _cachedGeometry = geometry
+        _idaPoints.value = geometry.idaPoints
+        _returnPoints.value = geometry.returnPoints
+    }
+
     fun clearGeometryCache() {
         _cachedRouteId = null
+        _cachedGeometry = null
         _idaPoints.value = emptyList()
         _returnPoints.value = emptyList()
     }

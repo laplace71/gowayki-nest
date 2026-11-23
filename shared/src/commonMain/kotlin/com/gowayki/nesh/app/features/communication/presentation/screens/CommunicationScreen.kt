@@ -837,6 +837,16 @@ private fun ConversationRow(
                     ) {
                         Text("Admin", style = AppTextStyles.waykiMini.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold), color = AppColors.primary)
                     }
+                } else if (conv.tipoConversacion == "GRUPO_RUTA") {
+                    // Tipo del grupo: este chat pertenece a una subruta concreta.
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .background(AppColors.primary.copy(alpha = 0.12f), CircleShape)
+                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                    ) {
+                        Text("RUTA", style = AppTextStyles.waykiMini.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold), color = AppColors.primary)
+                    }
                 }
             }
             Spacer(Modifier.height(3.dp))
@@ -855,6 +865,16 @@ private fun ConversationRow(
                     maxLines = 1,
                 )
                 else -> {
+                    // Tipo del grupo, con detalle del primero (Ciudad de Dios → Terminal).
+                    if (conv.tipoConversacion == "GRUPO_RUTA") {
+                        Text(
+                            text = "Tipo: GRUPO_RUTA" +
+                                if (conv.claveRuta == "SB-17620010") " · ruta principal" else "",
+                            style = AppTextStyles.waykiMini.copy(fontSize = 10.sp),
+                            color = AppColors.slate,
+                            maxLines = 1,
+                        )
+                    }
                     // Indicador de subruta arriba y mensaje reciente debajo.
                     if (subruta != null) {
                         Text(

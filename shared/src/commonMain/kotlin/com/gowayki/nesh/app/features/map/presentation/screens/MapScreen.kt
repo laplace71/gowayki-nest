@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DrawerValue
@@ -72,7 +73,6 @@ import com.gowayki.nesh.app.features.map.data.createDeviceLocationSource
 import com.gowayki.nesh.app.features.map.domain.NavInstruction
 import com.gowayki.nesh.app.features.map.domain.NavManeuver
 import com.gowayki.nesh.app.features.map.domain.NavigationPath
-import com.gowayki.nesh.app.features.map.domain.model.ArequipaRoutes
 import com.gowayki.nesh.app.features.map.domain.model.UserLocation
 import com.gowayki.nesh.app.features.map.presentation.RouteDirection
 import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
@@ -106,6 +106,12 @@ fun MapScreen(
 ) {
     val routeState = SelectedRouteHolder.selected.collectAsState()
     val route = routeState.value
+    // Catálogo real del backend (BD): líneas y subrutas con nombres normales.
+    val catalog by SelectedRouteHolder.catalog.collectAsState()
+    var showRouteSheet by remember { mutableStateOf(false) }
+    LaunchedEffect(showRouteSheet) {
+        if (showRouteSheet) runCatching { SelectedRouteHolder.refreshCatalog(force = true) }
+    }
 
     val sharedDirection = SelectedRouteHolder.direction.collectAsState()
     var selectedDirection by remember(route?.id) { mutableStateOf(sharedDirection.value) }
@@ -124,10 +130,15 @@ fun MapScreen(
     )
 
     var geometry by remember(route?.id) {
+        val cached = SelectedRouteHolder.cachedGeometry(route?.id)
         mutableStateOf(RouteGeometry(
-            idaPoints = SelectedRouteHolder.cachedIdaPoints(route?.id),
-            returnPoints = SelectedRouteHolder.cachedReturnPoints(route?.id),
-            matchedIdaPoints = route?.waypoints ?: emptyList()
+            idaPoints = cached?.idaPoints ?: SelectedRouteHolder.cachedIdaPoints(route?.id),
+            returnPoints = cached?.returnPoints ?: SelectedRouteHolder.cachedReturnPoints(route?.id),
+            matchedIdaPoints = cached?.matchedIdaPoints?.takeIf { it.isNotEmpty() }
+                ?: route?.waypoints ?: emptyList(),
+            matchedReturnPoints = cached?.matchedReturnPoints ?: emptyList(),
+            idaStopList = cached?.idaStops ?: emptyList(),
+            returnStopList = cached?.returnStops ?: emptyList(),
         ))
     }
 
@@ -198,9 +209,19 @@ fun MapScreen(
 
         geometry = newGeometry
 
-        // Persiste en cache identificado por route?.id para que la próxima visita
-        // a la misma ruta muestre la geometría al instante.
-        SelectedRouteHolder.cacheGeometry(route?.id, newGeometry.idaPoints, newGeometry.returnPoints)
+        // Persiste geometría y paraderos para que al volver a entrar al mapa
+        // se restaure todo al instante (incluso sin red).
+        SelectedRouteHolder.cacheGeometry(
+            route?.id,
+            com.gowayki.nesh.app.features.map.presentation.RouteGeometryCache(
+                idaPoints = newGeometry.idaPoints,
+                returnPoints = newGeometry.returnPoints,
+                matchedIdaPoints = newGeometry.matchedIdaPoints,
+                matchedReturnPoints = newGeometry.matchedReturnPoints,
+                idaStops = newGeometry.idaStopList,
+                returnStops = newGeometry.returnStopList,
+            ),
+        )
 
         // Terminar carga - la geometría ya está lista (o confirmada como no disponible)
         isLoadingGeometry = false
@@ -220,11 +241,12 @@ fun MapScreen(
             geometry.returnStopList else geometry.idaStopList
         list.map { Pair(it.latitude, it.longitude) }
     }
-    val activeStopNames = derivedStateOf {
-        val list = if (selectedDirection == RouteDirection.RETORNO && geometry.returnStopList.isNotEmpty())
+    val activeStopList = derivedStateOf {
+        if (selectedDirection == RouteDirection.RETORNO && geometry.returnStopList.isNotEmpty())
             geometry.returnStopList else geometry.idaStopList
-        list.map { it.name }
     }
+    val activeStopNames = derivedStateOf { activeStopList.value.map { it.name } }
+    var stopDescription by remember(route?.id) { mutableStateOf("") }
 
     fun getStartName(): String {
         return if (selectedDirection == RouteDirection.IDA) {
@@ -251,19 +273,36 @@ fun MapScreen(
     // Paradero tocado en el mapa (se muestra su nombre y su orden en la ruta).
     var tappedStopIndex by remember(route?.id, selectedDirection) { mutableStateOf<Int?>(null) }
     var userLocation by remember { mutableStateOf<UserLocation?>(null) }
+
+    LaunchedEffect(tappedStopIndex) {
+        val stop = tappedStopIndex?.let { activeStopList.value.getOrNull(it) }
+        stopDescription = if (stop != null) {
+            com.gowayki.nesh.app.features.map.data.StopDescriptions.describe(
+                stop.latitude,
+                stop.longitude,
+                "Sin referencia de ubicación",
+            )
+        } else ""
+    }
     var navInstruction by remember { mutableStateOf<NavInstruction?>(null) }
     // true mientras se espera el primer fix GPS tras presionar "Entrar en ruta"
     var waitingForGps by remember { mutableStateOf(false) }
 
     val activeDrivers by com.gowayki.nesh.app.features.map.data.ActiveDriversStore.drivers.collectAsState()
-    val currentLineaId = com.gowayki.nesh.core.session.TurnoSession.turno?.lineaId
-    val sameRouteOthers = remember(activeDrivers, route?.id, route?.parent, currentLineaId) {
-        val rId = route?.id.orEmpty()
-        val parent = route?.parent.orEmpty()
+    // Personas visibles en el mapa: SOLO conductores con turno activo en la
+    // MISMA SUBRUTA. Antes se filtraban por línea (lineaId), así que aparecían
+    // combis de otras subrutas de la misma línea.
+    val companerosUnidades = remember(
+        com.gowayki.nesh.core.session.TurnoSession.activeTurnos,
+        route?.id
+    ) {
+        com.gowayki.nesh.core.session.TurnoSession.companerosEnSubruta(route)
+            .mapNotNull { it.unidadId }
+            .toSet()
+    }
+    val sameRouteOthers = remember(activeDrivers, companerosUnidades) {
         activeDrivers.filter { driver ->
-            if (driver.isSelf) return@filter false
-            if (currentLineaId != null && driver.lineaId != null && driver.lineaId == currentLineaId) return@filter true
-            driver.routeId.isBlank() || driver.routeId == rId || driver.routeId == parent
+            !driver.isSelf && driver.unidadId != null && driver.unidadId in companerosUnidades
         }
     }
 
@@ -293,7 +332,13 @@ fun MapScreen(
     LaunchedEffect(route?.id) {
         navigating = false
         enteredRoute = false
+        var ticks = 0
         while (true) {
+            // Los compañeros del mapa dependen de /turnos/activos, no solo de
+            // la lista de unidades: refrescar también esa lista aquí.
+            if (++ticks % 5 == 0) {
+                runCatching { com.gowayki.nesh.core.session.TurnoSession.refreshActiveTurnos() }
+            }
             val lineaId = com.gowayki.nesh.core.session.TurnoSession.turno?.lineaId
             val unidades = if (lineaId != null) {
                 com.gowayki.nesh.data.repository.BackendTurnosApi.unidadesPorLinea(lineaId)
@@ -337,13 +382,17 @@ fun MapScreen(
 
     BackHandler(enabled = true, onBack = onBack)
 
-    val mains = remember { ArequipaRoutes.all.filter { !it.isSub && it.id.startsWith("C") } }
-    val subsByLine = remember { ArequipaRoutes.all.filter { it.isSub }.groupBy { it.parent } }
+    // Líneas tomadas del catálogo de la BD, nunca de la lista empaquetada.
+    val lineasDb = remember(catalog) {
+        catalog
+            .groupBy { it.parentName?.trim()?.ifBlank { null } ?: it.parent ?: "Otras" }
+            .toList()
+            .sortedBy { it.first }
+    }
     var expandedLines by remember {
         mutableStateOf(
             buildSet {
-                route?.parent?.let { add(it) }
-                route?.takeIf { !it.isSub && it.id.startsWith("C") }?.let { add(it.id) }
+                (route?.parentName ?: route?.parent)?.let { add(it) }
             }
         )
     }
@@ -454,13 +503,13 @@ fun MapScreen(
                             .size(42.dp)
                             .clip(CircleShape)
                             .background(AppColors.ink)
-                            .clickable {
-    com.gowayki.nesh.app.common.ui.shared.ToastManager.show("Escoge tu ruta actual de micro en Ajustes")
-    onSettingsClick()
-},
+                            // Abre el selector de líneas también cuando ya hay una
+                            // ruta global seleccionada (el botón del card solo está
+                            // en la rama sin selección).
+                            .clickable { showRouteSheet = true },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(FeatherIcons.Sliders, "Ajustes", tint = AppColors.cream, modifier = Modifier.size(20.dp))
+                        Icon(FeatherIcons.Sliders, "Elegir línea", tint = AppColors.cream, modifier = Modifier.size(20.dp))
                     }
 
                     WaykiBackButton(onClick = onBack)
@@ -651,6 +700,15 @@ fun MapScreen(
                                     maxLines = 1,
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
+                                if (stopDescription.isNotBlank()) {
+                                    Text(
+                                        text = stopDescription,
+                                        style = AppTextStyles.waykiMini.copy(fontSize = 10.sp),
+                                        color = AppColors.ink,
+                                        maxLines = 2,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
                                 Text(
                                     text = "Paradero ${(tapped ?: 0) + 1} de ${activeStopNames.value.size} · " +
                                         if (selectedDirection == RouteDirection.IDA) "IDA" else "VUELTA",
@@ -1057,7 +1115,7 @@ fun MapScreen(
                                             color = AppColors.ink
                                         )
                                         Text(
-                                            text = "Abre el menú y toca una ruta SIT para ver su trazado.",
+                                            text = "Toca «Ver líneas» para elegir una ruta real de la BD y ver su trazado.",
                                             style = AppTextStyles.waykiMini,
                                             color = AppColors.slate
                                         )
@@ -1068,10 +1126,7 @@ fun MapScreen(
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(16.dp))
                                         .background(AppColors.primary)
-                                        .clickable {
-    com.gowayki.nesh.app.common.ui.shared.ToastManager.show("Escoge tu ruta actual de micro en Ajustes")
-    onSettingsClick()
-}
+                                        .clickable { showRouteSheet = true }
                                         .padding(vertical = 13.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -1104,6 +1159,136 @@ fun MapScreen(
                 },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
+
+            // Selector interactivo de líneas/subrutas, alimentado por el
+            // catálogo de la BD. Se abre desde «Ver líneas» sin salir del mapa.
+            AnimatedVisibility(
+                visible = showRouteSheet,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(AppColors.ink.copy(alpha = 0.38f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { showRouteSheet = false },
+                        )
+                ) {
+                    Column(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .fillMaxHeight(0.72f)
+                            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                            .background(AppColors.cream)
+                            .navigationBarsPadding()
+                            .padding(horizontal = AppSpacing.pageHorizontal, vertical = AppSpacing.md)
+                    ) {
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            Box(
+                                Modifier
+                                    .size(width = 38.dp, height = 4.dp)
+                                    .background(AppColors.outline.copy(alpha = 0.3f), RoundedCornerShape(3.dp))
+                            )
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Líneas de la BD",
+                                style = AppTextStyles.waykiHeader,
+                                color = AppColors.ink,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Box(
+                                Modifier
+                                    .size(30.dp)
+                                    .clip(CircleShape)
+                                    .clickable { showRouteSheet = false },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    FeatherIcons.X,
+                                    "Cerrar",
+                                    tint = AppColors.slate,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "Toca una línea y elige una subruta real. Trazado y paraderos vienen del backend.",
+                            style = AppTextStyles.waykiMini,
+                            color = AppColors.slate,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            if (lineasDb.isEmpty()) {
+                                item {
+                                    Text(
+                                        text = "Cargando catálogo…",
+                                        style = AppTextStyles.waykiMini,
+                                        color = AppColors.slate,
+                                    )
+                                }
+                            }
+                            lineasDb.forEach { (nombre, subs) ->
+                                item(key = "line_$nombre") {
+                                    val primera = subs.first()
+                                    val cabecera = primera.copy(
+                                        id = primera.parent ?: nombre,
+                                        name = nombre,
+                                        isSub = false,
+                                    )
+                                    LineHeader(
+                                        route = cabecera,
+                                        subCount = subs.size,
+                                        expanded = expandedLines.contains(nombre),
+                                        selected = route?.parentName == nombre,
+                                        onToggle = {
+                                            expandedLines = if (expandedLines.contains(nombre)) {
+                                                expandedLines - nombre
+                                            } else {
+                                                expandedLines + nombre
+                                            }
+                                        }
+                                    )
+                                }
+                                if (expandedLines.contains(nombre)) {
+                                    items(subs, key = { it.id }) { sub ->
+                                        SubRouteRow(
+                                            route = sub,
+                                            selected = route?.id == sub.id,
+                                            onClick = {
+                                                val asignada = com.gowayki.nesh.core.session.TurnoSession.turno
+                                                    ?.subrutaCodigo?.trim()
+                                                    ?.removePrefix("SB-")?.removePrefix("sb-")?.trim()
+                                                val elegida = sub.id.trim().removePrefix("SB-").trim()
+                                                if (asignada != null && !asignada.equals(elegida, ignoreCase = true)) {
+                                                    com.gowayki.nesh.app.common.ui.shared.ToastManager.show(
+                                                        "Tu ruta asignada manda. Cámbiala en Mi ruta / unidad."
+                                                    )
+                                                } else {
+                                                    SelectedRouteHolder.clearGeometryCache()
+                                                    SelectedRouteHolder.select(sub)
+                                                    com.gowayki.nesh.app.common.ui.shared.ToastManager.show(
+                                                        "Ruta: ${sub.name}"
+                                                    )
+                                                }
+                                                showRouteSheet = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 }
 

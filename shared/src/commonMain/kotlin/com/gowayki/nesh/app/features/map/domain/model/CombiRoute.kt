@@ -18,8 +18,10 @@ data class CombiRoute(
     val waypoints: List<Pair<Double, Double>>,
     /** true si es una sub-ruta (variante) de una línea principal. */
     val isSub: Boolean = false,
-    /** id de la línea principal a la que pertenece (null si es principal). */
+    /** id/código de la línea principal (C2, C3…), para filtros y lógica. */
     val parent: String? = null,
+    /** Nombre real de la línea (Cono Norte, Transcayma…), para la UI. */
+    val parentName: String? = null,
     /** id de la ruta en SmartBus (para cargar su trazado real). */
     val routeId: String? = null,
     val returnRouteId: String? = null,
@@ -45,43 +47,43 @@ object ArequipaRoutes {
     )
 
     private val mainRoutes: List<CombiRoute> = listOf(
-        CombiRoute("C2", "Línea C2", "Transcayma", Color(0xFFE53935), listOf(
+        CombiRoute("C2", "Cono Norte", "Cono Norte", Color(0xFFE53935), listOf(
             Pair(-16.432, -71.560), Pair(-16.420, -71.548), Pair(-16.409, -71.537),
             Pair(-16.395, -71.525), Pair(-16.380, -71.510)
         )),
-        CombiRoute("C3", "Línea C3", "C3", Color(0xFF1E88E5), listOf(
+        CombiRoute("C3", "Transcayma", "Transcayma", Color(0xFF1E88E5), listOf(
             Pair(-16.440, -71.520), Pair(-16.425, -71.530), Pair(-16.409, -71.537),
             Pair(-16.390, -71.545), Pair(-16.370, -71.555)
         )),
-        CombiRoute("C4", "Línea C4", "C4", Color(0xFF43A047), listOf(
+        CombiRoute("C4", "Unión Aqp", "Unión Aqp", Color(0xFF43A047), listOf(
             Pair(-16.450, -71.500), Pair(-16.430, -71.515), Pair(-16.409, -71.537),
             Pair(-16.395, -71.560), Pair(-16.385, -71.580)
         )),
-        CombiRoute("C5", "Línea C5", "C5", Color(0xFFFB8C00), listOf(
+        CombiRoute("C5", "EtraBus", "EtraBus", Color(0xFFFB8C00), listOf(
             Pair(-16.370, -71.500), Pair(-16.385, -71.520), Pair(-16.409, -71.537),
             Pair(-16.430, -71.555), Pair(-16.450, -71.575)
         )),
-        CombiRoute("C6", "Línea C6", "C6", Color(0xFF8E24AA), listOf(
+        CombiRoute("C6", "Unión Grau", "Unión Grau", Color(0xFF8E24AA), listOf(
             Pair(-16.460, -71.530), Pair(-16.440, -71.532), Pair(-16.409, -71.537),
             Pair(-16.380, -71.540), Pair(-16.350, -71.545)
         )),
-        CombiRoute("C7", "Línea C7", "C7", Color(0xFF00ACC1), listOf(
+        CombiRoute("C7", "AqpMasivo", "AqpMasivo", Color(0xFF00ACC1), listOf(
             Pair(-16.390, -71.500), Pair(-16.400, -71.520), Pair(-16.409, -71.537),
             Pair(-16.420, -71.555), Pair(-16.435, -71.575)
         )),
-        CombiRoute("C8", "Línea C8", "C8", Color(0xFFD81B60), listOf(
+        CombiRoute("C8", "Bus Characato", "Bus Characato", Color(0xFFD81B60), listOf(
             Pair(-16.470, -71.560), Pair(-16.445, -71.550), Pair(-16.409, -71.537),
             Pair(-16.385, -71.520), Pair(-16.360, -71.505)
         )),
-        CombiRoute("C9", "Línea C9", "C9", Color(0xFF546E7A), listOf(
+        CombiRoute("C9", "Emarsistran", "Emarsistran", Color(0xFF546E7A), listOf(
             Pair(-16.360, -71.560), Pair(-16.380, -71.550), Pair(-16.409, -71.537),
             Pair(-16.435, -71.525), Pair(-16.460, -71.510)
         )),
-        CombiRoute("C10", "Línea C10", "C10", Color(0xFFFDD835), listOf(
+        CombiRoute("C10", "MegaBus", "MegaBus", Color(0xFFFDD835), listOf(
             Pair(-16.420, -71.500), Pair(-16.415, -71.520), Pair(-16.409, -71.537),
             Pair(-16.405, -71.555), Pair(-16.400, -71.575)
         )),
-        CombiRoute("C11", "Línea C11", "C11", Color(0xFF6D4C41), listOf(
+        CombiRoute("C11", "Cotum", "Cotum", Color(0xFF6D4C41), listOf(
             Pair(-16.455, -71.575), Pair(-16.435, -71.560), Pair(-16.409, -71.537),
             Pair(-16.385, -71.520), Pair(-16.360, -71.505)
         )),

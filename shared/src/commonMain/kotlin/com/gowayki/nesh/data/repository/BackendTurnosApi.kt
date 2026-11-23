@@ -32,22 +32,31 @@ object BackendTurnosApi {
     private val client = HttpClientFactory.client
     private val baseUrl get() = HttpClientFactory.baseUrl
 
-    /** Turno activo del chofer, o null si todavía no le asignaron unidad. */
-    suspend fun turnoActivo(choferId: String): BackendTurnoDto? = withContext(Dispatchers.IO) {
-        try {
-            val response = client.get("$baseUrl/turnos/chofer/$choferId/activo")
-            when {
-                response.status.value == 204 -> null
-                response.status.isSuccess() -> response.body<BackendTurnoDto>()
-                else -> null
+    /**
+     * Turno activo del chofer, o null si todavía no le asignaron unidad.
+     *
+     * Devuelve `Result` para distinguir «no tiene turno» (204) de un fallo de
+     * red: si la consulta falla, la sesión conserva el turno anterior en vez
+     * de vaciar el Home.
+     */
+    suspend fun turnoActivo(choferId: String): Result<BackendTurnoDto?> =
+        withContext(Dispatchers.Default) {
+            try {
+                val response = client.get("$baseUrl/turnos/chofer/$choferId/activo")
+                when {
+                    response.status.value == 204 -> Result.success(null)
+                    response.status.isSuccess() -> Result.success(response.body<BackendTurnoDto>())
+                    else -> Result.failure(
+                        Exception(mensajeDeError(response, "No se pudo consultar tu turno"))
+                    )
+                }
+            } catch (e: Exception) {
+                Result.failure(Exception(e.message ?: "No se pudo conectar con el servidor"))
             }
-        } catch (_: Exception) {
-            null
         }
-    }
 
     /** Todos los turnos en curso (para saber qué unidades están ocupadas). */
-    suspend fun turnosActivos(): List<BackendTurnoDto> = withContext(Dispatchers.IO) {
+    suspend fun turnosActivos(): List<BackendTurnoDto> = withContext(Dispatchers.Default) {
         try {
             val response = client.get("$baseUrl/turnos/activos")
             if (response.status.isSuccess()) response.body<List<BackendTurnoDto>>() else emptyList()
@@ -57,7 +66,7 @@ object BackendTurnosApi {
     }
 
     /** Todas las unidades del sistema, con su línea. */
-    suspend fun unidadesTodas(): List<BackendUnidadDto> = withContext(Dispatchers.IO) {
+    suspend fun unidadesTodas(): List<BackendUnidadDto> = withContext(Dispatchers.Default) {
         try {
             val response = client.get("$baseUrl/unidades")
             if (response.status.isSuccess()) response.body<List<BackendUnidadDto>>() else emptyList()
@@ -67,7 +76,7 @@ object BackendTurnosApi {
     }
 
     /** Unidades que pertenecen a una línea. */
-    suspend fun unidadesPorLinea(lineaId: Int): List<BackendUnidadDto> = withContext(Dispatchers.IO) {
+    suspend fun unidadesPorLinea(lineaId: Int): List<BackendUnidadDto> = withContext(Dispatchers.Default) {
         try {
             val response = client.get("$baseUrl/lineas/$lineaId/unidades")
             if (response.status.isSuccess()) response.body<List<BackendUnidadDto>>() else emptyList()
@@ -82,7 +91,7 @@ object BackendTurnosApi {
         longitud: Double,
         velocidadKmh: Double = 0.0,
         rumboGrados: Int = 0
-    ): Result<PosicionGpsDto> = withContext(Dispatchers.IO) {
+    ): Result<PosicionGpsDto> = withContext(Dispatchers.Default) {
         runCatching {
             val response: HttpResponse = client.put("$baseUrl/unidades/$unidadId/posicion") {
                 setBody(
@@ -108,7 +117,7 @@ object BackendTurnosApi {
         unidadId: Int,
         subrutaId: Int? = null,
         subrutaCodigo: String? = null,
-    ): Result<BackendTurnoDto> = withContext(Dispatchers.IO) {
+    ): Result<BackendTurnoDto> = withContext(Dispatchers.Default) {
         try {
             val response: HttpResponse = client.post("$baseUrl/turnos/asignar") {
                 setBody(
@@ -130,8 +139,22 @@ object BackendTurnosApi {
         }
     }
 
+    /** Cambia la subruta del turno activo sin cerrarlo. */
+    suspend fun cambiarSubruta(turnoId: String, subrutaCodigo: String): Result<BackendTurnoDto> =
+        withContext(Dispatchers.Default) {
+            try {
+                val response: HttpResponse = client.put("$baseUrl/turnos/$turnoId/subruta") {
+                    setBody(mapOf("subrutaCodigo" to subrutaCodigo))
+                }
+                if (response.status.isSuccess()) Result.success(response.body<BackendTurnoDto>())
+                else Result.failure(Exception(mensajeDeError(response, "No se pudo cambiar la subruta")))
+            } catch (e: Exception) {
+                Result.failure(Exception(e.message ?: "No se pudo conectar con el servidor"))
+            }
+        }
+
     /** Finaliza el turno actual para poder elegir otra unidad. */
-    suspend fun finalizar(turnoId: String): Result<BackendTurnoDto> = withContext(Dispatchers.IO) {
+    suspend fun finalizar(turnoId: String): Result<BackendTurnoDto> = withContext(Dispatchers.Default) {
         try {
             val response: HttpResponse = client.post("$baseUrl/turnos/$turnoId/finalizar")
             if (response.status.isSuccess()) {

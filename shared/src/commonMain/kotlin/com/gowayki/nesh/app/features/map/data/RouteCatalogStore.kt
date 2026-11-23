@@ -20,6 +20,7 @@ object RouteCatalogStore {
     private val mutex = Mutex()
     private var loaded = false
     private var catalogSubrutas: List<CombiRoute> = emptyList()
+    private var nombreToCodigo: Map<String, String> = emptyMap()
 
     /** Carga/actualiza el catálogo desde BD. Idempotente por llamada concurrente. */
     suspend fun refresh(force: Boolean = false): List<CombiRoute> = mutex.withLock {
@@ -32,10 +33,15 @@ object RouteCatalogStore {
         }
 
         val remote = runCatching { BackendLineasApi.catalogoRutas() }.getOrNull()
-        val mapped = remote?.lineas
-            ?.flatMap { it.subrutas }
-            ?.mapNotNull { it.toCombiRoute() }
-            .orEmpty()
+        val lineas = remote?.lineas.orEmpty()
+        nombreToCodigo = lineas.mapNotNull { linea ->
+            val nombre = linea.nombre?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val codigo = linea.codigo?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            nombre.lowercase() to codigo.uppercase()
+        }.toMap()
+        val mapped = lineas
+            .flatMap { it.subrutas.orEmpty() }
+            .mapNotNull { it.toCombiRoute() }
 
         if (mapped.isNotEmpty()) {
             // El backend puede repetir subrutas (misma fila en dos líneas):
@@ -68,6 +74,10 @@ object RouteCatalogStore {
             ?: ArequipaRoutes.all.firstOrNull { it.routeId == routeId || it.returnRouteId == routeId }
     }
 
+    /** Código C2/C3… a partir del nombre real de la línea del backend. */
+    fun codigoParaNombre(nombre: String?): String? =
+        nombre?.trim()?.lowercase()?.let { nombreToCodigo[it] }
+
     /** Resolución síncrona desde lo ya cargado (o el respaldo empaquetado), para etiquetas de UI. */
     fun cachedById(id: String): CombiRoute? =
         catalogSubrutas.firstOrNull { it.id.equals(id, ignoreCase = true) }
@@ -91,6 +101,7 @@ object RouteCatalogStore {
             waypoints = emptyList(),
             isSub = true,
             parent = parentCode.ifBlank { null },
+            parentName = lineaNombre?.takeIf { it.isNotBlank() },
             routeId = ida,
             returnRouteId = routeIdRetorno,
             returnName = nombreRetorno,

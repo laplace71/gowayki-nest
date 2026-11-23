@@ -70,11 +70,12 @@ fun RoutePickerScreen(
         else base.filter {
             it.name.contains(query, ignoreCase = true) ||
                 it.operator.contains(query, ignoreCase = true) ||
+                (it.parentName?.contains(query, ignoreCase = true) == true) ||
                 (it.parent?.contains(query, ignoreCase = true) == true)
         }
     }
     val grouped = remember(filtered) {
-        filtered.groupBy { it.parent ?: "Otras" }
+        filtered.groupBy { it.parentName ?: it.parent ?: "Otras" }
     }
 
     Box(
@@ -137,6 +138,9 @@ fun RoutePickerScreen(
                         val isSelected = selected?.id == route.id
                         Card(
                             onClick = {
+                                // Este selector es solo para cuando aún no hay
+                                // ruta asignada en "Mi ruta / unidad". Si hay turno,
+                                // la asignación oficial manda y se reaplica sola.
                                 SelectedRouteHolder.select(route)
                                 onRouteSelected()
                             },

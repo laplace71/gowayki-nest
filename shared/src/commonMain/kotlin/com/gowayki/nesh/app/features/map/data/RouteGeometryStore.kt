@@ -31,7 +31,7 @@ object RouteGeometryStore {
     private val localCache = mutableMapOf<String, List<Pair<Double, Double>>>()
     private val apiCache = mutableMapOf<String, List<Pair<Double, Double>>>()
     private val apiMutex = Mutex()
-    private val refreshScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val refreshScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val _actualizaciones = MutableSharedFlow<String>(extraBufferCapacity = 16)
 
     /** Aviso de que una ruta tiene geometría nueva viniendo del backend. */
@@ -68,8 +68,9 @@ object RouteGeometryStore {
     private suspend fun geometryFromNewApi(routeId: String): List<Pair<Double, Double>>? {
         val pts = runCatching { BackendLineasApi.geometriaPorRouteId(routeId) }.getOrElse { emptyList() }
         if (pts.size < 2) return null
+        // El backend devuelve [lng, lat]; internamente la app usa Pair(lat, lng).
         val pairs = pts.mapNotNull { p ->
-            if (p.size >= 2) Pair(p[0], p[1]) else null
+            if (p.size >= 2) Pair(p[1], p[0]) else null
         }
         return if (pairs.size >= 2) pairs else null
     }

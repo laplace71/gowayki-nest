@@ -30,7 +30,7 @@ object BackendLineasApi {
 
     suspend fun lineas(force: Boolean = false): List<BackendLineaDto> = mutex.withLock {
         if (!force) cachedLineas?.let { return it }
-        val list = withContext(Dispatchers.IO) {
+        val list = withContext(Dispatchers.Default) {
             runCatching { client.get("$baseUrl/lineas").body<List<BackendLineaDto>>() }
                 .getOrElse { emptyList() }
         }
@@ -44,26 +44,29 @@ object BackendLineasApi {
         return mutex.withLock { bySitId?.get(sitId) }
     }
 
-    suspend fun puntos(lineaId: Int): List<BackendPuntoDto> = withContext(Dispatchers.IO) {
+    suspend fun puntos(lineaId: Int): List<BackendPuntoDto> = withContext(Dispatchers.Default) {
         runCatching { client.get("$baseUrl/lineas/$lineaId/puntos-control").body<List<BackendPuntoDto>>() }
             .getOrElse { emptyList() }
     }
 
     /** Catálogo de líneas y subrutas desde BD. */
-    suspend fun catalogoRutas(): BackendCatalogoRutasDto? = withContext(Dispatchers.IO) {
+    suspend fun catalogoRutas(): BackendCatalogoRutasDto? = withContext(Dispatchers.Default) {
         runCatching { client.get("$baseUrl/rutas/catalogo").body<BackendCatalogoRutasDto>() }.getOrNull()
     }
 
     /** Paraderos por routeId (ida o retorno) desde BD. */
     suspend fun paraderosPorRouteId(routeId: String): List<BackendParaderoRutaDto> =
-        withContext(Dispatchers.IO) {
+        withContext(Dispatchers.Default) {
             runCatching { client.get("$baseUrl/rutas/$routeId/paraderos").body<List<BackendParaderoRutaDto>>() }
                 .getOrElse { emptyList() }
         }
 
-    /** Geometría por routeId (ida o retorno) desde BD: lista de [lat,lon]. */
+    /**
+     * Geometría por routeId (ida o retorno) desde BD: cada punto es [lng, lat]
+     * (GeoJSON). RouteGeometryStore lo convierte a (lat, lng) antes de usarlo.
+     */
     suspend fun geometriaPorRouteId(routeId: String): List<List<Double>> =
-        withContext(Dispatchers.IO) {
+        withContext(Dispatchers.Default) {
             runCatching { client.get("$baseUrl/rutas/$routeId/geometria").body<List<List<Double>>>() }
                 .getOrElse { emptyList() }
         }

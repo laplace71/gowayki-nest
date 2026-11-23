@@ -1,5 +1,6 @@
 package com.gowayki.nesh.data.repository
 
+import androidx.compose.runtime.snapshotFlow
 import com.gowayki.nesh.app.common.util.currentTimeMillis
 import com.gowayki.nesh.app.common.util.parseIsoToMillis
 import com.gowayki.nesh.app.features.communication.domain.model.Conversation
@@ -118,7 +119,7 @@ class KtorChatRepository : ChatRepository {
 
     init {
         restore()
-        refreshConversations(ensureRouteGroup = true)
+        refreshConversations(ensureRouteGroup = true, anchorManualGroups = true)
         startWebSocketListener()
         startPolling()
         observeSelectedRoute()
@@ -142,6 +143,13 @@ class KtorChatRepository : ChatRepository {
         manualGroupSubroutes[dto.id] = clave
         persist()
         return clave
+    }
+
+    /** Igual que [effectiveClaveRuta] pero sin efectos: no ancla ni persiste. */
+    private fun claveVisible(dto: ConversacionResponseDto): String? {
+        dto.claveRuta?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+        if (!dto.esGrupo) return null
+        return manualGroupSubroutes[dto.id]
     }
 
     fun fetchColleagues() {
@@ -257,15 +265,13 @@ class KtorChatRepository : ChatRepository {
      * C2…C11 no cuentan: dos personas solo se encuentran si entraron a la MISMA subruta.
      */
     private fun getActiveConcreteSubroute(): com.gowayki.nesh.app.features.map.domain.model.CombiRoute? {
-        // 1. Prioridad: subruta concreta del turno activo del chofer (asignación oficial)
+        // La asignación oficial (Mi ruta / unidad) manda. El selector manual
+        // solo se usa si aún no hay turno asignado.
         val fromTurno = exactSubrouteFromTurno()
         if (fromTurno != null) return fromTurno
 
-        // 2. Si el chofer eligió/entró manualmente a una subruta concreta en la app
         val selected = SelectedRouteHolder.selected.value
-        if (isConcreteSubroute(selected)) return selected
-
-        return null
+        return if (isConcreteSubroute(selected)) selected else null
     }
 
     private fun isConcreteSubroute(route: com.gowayki.nesh.app.features.map.domain.model.CombiRoute?): Boolean {
@@ -285,8 +291,17 @@ class KtorChatRepository : ChatRepository {
 
         val catalog = SelectedRouteHolder.catalog.value
         val allRoutes = (catalog + com.gowayki.nesh.app.features.map.domain.model.ArequipaRoutes.all)
-        val matched = allRoutes.firstOrNull { it.isSub && (code != null && (it.id.equals(code, ignoreCase = true) || it.routeId == code)) }
-            ?: allRoutes.firstOrNull { it.isSub && (name != null && it.name.equals(name, ignoreCase = true)) }
+        fun norm(value: String?) = value?.trim()
+            ?.removePrefix("SB-")?.removePrefix("sb-")?.trim()
+            ?.takeIf { it.isNotBlank() }
+        val codeNorm = norm(code)
+        val matched = allRoutes.firstOrNull { r ->
+            r.isSub && code != null &&
+                (r.id.equals(code, ignoreCase = true) ||
+                    norm(r.id).equals(codeNorm, ignoreCase = true) ||
+                    r.routeId.equals(code, ignoreCase = true) ||
+                    norm(r.routeId).equals(codeNorm, ignoreCase = true))
+        } ?: allRoutes.firstOrNull { it.isSub && (name != null && it.name.equals(name, ignoreCase = true)) }
 
         if (matched != null) return matched
 
@@ -367,21 +382,67 @@ class KtorChatRepository : ChatRepository {
         return matchesRouteGroup(conv.claveRuta, conv.title, active)
     }
 
+    /**
+     * Misma regla para la lista de conversaciones y para el badge: un chat de
+     * línea o de otra subruta no existe en este dispositivo. Se comparte para
+     * que el puntito de Comunicación nunca cuente mensajes que la pantalla no
+     * muestra.
+     */
+    private fun visibleOnThisDevice(
+        dto: ConversacionResponseDto,
+        activeRoute: com.gowayki.nesh.app.features.map.domain.model.CombiRoute?,
+    ): Boolean {
+        val corte = chatsLimpiados[dto.id]
+        if (corte != null) {
+            val ultimo = parseIsoToMillis(dto.ultimoMensaje?.createdAt)
+            if (ultimo == null || ultimo <= corte) return false
+        }
+        // Solo lectura: el filtro lo usa también el badge cada 20 s. Llamar a
+        // effectiveClaveRuta aquí anclaba grupos sin clave a la subruta actual
+        // antes de que el chofer abriese Comunicación.
+        val clave = claveVisible(dto)
+        if (isLineLevelChat(dto.titulo, clave)) return false
+        if (isRouteGroupDto(dto.copy(claveRuta = clave))) {
+            return activeRoute != null && matchesRouteGroup(clave, dto.titulo, activeRoute)
+        }
+        return true // privados
+    }
+
     private fun observeSelectedRoute() {
+        // Escuchamos el evento explícito de confirmación, no el StateFlow:
+        // si el usuario vuelve a elegir la MISMA subruta tras reactivar la
+        // cuenta, el id no cambia y un collect por estado se lo saltaría.
         scope.launch {
-            var lastId: String? = null
-            SelectedRouteHolder.selected.collect { route ->
-                val id = route?.id
-                if (id == lastId) return@collect
-                lastId = id
+            SelectedRouteHolder.routeConfirmed.collect {
                 joinedRouteClave = null
                 refreshConversations(ensureRouteGroup = true)
                 fetchColleagues()
             }
         }
+        // La asignación oficial ("Mi ruta / unidad") puede cambiar sin que el
+        // selector manual cambie (lo impone TurnoSession). Escuchamos también
+        // el turno para recalcular el grupo y los compañeros de ESA subruta.
+        scope.launch {
+            snapshotFlow { com.gowayki.nesh.core.session.TurnoSession.turno?.subrutaCodigo }
+                .distinctUntilChanged()
+                .collect { codigo ->
+                    joinedRouteClave = null
+                    // Si se perdió la asignación oficial NO hacemos join: la
+                    // selección global todavía apunta a la ruta anterior y
+                    // reeditar el grupo sería un reingreso no deseado.
+                    refreshConversations(
+                        ensureRouteGroup = !codigo.isNullOrBlank(),
+                        anchorManualGroups = !codigo.isNullOrBlank(),
+                    )
+                    fetchColleagues()
+                }
+        }
     }
 
-    fun refreshConversations(ensureRouteGroup: Boolean = false) {
+    fun refreshConversations(
+        ensureRouteGroup: Boolean = false,
+        anchorManualGroups: Boolean = false,
+    ) {
         val myId = UserSession.currentUserId ?: return
         // El backend no lista los chats ocultos: al volver a entrar con la
         // misma cuenta recuperamos sus ids/títulos del guardado por cuenta.
@@ -419,7 +480,7 @@ class KtorChatRepository : ChatRepository {
             }
 
             BackendChatApi.conversaciones().onSuccess { list ->
-                filterAndEmitConversations(list)
+                filterAndEmitConversations(list, anchorManualGroups)
                 if (ensureRouteGroup && clave != null) fetchColleagues()
             }
         }
@@ -449,40 +510,19 @@ class KtorChatRepository : ChatRepository {
         persist()
     }
 
-    private fun filterAndEmitConversations(list: List<ConversacionResponseDto>) {
+    private fun filterAndEmitConversations(
+        list: List<ConversacionResponseDto>,
+        anchorManualGroups: Boolean = false,
+    ) {
         purgeEliminacionesVencidas()
         // El backend ya excluye las conversaciones que el usuario ocultó.
         // Los grupos de ruta de otra subruta tampoco se muestran: cada subruta
         // es un chat aparte. C2…C11 no agrupan a nadie.
         val activeRoute = getActiveConcreteSubroute()
-        val filtered = list.filter { dto ->
-            // Regla 1: un chat limpiado sigue oculto mientras no llegue un
-            // mensaje nuevo posterior a la marca local. La marca se conserva
-            // para que fetchMessages siga ocultando los mensajes antiguos.
-            val corte = chatsLimpiados[dto.id]
-            if (corte != null) {
-                val ultimo = parseIsoToMillis(dto.ultimoMensaje?.createdAt)
-                if (ultimo == null || ultimo <= corte) return@filter false
-            }
-            val clave = effectiveClaveRuta(dto)
-            // Descarta completamente cualquier chat de línea (C2...C11)
-            if (isLineLevelChat(dto.titulo, clave)) {
-                return@filter false
-            }
-            if (isRouteGroupDto(dto.copy(claveRuta = clave))) {
-                // Solo se muestra el grupo de ruta si coincide exactamente con la subruta activa del usuario.
-                // Los grupos manuales también quedan anclados a una subruta (ver effectiveClaveRuta),
-                // así que dejan de aparecer en todas. Si dos personas están en la misma
-                // subruta, ambas lo ven y se encuentran.
-                activeRoute != null && matchesRouteGroup(clave, dto.titulo, activeRoute)
-            } else {
-                // Chats privados (nunca se anclan a una subruta)
-                true
-            }
-        }
+        val filtered = list.filter { visibleOnThisDevice(it, activeRoute) }
         val existingById = (_conversations.value + _archived.value).associateBy { it.id }
         val mapped = filtered.map { dto ->
-            val fresh = mapDtoToConversation(dto)
+            val fresh = mapDtoToConversation(dto, anchorManualGroups)
             val existing = existingById[dto.id]
             if (existing != null) {
                 val lastLocal = _messages.value[dto.id]?.lastOrNull()?.sentAtMillis ?: 0L
@@ -543,7 +583,8 @@ class KtorChatRepository : ChatRepository {
     }
 
     override fun conversations(): Flow<List<Conversation>> {
-        refreshConversations(ensureRouteGroup = false)
+        // Abrir la bandeja es interacción explícita: se anclan los grupos manuales.
+        refreshConversations(ensureRouteGroup = false, anchorManualGroups = true)
         return _conversations.asStateFlow()
     }
 
@@ -665,13 +706,24 @@ class KtorChatRepository : ChatRepository {
             }
         }
         // El badge del bottom nav se actualiza aunque no estés en Comunicación
-        // y aunque el WebSocket esté caído: el backend es la fuente del total.
+        // y aunque el WebSocket esté caído, pero NUNCA con el total crudo del
+        // backend: ese total incluye chats de línea (C2…) y grupos de otras
+        // subrutas que la pantalla no muestra. Se aplica el mismo filtro.
         scope.launch {
             while (true) {
-                delay(5_000)
+                // 20 s (3/min) en vez de 5 s (12/min): el inbox ya se refresca
+                // por WebSocket y por el poll de mensajes, esto es solo respaldo.
+                delay(20_000)
                 if (UserSession.currentUserId != null) {
-                    BackendChatApi.totalNoLeidos().onSuccess { total ->
-                        com.gowayki.nesh.app.common.ui.shared.ChatUnreadBadge.total = maxOf(0, total)
+                    BackendChatApi.conversaciones().onSuccess { dtos ->
+                        val activa = getActiveConcreteSubroute()
+                        com.gowayki.nesh.app.common.ui.shared.ChatUnreadBadge.total =
+                            dtos.filter { visibleOnThisDevice(it, activa) }
+                                .sumOf { dto ->
+                                    val local = _conversations.value
+                                        .firstOrNull { it.id == dto.id }?.unreadCount ?: 0
+                                    (dto.noLeidos ?: local).coerceAtLeast(0)
+                                }
                     }
                 }
             }
@@ -1182,8 +1234,16 @@ class KtorChatRepository : ChatRepository {
             conversationId = dto.conversacionId,
             senderId = dto.emisorId,
             senderName = dto.emisorNombre ?: if (isMine) UserSession.displayName else "Conductor",
-            text = dto.contenidoTexto ?: if (dto.tipo == "AUDIO") "Nota de voz" else "",
-            kind = if (dto.tipo == "AUDIO") MessageKind.AUDIO else MessageKind.TEXT,
+            text = if (dto.tipo == "SISTEMA") {
+                textoPreview(dto)
+            } else {
+                dto.contenidoTexto ?: if (dto.tipo == "AUDIO") "Nota de voz" else ""
+            },
+            kind = when (dto.tipo) {
+                "AUDIO" -> MessageKind.AUDIO
+                "SISTEMA" -> MessageKind.SYSTEM
+                else -> MessageKind.TEXT
+            },
             audioDurationSeconds = dto.audioDuracionSegundos ?: 0,
             audioFilePath = fullUrl,
             sentAtMillis = parseIsoToMillis(dto.createdAt) ?: currentTimeMillis(),
@@ -1196,12 +1256,14 @@ class KtorChatRepository : ChatRepository {
         )
     }
 
-    private fun mapDtoToConversation(dto: ConversacionResponseDto): Conversation {
-        val previewText = when {
-            dto.ultimoMensaje?.tipo == "AUDIO" -> "Audio · ${dto.ultimoMensaje.audioDuracionSegundos ?: 0}s"
-            dto.ultimoMensaje?.contenidoTexto != null -> dto.ultimoMensaje.contenidoTexto
-            else -> "Sin mensajes"
-        }
+    private fun textoPreview(dto: MensajeResponseDto?): String {
+        if (dto == null) return "Sin mensajes"
+        if (dto.tipo == "AUDIO") return "Audio · ${dto.audioDuracionSegundos ?: 0}s"
+        return dto.contenidoTexto?.takeIf { it.isNotBlank() } ?: dto.emisorNombre ?: "Sin mensajes"
+    }
+
+    private fun mapDtoToConversation(dto: ConversacionResponseDto, anchorManualGroups: Boolean = false): Conversation {
+        val previewText = textoPreview(dto.ultimoMensaje)
         val count = (dto.totalParticipantes ?: 1).coerceAtLeast(1)
         val membersList = if (dto.esGrupo) {
             List(count) { i ->
@@ -1222,7 +1284,7 @@ class KtorChatRepository : ChatRepository {
             lastMessageId = dto.ultimoMensaje?.id,
             members = membersList,
             tipoConversacion = dto.tipoConversacion,
-            claveRuta = effectiveClaveRuta(dto),
+            claveRuta = if (anchorManualGroups) effectiveClaveRuta(dto) else claveVisible(dto),
             createdBy = dto.createdBy,
             miRol = dto.miRol,
             eliminacionPendiente = dto.eliminacionPendiente,
@@ -1235,7 +1297,8 @@ class KtorChatRepository : ChatRepository {
             list.map { c ->
                 if (c.id != conversationId) c
                 else c.copy(
-                    preview = if (message.kind == MessageKind.AUDIO) "Audio" else message.text,
+                    preview = if (message.kind == MessageKind.AUDIO) "Audio"
+                    else message.text.ifBlank { message.senderName },
                     lastMessageAtMillis = message.sentAtMillis,
                     lastMessageId = message.id
                 )
@@ -1252,6 +1315,9 @@ class KtorChatRepository : ChatRepository {
      * repositorio compartido bajo la sesión nueva.
      */
     fun cerrarSesion() {
+        // La memoria de "ya unido a esta ruta" es de sesión: al salir se limpia
+        // para que un re-registro pueda volver a unirse al grupo de ruta.
+        joinedRouteClave = null
         val usuario = com.gowayki.nesh.core.session.UserSession.currentUserId
         if (!usuario.isNullOrBlank()) {
             // También se guarda la lista vacía: si se restauraron todos los
