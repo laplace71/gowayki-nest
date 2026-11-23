@@ -126,9 +126,15 @@ else
   exit 1
 fi
 bytes=$(wc -c < "$salida" | tr -d '[:space:]')
-cert=$("$build_tools/apksigner" verify --print-certs "$salida" | \
-  sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-[[ -n "$cert" ]] || { echo "ERROR: no se pudo leer la huella SHA-256 del certificado" >&2; exit 1; }
+# build-tools 37 (firma v3.1) imprime "Signer (minSdkVersion=..., maxSdkVersion=...)",
+# build-tools 36 imprime "Signer #1". Acepta cualquier etiqueta.
+cert=$("$build_tools/apksigner" verify --print-certs "$salida" 2>/dev/null | \
+  sed -n -E 's/^.* certificate SHA-256 digest: ([0-9a-fA-F]{64})$/\1/p' | sed -n '1p')
+if [[ -z "$cert" ]]; then
+  echo "ERROR: no se pudo leer la huella SHA-256 del certificado" >&2
+  "$build_tools/apksigner" verify --print-certs "$salida" >&2 || true
+  exit 1
+fi
 tamano=$(awk -v b="$bytes" 'BEGIN { printf "%.1f MB", b / 1048576 }')
 
 # No publicar un APK más antiguo (ni con otra firma) que CUALQUIER release
