@@ -3,9 +3,11 @@ package com.gowayki.nesh.data.repository
 import com.gowayki.nesh.core.network.HttpClientFactory
 import com.gowayki.nesh.core.session.AuthTokenState
 import com.gowayki.nesh.core.session.UserSession
+import com.gowayki.nesh.data.entities.auth.CambiarPinRequestDto
 import com.gowayki.nesh.data.entities.auth.LoginRequestDto
 import com.gowayki.nesh.data.entities.auth.LoginResponseDto
 import com.gowayki.nesh.data.entities.auth.RegisterRequestDto
+import com.gowayki.nesh.data.entities.auth.RegistroSolicitudRequestDto
 import com.gowayki.nesh.domain.model.AuthError
 import com.gowayki.nesh.domain.model.User
 import com.gowayki.nesh.domain.repository.AuthRepository
@@ -40,7 +42,10 @@ class KtorAuthRepository : AuthRepository {
                         name = body.usuario.nombre,
                         email = body.usuario.email ?: "",
                         dni = body.usuario.dni,
-                        phone = body.usuario.telefono
+                        phone = body.usuario.telefono,
+                        rol = body.usuario.rol,
+                        subrutaId = body.usuario.subrutaId,
+                        subrutaNombre = body.usuario.subrutaNombre
                     )
                     // Sin token el chat respondería 401: se guarda antes de dar
                     // la sesión por iniciada.
@@ -96,6 +101,9 @@ class KtorAuthRepository : AuthRepository {
                     email = dto.email ?: "",
                     dni = dto.dni,
                     phone = dto.telefono,
+                    rol = dto.rol,
+                    subrutaId = dto.subrutaId,
+                    subrutaNombre = dto.subrutaNombre,
                 )
                 AuthTokenState.save(body.token)
                 UserSession.saveUser(user)
@@ -114,6 +122,40 @@ class KtorAuthRepository : AuthRepository {
         }
     }
 
+    override suspend fun registrarSolicitud(
+        name: String,
+        dni: String,
+        phone: String,
+        email: String,
+        pin: String,
+        subrutaId: String,
+    ): Result<Unit> = withContext(Dispatchers.Default) {
+        val subrutaEntera = subrutaId.toIntOrNull()
+            ?: return@withContext Result.failure(
+                IllegalArgumentException("Selecciona una subruta válida."))
+        try {
+            val response: HttpResponse = client.post("$baseUrl/auth/registro-solicitud") {
+                setBody(RegistroSolicitudRequestDto(
+                    nombre = name.trim(),
+                    dni = dni.trim(),
+                    telefono = phone.trim(),
+                    email = email.trim().takeIf { it.isNotBlank() },
+                    pin = pin.trim(),
+                    subrutaId = subrutaEntera,
+                ))
+            }
+            if (response.status.isSuccess()) Result.success(Unit)
+            else {
+                val mensaje = try {
+                    response.body<LoginResponseDto>().mensaje
+                } catch (_: Exception) { null }
+                Result.failure(AuthError.Rechazado(mensaje ?: "No se pudo enviar la solicitud."))
+            }
+        } catch (e: Exception) {
+            Result.failure(desdeExcepcion(e))
+        }
+    }
+
     override suspend fun deleteAccount(): Result<Unit> = withContext(Dispatchers.Default) {
         try {
             val response: HttpResponse = client.post("$baseUrl/auth/eliminar-cuenta")
@@ -124,6 +166,26 @@ class KtorAuthRepository : AuthRepository {
             }
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    override suspend fun cambiarPin(pinActual: String, pinNuevo: String): Result<Unit> = withContext(Dispatchers.Default) {
+        try {
+            val response: HttpResponse = client.post("$baseUrl/auth/cambiar-pin") {
+                setBody(CambiarPinRequestDto(pinActual = pinActual, pinNuevo = pinNuevo))
+            }
+            if (response.status.isSuccess()) {
+                Result.success(Unit)
+            } else {
+                val mensaje = try {
+                    response.body<LoginResponseDto>().mensaje
+                } catch (_: Exception) {
+                    null
+                }
+                Result.failure(AuthError.Rechazado(mensaje ?: "No se pudo cambiar el PIN."))
+            }
+        } catch (e: Exception) {
+            Result.failure(desdeExcepcion(e))
         }
     }
 

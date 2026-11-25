@@ -22,6 +22,7 @@ data class AuthUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val user: User? = null,
+    val mensaje: String? = null,
 )
 
 class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
@@ -212,10 +213,45 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
     fun savePin(phone: String, pin: String) =
         exec { repo.savePin(phone, pin) }
 
+    /** Registro del chofer: queda pendiente de aprobación del jefe de ruta. */
+    fun registrarSolicitud(
+        name: String,
+        dni: String,
+        phone: String,
+        email: String,
+        pin: String,
+        subrutaId: String,
+    ) {
+        state = AuthUiState(isLoading = true)
+        viewModelScope.launch {
+            repo.registrarSolicitud(name, dni, phone, email, pin, subrutaId)
+                .onSuccess {
+                    state = AuthUiState(mensaje =
+                        "Solicitud enviada. El jefe de ruta debe aprobar tu acceso.")
+                }
+                .onFailure {
+                    state = AuthUiState(error = it.message ?: "No se pudo enviar la solicitud")
+                }
+        }
+    }
+
+    fun cambiarPin(pinActual: String, pinNuevo: String) {
+        state = AuthUiState(isLoading = true)
+        viewModelScope.launch {
+            repo.cambiarPin(pinActual, pinNuevo)
+                .onSuccess { state = AuthUiState(mensaje = "PIN actualizado correctamente") }
+                .onFailure { state = AuthUiState(error = it.message ?: "No se pudo cambiar el PIN") }
+        }
+    }
+
     fun google(idToken: String) = exec { repo.google(idToken) }
 
     fun consumeUser() {
         state = state.copy(user = null)
+    }
+
+    fun consumeMensaje() {
+        state = state.copy(mensaje = null)
     }
 
     /** Limpia el error compartido (al cambiar de pantalla o reintentar). */

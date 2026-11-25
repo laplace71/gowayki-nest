@@ -323,6 +323,8 @@ class FakeChatRepository(
         return Result.success(Unit)
     }
 
+    override suspend fun solicitarCambioSubruta(subrutaId: String): Result<Unit> = Result.success(Unit)
+
     override suspend fun asignarRol(conversationId: String, userId: String, rol: String): Result<Unit> {
         fun update(list: List<Conversation>) = list.map { c ->
             if (c.id == conversationId) {
@@ -365,7 +367,7 @@ class FakeChatRepository(
     }
 
     private fun restore(): Boolean = runCatching {
-        val raw = ChatStore.read() ?: return false
+        val raw = ChatStore.read(com.gowayki.nesh.core.session.UserSession.currentUserId ?: "anon") ?: return false
         val saved = chatJson.decodeFromString<PersistedChatState>(raw)
         _conversations.value = saved.conversations
         _archived.value = saved.archived
@@ -383,6 +385,7 @@ class FakeChatRepository(
     private fun persist() {
         runCatching {
             ChatStore.write(
+                com.gowayki.nesh.core.session.UserSession.currentUserId ?: "anon",
                 chatJson.encodeToString(
                     PersistedChatState(
                         conversations = _conversations.value,

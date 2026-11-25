@@ -8,36 +8,39 @@ actual object ProfileStore {
     private const val KEY = "profile_photo"
     private const val KEY_NAME = "display_name"
 
-    actual fun readPhotoPath(): String? = runCatching {
+    // Claves distintas por cuenta. "anon" se usa antes del login.
+    private fun keyFor(userId: String?): String = userId?.takeIf { it.isNotBlank() } ?: "anon"
+
+    actual fun readPhotoPath(userId: String?): String? = runCatching {
         AndroidSosContext.appContext
             ?.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-            ?.getString(KEY, null)
+            ?.getString(KEY + "_" + keyFor(userId), null)
             ?.takeIf { it.isNotBlank() }
     }.getOrNull()
 
-    actual fun writePhotoPath(path: String?) {
+    actual fun writePhotoPath(path: String?, userId: String?) {
         runCatching {
             AndroidSosContext.appContext
                 ?.getSharedPreferences(FILE, Context.MODE_PRIVATE)
                 ?.edit()
-                ?.putString(KEY, path ?: "")
+                ?.putString(KEY + "_" + keyFor(userId), path ?: "")
                 ?.apply()
         }
     }
 
-    actual fun readDisplayName(): String? = runCatching {
+    actual fun readDisplayName(userId: String?): String? = runCatching {
         AndroidSosContext.appContext
             ?.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-            ?.getString(KEY_NAME, null)
+            ?.getString(KEY_NAME + "_" + keyFor(userId), null)
             ?.takeIf { it.isNotBlank() }
     }.getOrNull()
 
-    actual fun writeDisplayName(name: String?) {
+    actual fun writeDisplayName(name: String?, userId: String?) {
         runCatching {
             AndroidSosContext.appContext
                 ?.getSharedPreferences(FILE, Context.MODE_PRIVATE)
                 ?.edit()
-                ?.putString(KEY_NAME, name ?: "")
+                ?.putString(KEY_NAME + "_" + keyFor(userId), name ?: "")
                 ?.apply()
         }
     }

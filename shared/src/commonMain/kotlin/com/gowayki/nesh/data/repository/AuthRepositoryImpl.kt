@@ -42,6 +42,20 @@ class FakeAuthRepository : AuthRepository {
         return Result.success(User(id = "demo-google", name = "Google", email = "demo@wayki.com"))
     }
 
+    override suspend fun registrarSolicitud(
+        name: String,
+        dni: String,
+        phone: String,
+        email: String,
+        pin: String,
+        subrutaId: String,
+    ): Result<Unit> = Result.success(Unit)
+
+    override suspend fun cambiarPin(pinActual: String, pinNuevo: String): Result<Unit> {
+        if (pinNuevo.length != 6) return Result.failure(IllegalArgumentException("El PIN debe tener 6 digitos"))
+        return Result.success(Unit)
+    }
+
     override suspend fun savePin(phone: String, pin: String): Result<User> {
         delay(1.seconds)
         if (pin.length != 6) return Result.failure(IllegalArgumentException("El PIN debe tener 6 digitos"))
