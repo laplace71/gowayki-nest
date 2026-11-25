@@ -59,7 +59,16 @@ object TurnoSession {
     /** Texto corto para cabeceras: "Línea C2 · Unidad 08 · V1A-954". */
     val resumen: String
         get() {
-            val t = turno ?: return "Sin ruta asignada"
+            val t = turno ?: run {
+                val usuario = UserSession.currentUser
+                if (usuario != null && usuario.rol.equals("JEFE_RUTA", ignoreCase = true)) {
+                    return listOfNotNull(
+                        usuario.subrutaNombre?.takeIf { it.isNotBlank() },
+                        usuario.subrutaId?.takeIf { it.isNotBlank() }?.let { "Subruta $it" },
+                    ).joinToString(" · ").ifBlank { "Sin ruta asignada" }
+                }
+                return "Sin ruta asignada"
+            }
             return buildList {
                 t.lineaNombre?.takeIf { it.isNotBlank() }?.let { add(it) }
                 t.numeroPadron?.takeIf { it.isNotBlank() }?.let { add("Unidad $it") }
@@ -101,6 +110,15 @@ object TurnoSession {
             try {
                 val holder = com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
                 runCatching { holder.refreshCatalog() }
+
+                // El jefe ve por defecto la subruta que el panel le asignó.
+                // Solo se impone si todavía no eligió una por su cuenta.
+                val rol = UserSession.currentUser?.rol.orEmpty()
+                if (rol.equals("JEFE_RUTA", ignoreCase = true) && !holder.userSelectedRoute) {
+                    UserSession.currentUser?.subrutaId?.takeIf { it.isNotBlank() }?.let {
+                        holder.selectById(it)
+                    }
+                }
 
                 val consulta = BackendTurnosApi.turnoActivo(choferId)
                 consulta

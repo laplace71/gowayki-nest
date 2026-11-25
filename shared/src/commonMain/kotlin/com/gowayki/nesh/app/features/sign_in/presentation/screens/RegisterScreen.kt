@@ -19,6 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,6 +41,8 @@ import com.gowayki.nesh.app.common.ui.shared.WaykiPinCreator
 import com.gowayki.nesh.app.common.ui.shared.WaykiPrimaryButton
 import com.gowayki.nesh.app.common.ui.shared.WaykiSubtitle
 import com.gowayki.nesh.app.common.ui.shared.WaykiSwitchAuth
+import com.gowayki.nesh.app.features.map.data.RouteCatalogStore
+import com.gowayki.nesh.app.features.map.domain.model.CombiRoute
 import com.gowayki.nesh.app.common.ui.shared.WaykiTextField
 import com.gowayki.nesh.app.common.ui.shared.WaykiTitle
 import com.gowayki.nesh.core.theme.src.AppTextStyles
@@ -46,7 +51,7 @@ import com.gowayki.nesh.core.theme.src.core.AppSpacing
 
 @Composable
 fun RegisterScreen(
-    onRegisterClick: (name: String, dni: String, phone: String, email: String, pin: String) -> Unit = { _, _, _, _, _ -> },
+    onRegisterClick: (name: String, dni: String, phone: String, email: String, pin: String, subrutaId: String) -> Unit = { _, _, _, _, _, _ -> },
     onLoginClick: () -> Unit = {},
     onBack: () -> Unit = {},
     onClearError: () -> Unit = {},
@@ -58,6 +63,12 @@ fun RegisterScreen(
     var dni by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
+    var subrutaId by remember { mutableStateOf("") }
+    var subrutaNombre by remember { mutableStateOf("") }
+    var subrutas by remember { mutableStateOf<List<CombiRoute>>(emptyList()) }
+    var expanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) { subrutas = RouteCatalogStore.subrutas() }
 
     // Si el backend rechaza los datos (DNI/teléfono ya registrados), volvemos
     // al paso 1 para que el mensaje se vea junto a los campos.
@@ -70,7 +81,8 @@ fun RegisterScreen(
         name.trim().length >= 2 &&
         dni.length == 8 &&
         phone.length == 9 &&
-        emailRegex.matches(email.trim())
+        emailRegex.matches(email.trim()) &&
+        subrutaId.isNotBlank()
 
     WaykiBackground(withRoads = true) {
         Column(
@@ -152,6 +164,36 @@ fun RegisterScreen(
                         imeAction = ImeAction.Done,
                     )
 
+                    Spacer(Modifier.height(AppSpacing.formFieldGap))
+                    Box {
+                        Button(
+                            onClick = { expanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                if (subrutaId.isBlank()) "Subruta / empresa"
+                                else subrutaNombre.ifBlank { subrutaId }
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                        ) {
+                            subrutas
+                                .filter { it.subrutaDbId != null } // el backend espera el id numérico
+                                .forEach { ruta ->
+                                    DropdownMenuItem(
+                                        text = { Text(ruta.name) },
+                                        onClick = {
+                                            subrutaId = ruta.subrutaDbId!!.toString()
+                                            subrutaNombre = ruta.name
+                                            expanded = false
+                                        },
+                                    )
+                                }
+                        }
+                    }
+
                     Spacer(Modifier.height(AppSpacing.lg))
                     WaykiErrorText(error)
                     Spacer(Modifier.height(AppSpacing.sm))
@@ -196,7 +238,7 @@ fun RegisterScreen(
                         isSaving = isLoading,
                         error = error,
                         onConfirm = { pin ->
-                            onRegisterClick(name.trim(), dni, phone, email.trim(), pin)
+                            onRegisterClick(name.trim(), dni, phone, email.trim(), pin, subrutaId)
                         },
                     )
                 }

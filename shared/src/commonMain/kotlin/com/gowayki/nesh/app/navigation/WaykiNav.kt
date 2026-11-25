@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.scaleIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -24,6 +25,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.gowayki.nesh.app.di.AppDi
+import com.gowayki.nesh.core.session.SesionExpiradaState
 import com.gowayki.nesh.core.session.UserSession
 import com.gowayki.nesh.app.di.ChatDi
 import com.gowayki.nesh.app.features.communication.domain.repository.ChatRepository
@@ -34,6 +36,7 @@ import com.gowayki.nesh.app.features.communication.presentation.chat.NewGroupScr
 import com.gowayki.nesh.app.features.communication.presentation.chat.CommunicationVoiceViewModel
 import com.gowayki.nesh.app.features.communication.presentation.chat.CommunicationVoicePopup
 import com.gowayki.nesh.app.features.map.presentation.SubrouteLabels
+import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
 import com.gowayki.nesh.app.features.reports.presentation.screens.ReportsScreen
 import com.gowayki.nesh.app.features.sign_in.presentation.StateFlow.AuthViewModel
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.LoginScreen
@@ -47,28 +50,28 @@ import com.gowayki.nesh.app.common.ui.shared.ToastManager
 import com.gowayki.nesh.domain.repository.AuthRepository
 import com.gowayki.nesh.app.features.sign_in.presentation.screens.RegisterScreen
 import com.gowayki.nesh.app.features.welcome.presentation.screens.WelcomeScreen
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
-// Transiciones compartidas del NavHost: un desplazamiento corto con fade
-// (nunca la pantalla completa) para que el cambio se sienta ligero y rápido.
+// Movimiento único y sobrio: la pantalla entra con un desplazamiento corto y
+// una escala casi imperceptible; al volver solo hace fade, sin slide ni zoom,
+// para que no se superponga con el gesto del sistema.
 private val WaykiEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 private val WaykiExitEasing = FastOutLinearInEasing
 
 private fun forwardEnter(): EnterTransition =
-    fadeIn(tween(300, easing = WaykiEasing)) +
-        slideInHorizontally(tween(340, easing = WaykiEasing)) { width -> width / 12 }
+    fadeIn(tween(180, easing = WaykiEasing)) +
+        scaleIn(initialScale = 0.985f, animationSpec = tween(220, easing = WaykiEasing)) +
+        slideInHorizontally(tween(220, easing = WaykiEasing)) { width -> width / 20 }
 
 private fun forwardExit(): ExitTransition =
-    fadeOut(tween(200, easing = WaykiExitEasing)) +
-        slideOutHorizontally(tween(240, easing = WaykiExitEasing)) { width -> -width / 18 }
+    fadeOut(tween(130, easing = WaykiExitEasing))
 
 private fun backEnter(): EnterTransition =
-    fadeIn(tween(300, easing = WaykiEasing)) +
-        slideInHorizontally(tween(340, easing = WaykiEasing)) { width -> -width / 12 }
+    fadeIn(tween(160, easing = WaykiEasing))
 
 private fun backExit(): ExitTransition =
-    fadeOut(tween(200, easing = WaykiExitEasing)) +
-        slideOutHorizontally(tween(240, easing = WaykiExitEasing)) { width -> width / 18 }
+    fadeOut(tween(130, easing = WaykiExitEasing))
 
 @Composable
 fun WaykiNav(
@@ -94,10 +97,25 @@ fun WaykiNav(
         // Primero el repositorio guarda el metadata por cuenta y cierra el
         // socket; después se limpia la sesión en memoria.
         (sesionRepo as? KtorChatRepository)?.cerrarSesion()
+        // La ruta del chofer anterior no debe heredarla el siguiente (UserSession.clear()
+        // también lo hace: resetForLogout() es idempotente y no llama a clear()).
+        SelectedRouteHolder.resetForLogout()
         UserSession.clear()
         nav.navigate(Routes.WELCOME) {
             popUpTo(0) { inclusive = true }
             launchSingleTop = true
+        }
+    }
+
+    // Si esta cuenta abrió sesión en otro dispositivo, el backend revoca el
+    // token y el siguiente 401 enciende la señal: cerramos y volvemos al inicio.
+    LaunchedEffect(Unit) {
+        SesionExpiradaState.expirada.collect { expirada ->
+            if (expirada) {
+                ToastManager.show("Esta cuenta abrió sesión en otro dispositivo.")
+                cerrarSesion()
+                SesionExpiradaState.consumir()
+            }
         }
     }
 
@@ -120,7 +138,10 @@ fun WaykiNav(
     // alcance: si se leyera directo aquí, cada cambio de estado del SOS
     // recompondría el NavHost completo (scroll y cambios de módulo con lag).
     SosTripWatcher(sosVm) { secuencia ->
-        if (secuencia > 0 && nav.currentBackStackEntry?.destination?.route != Routes.SOS) {
+        // Sin sesión iniciada el ESP32 no debe sacarnos del Welcome/Login.
+        if (secuencia > 0 && UserSession.currentUserId != null &&
+            nav.currentBackStackEntry?.destination?.route != Routes.SOS
+        ) {
             nav.navigate(Routes.SOS)
         }
     }
@@ -190,13 +211,20 @@ fun WaykiNav(
             RegisterScreen(
                 isLoading = state.isLoading,
                 error = state.error,
-                onRegisterClick = { name, dni, phone, email, pin ->
-                    vm.register(name, dni, phone, email, pin)
+                onRegisterClick = { name, dni, phone, email, pin, subrutaId ->
+                    vm.registrarSolicitud(name, dni, phone, email, pin, subrutaId)
                 },
                 onClearError = { vm.clearAuthError() },
                 onLoginClick = { nav.popBackStack() },
                 onBack = { nav.popBackStack() },
             )
+            LaunchedEffect(state.mensaje) {
+                state.mensaje?.let {
+                    ToastManager.show(it)
+                    vm.consumeMensaje()
+                    nav.popBackStack()
+                }
+            }
             LaunchedEffect(state.user) {
                 if (state.user != null) {
                     vm.consumeUser()
@@ -258,7 +286,16 @@ fun WaykiNav(
                 onRecorridoClick = { goTab(Routes.ROUTE_DETAIL) },
                 onMapaClick = { goTab(Routes.MAP) },
                 onSettingsClick = { nav.navigate(Routes.SETTINGS) },
-                onLogoutClick = { cerrarSesion() }
+                onLogoutClick = { cerrarSesion() },
+                onSolicitarCambioSubruta = { subrutaId ->
+                    scope.launch {
+                        val resultado = sesionRepo.solicitarCambioSubruta(subrutaId)
+                        ToastManager.show(
+                            if (resultado.isSuccess) "Solicitud enviada. El jefe de la subruta debe aprobarla."
+                            else resultado.exceptionOrNull()?.message ?: "No se pudo enviar la solicitud"
+                        )
+                    }
+                }
             )
         }
         
@@ -532,10 +569,14 @@ fun WaykiNav(
             com.gowayki.nesh.app.features.map.presentation.screens.RoutePickerScreen(
                 onBack = { nav.popBackStack() },
                 onRouteSelected = {
-                    // Salta directo al mapa, descartando Settings y RoutePicker del backstack.
-                    // Si el mapa no está en el backstack (entrada desde Home), navega a él.
-                    val popped = nav.popBackStack(Routes.MAP, inclusive = false)
-                    if (!popped) nav.navigate(Routes.MAP)
+                    // Salta directo al mapa, descartando Settings y RoutePicker del
+                    // backstack. popBackStack(MAP) era un no-op si el mapa no estaba
+                    // apilado (entrada desde Home): popUpTo(RoutePicker) es siempre
+                    // determinista y deja una sola copia del mapa.
+                    nav.navigate(Routes.MAP) {
+                        popUpTo(Routes.ROUTE_PICKER) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
             )
         }
@@ -560,8 +601,30 @@ fun WaykiNav(
                 onRoutePickerClick = { nav.navigate(Routes.ROUTE_PICKER) },
                 onProfileClick = { nav.navigate(Routes.PROFILE) },
                 onDeleteAccount = { eliminarCuenta() },
+                onChangePin = { actual, nueva -> vm.cambiarPin(actual, nueva) },
+                onCambiarSubruta = { subrutaId ->
+                    scope.launch {
+                        val resultado = sesionRepo.solicitarCambioSubruta(subrutaId)
+                        ToastManager.show(
+                            if (resultado.isSuccess) "Solicitud enviada al jefe de la subruta."
+                            else resultado.exceptionOrNull()?.message ?: "No se pudo enviar la solicitud"
+                        )
+                    }
+                },
                 sosVm = sosVm,
             )
+            LaunchedEffect(state.mensaje) {
+                state.mensaje?.let {
+                    ToastManager.show(it)
+                    vm.consumeMensaje()
+                }
+            }
+            LaunchedEffect(state.error) {
+                if (state.error != null && state.mensaje == null) {
+                    ToastManager.show(state.error)
+                    vm.clearAuthError()
+                }
+            }
         }
 
         composable(Routes.PROFILE) {

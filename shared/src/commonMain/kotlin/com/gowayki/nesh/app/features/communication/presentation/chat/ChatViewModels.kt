@@ -160,20 +160,6 @@ class ChatViewModel(
         }
     }
 
-    /** Simula una nota de voz enviada (mismo camino que un texto). */
-    fun sendVoiceNote(durationSeconds: Int) {
-        if (sending) return
-        sending = true
-        viewModelScope.launch {
-            repo.sendMessage(
-                conversationId = conversationId,
-                text = "Nota de voz",
-                kind = MessageKind.AUDIO,
-                audioDurationSeconds = durationSeconds
-            )
-            sending = false
-        }
-    }
 }
 
 /** Estado de la pantalla "crear grupo". */
@@ -191,7 +177,9 @@ class NewGroupViewModel(private val repo: ChatRepository) : ViewModel() {
     var colleagues: List<GroupMember> by mutableStateOf(emptyList())
         private set
 
-    val subrouteLabel: String? = repo.activeSubrouteLabel()
+    /** Se calcula al leer: la subruta puede cambiar mientras el formulario está abierto. */
+    val subrouteLabel: String?
+        get() = repo.activeSubrouteLabel()
 
     init {
         (repo as? com.gowayki.nesh.data.repository.FakeChatRepository)?.availableColleagues()?.let { colleagues = it }

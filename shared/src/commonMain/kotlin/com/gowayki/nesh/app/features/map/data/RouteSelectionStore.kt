@@ -13,4 +13,6 @@ expect object RouteSelectionStore {
         direction: String
     )
     suspend fun load(): String?
+    /** Borra la ruta persistida (logout/cambio de cuenta). */
+    suspend fun clear()
 }

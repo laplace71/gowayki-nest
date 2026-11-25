@@ -20,4 +20,8 @@ actual object RouteSelectionStore {
     actual suspend fun load(): String? = runCatching {
         NSUserDefaults.standardUserDefaults.stringForKey(KEY)
     }.getOrNull()
+
+    actual suspend fun clear() {
+        runCatching { NSUserDefaults.standardUserDefaults.removeObjectForKey(KEY) }
+    }
 }

@@ -62,4 +62,20 @@ actual object RouteSelectionStore {
             }.getOrNull()
         }
     }
+
+    actual suspend fun clear() {
+        val ctx = AndroidSosContext.appContext ?: return
+        withContext(Dispatchers.IO) {
+            runCatching {
+                ctx.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE)
+                    .edit()
+                    .remove(KEY)
+                    .remove(KEY_NAME)
+                    .remove(KEY_IDA_ROUTE_ID)
+                    .remove(KEY_RETURN_ROUTE_ID)
+                    .remove(KEY_DIRECTION)
+                    .commit()
+            }
+        }
+    }
 }

@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.gowayki.nesh.domain.model.User
 import com.gowayki.nesh.data.repository.DisplayNameState
+import com.gowayki.nesh.data.repository.ProfilePhotoState
+import com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder
 
 /**
  * Sesión de la persona que inició sesión (login o registro).
@@ -43,6 +45,10 @@ object UserSession {
 
     fun saveUser(user: User) {
         currentUser = user
+        // Los overrides de identidad se guardan por cuenta: recargamos los de
+        // esta después de fijar currentUserId.
+        ProfilePhotoState.reloadForUser()
+        DisplayNameState.reloadForUser()
         if (user.dni.isNotBlank()) {
             activeDni = user.dni
             runCatching { LastDniStore.write(user.dni) }
@@ -51,6 +57,10 @@ object UserSession {
 
     fun clear() {
         currentUser = null
+        // Sin usuario no debe quedar ni foto, nombre ni ruta de la cuenta anterior.
+        ProfilePhotoState.reloadForUser()
+        DisplayNameState.reloadForUser()
+        SelectedRouteHolder.resetForLogout()
         AuthTokenState.clear()
         TurnoSession.clear()
     }

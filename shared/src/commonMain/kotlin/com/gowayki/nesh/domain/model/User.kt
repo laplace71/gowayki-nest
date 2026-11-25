@@ -9,4 +9,9 @@ data class User(
     val email: String = "",
     val dni: String = "",
     val phone: String = "",
+    /** Rol global: CHOFER, JEFE_RUTA o ADMIN. */
+    val rol: String? = null,
+    /** Subruta asignada desde el panel (jefes de ruta). */
+    val subrutaId: String? = null,
+    val subrutaNombre: String? = null,
 )

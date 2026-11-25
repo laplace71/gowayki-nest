@@ -1,17 +1,18 @@
 package com.gowayki.nesh.data.repository
 
 import com.gowayki.nesh.core.network.HttpClientFactory
+import com.gowayki.nesh.core.session.SesionExpiradaState
 import com.gowayki.nesh.data.entities.backend.AgregarParticipantesRequestDto
 import com.gowayki.nesh.data.entities.backend.ConversacionResponseDto
 import com.gowayki.nesh.data.entities.backend.CrearConversacionRequestDto
 import com.gowayki.nesh.data.entities.backend.EliminacionGrupoResponseDto
 import com.gowayki.nesh.data.entities.backend.EnviarMensajeTextoRequestDto
 import com.gowayki.nesh.data.entities.backend.MensajeResponseDto
-import com.gowayki.nesh.data.entities.backend.TotalNoLeidosDto
 import io.ktor.client.call.body
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.delete
 import io.ktor.client.request.post
 import io.ktor.client.request.put
@@ -39,6 +40,17 @@ object BackendChatApi {
     private val uploadClient = HttpClientFactory.uploadClient
     private val baseUrl: String get() = HttpClientFactory.baseUrl
     private val json = Json { ignoreUnknownKeys = true }
+
+    suspend fun solicitarCambioSubruta(subrutaId: String): Result<Unit> = runCatching {
+        withContext(Dispatchers.Default) {
+            val response = client.post("$baseUrl/chat/solicitudes/cambio-subruta") {
+                setBody(mapOf("subrutaId" to subrutaId))
+            }
+            if (!response.status.isSuccess()) {
+                throw errorDeRespuesta(response, "No se pudo enviar la solicitud de cambio")
+            }
+        }
+    }
 
     suspend fun usuarios(): Result<List<com.gowayki.nesh.data.entities.backend.BackendUsuarioDto>> = runCatching {
         withContext(Dispatchers.Default) {
@@ -77,6 +89,12 @@ object BackendChatApi {
     suspend fun crearConversacion(request: CrearConversacionRequestDto): Result<ConversacionResponseDto> = runCatching {
         withContext(Dispatchers.Default) {
             val response = client.post("$baseUrl/chat/conversaciones") {
+                // Dos dispositivos pueden entrar a la misma subruta a la vez.
+                // La clave estabiliza el alta: si el grupo ya existe, el backend
+                // devuelve el existente en vez de competir por la unique index.
+                if (request.tipoConversacion == "GRUPO_RUTA" && !request.claveRuta.isNullOrBlank()) {
+                    header("Idempotency-Key", "join:${request.claveRuta}:${request.createdBy}")
+                }
                 setBody(request)
             }
             if (response.status.isSuccess()) {
@@ -168,18 +186,6 @@ object BackendChatApi {
                 response.body<List<MensajeResponseDto>>()
             } else {
                 throw errorDeRespuesta(response, "No se pudieron cargar los mensajes")
-            }
-        }
-    }
-
-    /** Total de no leídos para el badge, sin descargar conversaciones. */
-    suspend fun totalNoLeidos(): Result<Int> = runCatching {
-        withContext(Dispatchers.Default) {
-            val response = client.get("$baseUrl/chat/no-leidos")
-            if (response.status.isSuccess()) {
-                response.body<TotalNoLeidosDto>().total
-            } else {
-                throw errorDeRespuesta(response, "No se pudo consultar los mensajes nuevos")
             }
         }
     }
@@ -294,8 +300,11 @@ object BackendChatApi {
         }.getOrNull()
 
         val mensaje = when {
-            response.status == HttpStatusCode.Unauthorized ->
+            response.status == HttpStatusCode.Unauthorized -> {
+                // El backend revocó este token (otro login con la misma cuenta).
+                SesionExpiradaState.notificar()
                 detalle ?: "Tu sesión venció. Vuelve a iniciar sesión."
+            }
             response.status == HttpStatusCode.Forbidden ->
                 detalle ?: "No tienes permiso para esta acción."
             else -> detalle ?: "$contexto (${response.status.value})"

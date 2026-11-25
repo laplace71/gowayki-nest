@@ -12,9 +12,23 @@ interface AuthRepository {
 
     suspend fun register(name: String, dni: String, phone: String, email: String, pin: String): Result<User>
 
+    /** La app envía una solicitud de chofer; el jefe la aprueba en el panel. */
+    suspend fun registrarSolicitud(
+        name: String,
+        dni: String,
+        phone: String,
+        email: String,
+        pin: String,
+        subrutaId: String,
+    ): Result<Unit> = Result.failure(UnsupportedOperationException("No disponible."))
+
     /** Borrado lógico: sale de los chats y desactiva la cuenta, sin borrar mensajes. */
     suspend fun deleteAccount(): Result<Unit> =
         Result.failure(UnsupportedOperationException("Esta implementación no soporta eliminar cuenta."))
     suspend fun google(idToken: String): Result<User>
     suspend fun savePin(phone: String, pin: String): Result<User>
+
+    /** Cambia el PIN de la cuenta autenticada (exige el PIN actual). */
+    suspend fun cambiarPin(pinActual: String, pinNuevo: String): Result<Unit> =
+        Result.failure(UnsupportedOperationException("Esta implementación no soporta cambiar el PIN."))
 }

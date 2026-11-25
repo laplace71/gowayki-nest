@@ -137,7 +137,7 @@ fun RouteDetailScreen(
             }
             val fallback = candidates.firstOrNull { route ->
                 route.isSub && route.routeId != null &&
-                    RouteStopsStore.stopsFor(route.routeId!!).isNotEmpty()
+                    RouteStopsStore.stopsFor(route.routeId).isNotEmpty()
             }
             if (fallback != null) {
                 effective = fallback

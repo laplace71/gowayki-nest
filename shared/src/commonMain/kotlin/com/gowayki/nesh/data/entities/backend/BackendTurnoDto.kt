@@ -1,6 +1,27 @@
 package com.gowayki.nesh.data.entities.backend
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonTransformingSerializer
+
+/**
+ * Django envía `lat`/`lng`, Spring `latitud`/`longitud`. Normalizamos antes de
+ * decodificar para mantener los campos de dominio no nulos.
+ */
+object PosicionGpsNormalizer : JsonTransformingSerializer<PosicionGpsDto>(PosicionGpsDto.serializer()) {
+    override fun transformDeserialize(element: JsonElement): JsonElement {
+        if (element !is JsonObject) return element
+        val campos = element.toMutableMap()
+        val lat = campos["lat"]
+        val lng = campos["lng"]
+        val sinLat = campos["latitud"] == null || campos["latitud"] is kotlinx.serialization.json.JsonNull
+        val sinLng = campos["longitud"] == null || campos["longitud"] is kotlinx.serialization.json.JsonNull
+        if (sinLat && lat != null) campos["latitud"] = lat
+        if (sinLng && lng != null) campos["longitud"] = lng
+        return JsonObject(campos)
+    }
+}
 
 /**
  * Turno (jornada) de un chofer con una unidad concreta.
@@ -41,6 +62,7 @@ data class BackendUnidadDto(
     val subrutaCodigo: String? = null,
     val subrutaNombre: String? = null,
     val estado: String? = null,
+    @Serializable(with = PosicionGpsNormalizer::class)
     val posicionActual: PosicionGpsDto? = null,
 )
 
@@ -57,8 +79,8 @@ data class PosicionGpsDto(
     val unidadId: Int? = null,
     val lineaId: Int? = null,
     val numeroPadron: String? = null,
-    val latitud: Double,
-    val longitud: Double,
+    val latitud: Double = 0.0,
+    val longitud: Double = 0.0,
     val velocidadKmh: Double? = null,
     val rumboGrados: Int? = null,
     val ultimaActualizacion: String? = null,

@@ -408,7 +408,13 @@ fun ChatScreen(
 
     // ── Menú de la conversación ──────────────────────────────────────────
     if (showMenu) {
-        val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val sheetState = androidx.compose.material3.rememberBottomSheetState(
+            initialValue = androidx.compose.material3.SheetValue.Expanded,
+            enabledValues = setOf(
+                androidx.compose.material3.SheetValue.Hidden,
+                androidx.compose.material3.SheetValue.Expanded,
+            ),
+        )
         androidx.compose.material3.ModalBottomSheet(
             onDismissRequest = { showMenu = false },
             sheetState = sheetState,
@@ -521,7 +527,13 @@ fun ChatScreen(
 
     // ── Acciones de un mensaje (mantener presionado) ─────────────────────
     longPressedMessage?.let { msg ->
-        val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val sheetState = androidx.compose.material3.rememberBottomSheetState(
+            initialValue = androidx.compose.material3.SheetValue.Expanded,
+            enabledValues = setOf(
+                androidx.compose.material3.SheetValue.Hidden,
+                androidx.compose.material3.SheetValue.Expanded,
+            ),
+        )
         androidx.compose.material3.ModalBottomSheet(
             onDismissRequest = { longPressedMessage = null },
             sheetState = sheetState,
@@ -725,7 +737,7 @@ fun ChatScreen(
             },
             text = {
                 Text(
-                    text = "Solo afecta a tu cuenta: ocultarás los mensajes anteriores y el chat saldrá de tu lista, también al reinstalar la app. Los mensajes NO se borran y los demás participantes no notan nada. Si llega un mensaje nuevo, el chat vuelve a aparecer mostrando solo lo nuevo.",
+                    text = "Solo afecta a tu cuenta: se ocultan los mensajes anteriores, pero el grupo sigue en tu lista. Los mensajes NO se borran y los demás participantes no notan nada. Si llega uno nuevo, verás solo lo nuevo.",
                     style = AppTextStyles.waykiMini,
                     color = AppColors.slate
                 )

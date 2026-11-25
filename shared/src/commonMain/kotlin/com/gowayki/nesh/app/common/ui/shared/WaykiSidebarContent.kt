@@ -5,6 +5,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -72,7 +74,7 @@ fun WaykiSidebarContent(
         modifier = Modifier
             .fillMaxSize()
             .background(AppColors.cream)
-            .padding(24.dp)
+            .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
         LaunchedEffect(Unit) { TurnoSession.refresh() }
         // 1. Marca y cierre
@@ -107,7 +109,7 @@ fun WaykiSidebarContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         // 2. Conductor
         Text(
@@ -130,63 +132,74 @@ fun WaykiSidebarContent(
             overflow = TextOverflow.Ellipsis
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
-        // 3. Menu Principal label
-        Text(
-            text = "Menu Principal",
-            style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
-            color = AppColors.slate
-        )
-        Spacer(modifier = Modifier.height(16.dp))
+        // El menú ocupa el espacio restante y se desplaza en pantallas bajas;
+        // el botón SOS queda siempre visible y completo al pie del drawer.
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+        ) {
+            // 3. Menu Principal label
+            Text(
+                text = "Menu Principal",
+                style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                color = AppColors.slate
+            )
+            Spacer(modifier = Modifier.height(16.dp))
 
-        // 4. Navegacion Principal
-        DrawerMenuItem(
-            icon = FeatherIcons.Home,
-            title = "Inicio",
-            subtitle = "Tu ritmo y próximo control",
-            isSelected = selectedTab == 0,
-            onClick = onInicioClick
-        )
-        DrawerMenuItem(
-            icon = FeatherIcons.Radio,
-            title = "Comunicación",
-            subtitle = TurnoSession.subrutaNombre?.let { "Canal de $it" }
-                ?: com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder.selected.value?.name?.let { "Canal de $it" }
-                ?: "Canal de tu subruta",
-            isSelected = selectedTab == 1,
-            onClick = onCommunicationClick
-        )
-        DrawerMenuItem(
-            icon = FeatherIcons.GitCommit,
-            title = "Recorrido",
-            subtitle = "Tus recorridos y horarios",
-            isSelected = selectedTab == 2,
-            onClick = onRecorridoClick
-        )
-        DrawerMenuItem(
-            icon = FeatherIcons.Map,
-            title = "Mapa",
-            subtitle = "Informacion de tus rutas",
-            isSelected = selectedTab == 3,
-            onClick = onMapaClick
-        )
+            // 4. Navegacion Principal
+            DrawerMenuItem(
+                icon = FeatherIcons.Home,
+                title = "Inicio",
+                subtitle = "Tu ritmo y próximo control",
+                isSelected = selectedTab == 0,
+                onClick = onInicioClick
+            )
+            DrawerMenuItem(
+                icon = FeatherIcons.Radio,
+                title = "Comunicación",
+                subtitle = TurnoSession.subrutaNombre?.let { "Canal de $it" }
+                    ?: com.gowayki.nesh.app.features.map.presentation.SelectedRouteHolder.selected.value?.name?.let { "Canal de $it" }
+                    ?: "Canal de tu subruta",
+                isSelected = selectedTab == 1,
+                onClick = onCommunicationClick
+            )
+            DrawerMenuItem(
+                icon = FeatherIcons.GitCommit,
+                title = "Recorrido",
+                subtitle = "Tus recorridos y horarios",
+                isSelected = selectedTab == 2,
+                onClick = onRecorridoClick
+            )
+            DrawerMenuItem(
+                icon = FeatherIcons.Map,
+                title = "Mapa",
+                subtitle = "Informacion de tus rutas",
+                isSelected = selectedTab == 3,
+                onClick = onMapaClick
+            )
 
-        Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-        // 5. Separador
-        Box(
-            modifier = Modifier.fillMaxWidth().height(1.dp).background(AppColors.slate.copy(alpha = 0.2f))
-        )
+            // 5. Separador
+            Box(
+                modifier = Modifier.fillMaxWidth().height(1.dp).background(AppColors.slate.copy(alpha = 0.2f))
+            )
 
-        Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-        // 6. Preferencias y ayuda
-        DrawerSimpleItem(icon = FeatherIcons.Sliders, title = "Configuración", onClick = onSettingsClick)
-        DrawerSimpleItem(icon = FeatherIcons.HelpCircle, title = "Soporte técnico", onClick = onSupportClick)
-        DrawerSimpleItem(icon = FeatherIcons.LogOut, title = "Cerrar sesión", onClick = onLogoutClick)
+            // 6. Preferencias y ayuda
+            DrawerSimpleItem(icon = FeatherIcons.Sliders, title = "Configuración", onClick = onSettingsClick)
+            DrawerSimpleItem(icon = FeatherIcons.HelpCircle, title = "Soporte técnico", onClick = onSupportClick)
+            DrawerSimpleItem(icon = FeatherIcons.LogOut, title = "Cerrar sesión", onClick = onLogoutClick)
 
-        Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         // 7. SOS
         val sosInteractionSource = remember { MutableInteractionSource() }
@@ -209,7 +222,7 @@ fun WaykiSidebarContent(
                     modifier = Modifier.size(28.dp),
                 )
                 Spacer(modifier = Modifier.width(16.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "S.O.S",
                         style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp),
@@ -219,13 +232,15 @@ fun WaykiSidebarContent(
                     Text(
                         text = "Informacion de emergencias.",
                         style = AppTextStyles.waykiMini,
-                        color = AppColors.cream.copy(alpha = 0.8f)
+                        color = AppColors.cream.copy(alpha = 0.8f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         Text(
             text = "Recorrido en curso • GPS activo",
@@ -234,7 +249,7 @@ fun WaykiSidebarContent(
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
@@ -279,17 +294,21 @@ private fun DrawerMenuItem(
             modifier = Modifier.size(24.dp)
         )
         Spacer(modifier = Modifier.width(16.dp))
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
                 style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
-                color = contentColor
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = subtitle,
                 style = AppTextStyles.waykiMini,
-                color = subtitleColor
+                color = subtitleColor,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -325,7 +344,9 @@ private fun DrawerSimpleItem(
             text = title,
             style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
             color = AppColors.ink,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         Icon(
             imageVector = FeatherIcons.ChevronRight,

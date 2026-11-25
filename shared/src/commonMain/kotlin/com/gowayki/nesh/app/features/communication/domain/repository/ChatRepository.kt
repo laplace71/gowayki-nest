@@ -122,6 +122,10 @@ interface ChatRepository {
      */
     suspend fun asignarRol(conversationId: String, userId: String, rol: String): Result<Unit>
 
+    /** Pide cambio de subruta; lo aprueba el jefe de la subruta destino. */
+    suspend fun solicitarCambioSubruta(subrutaId: String): Result<Unit> =
+        Result.failure(UnsupportedOperationException("No disponible."))
+
     /** Nombre de la subruta concreta activa, para etiquetar conductores en la UI. */
     fun activeSubrouteLabel(): String? = null
 }
