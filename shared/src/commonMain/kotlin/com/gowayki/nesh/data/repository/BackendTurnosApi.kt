@@ -65,21 +65,34 @@ object BackendTurnosApi {
         }
     }
 
-    /** Todas las unidades del sistema, con su línea. */
+    /**
+     * Las combis dadas de baja no se ofrecen en la app: el panel puede dejar
+     * la unidad en BAJA en vez de eliminarla cuando tiene historial. Se filtra
+     * aquí para que ninguna pantalla (mapa, selector de turno, etc.) la muestre.
+     */
+    private fun List<BackendUnidadDto>.vigentes(): List<BackendUnidadDto> = filter { unidad ->
+        when (unidad.estado?.trim()?.uppercase()) {
+            null, "" -> true
+            "BAJA", "INACTIVA", "DADA_DE_BAJA", "DE_BAJA" -> false
+            else -> true
+        }
+    }
+
+    /** Todas las unidades vigentes del sistema, con su línea. */
     suspend fun unidadesTodas(): List<BackendUnidadDto> = withContext(Dispatchers.Default) {
         try {
             val response = client.get("$baseUrl/unidades")
-            if (response.status.isSuccess()) response.body<List<BackendUnidadDto>>() else emptyList()
+            if (response.status.isSuccess()) response.body<List<BackendUnidadDto>>().vigentes() else emptyList()
         } catch (_: Exception) {
             emptyList()
         }
     }
 
-    /** Unidades que pertenecen a una línea. */
+    /** Unidades vigentes que pertenecen a una línea. */
     suspend fun unidadesPorLinea(lineaId: Int): List<BackendUnidadDto> = withContext(Dispatchers.Default) {
         try {
             val response = client.get("$baseUrl/lineas/$lineaId/unidades")
-            if (response.status.isSuccess()) response.body<List<BackendUnidadDto>>() else emptyList()
+            if (response.status.isSuccess()) response.body<List<BackendUnidadDto>>().vigentes() else emptyList()
         } catch (_: Exception) {
             emptyList()
         }
@@ -138,20 +151,6 @@ object BackendTurnosApi {
             Result.failure(Exception(e.message ?: "No se pudo conectar con el servidor"))
         }
     }
-
-    /** Cambia la subruta del turno activo sin cerrarlo. */
-    suspend fun cambiarSubruta(turnoId: String, subrutaCodigo: String): Result<BackendTurnoDto> =
-        withContext(Dispatchers.Default) {
-            try {
-                val response: HttpResponse = client.put("$baseUrl/turnos/$turnoId/subruta") {
-                    setBody(mapOf("subrutaCodigo" to subrutaCodigo))
-                }
-                if (response.status.isSuccess()) Result.success(response.body<BackendTurnoDto>())
-                else Result.failure(Exception(mensajeDeError(response, "No se pudo cambiar la subruta")))
-            } catch (e: Exception) {
-                Result.failure(Exception(e.message ?: "No se pudo conectar con el servidor"))
-            }
-        }
 
     /** Finaliza el turno actual para poder elegir otra unidad. */
     suspend fun finalizar(turnoId: String): Result<BackendTurnoDto> = withContext(Dispatchers.Default) {

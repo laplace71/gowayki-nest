@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -20,9 +21,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.SwitchDefaults
@@ -47,6 +55,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.launch
 import com.gowayki.nesh.app.common.ui.shared.WaykiAvatar
 import com.gowayki.nesh.app.common.ui.shared.WaykiBackButton
 import com.gowayki.nesh.core.theme.src.AppTextStyles
@@ -87,6 +98,8 @@ fun SettingsScreen(
     onRoutePickerClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     onDeleteAccount: () -> Unit = {},
+    onChangePin: (String, String) -> Unit = { _, _ -> },
+    onCambiarSubruta: (String) -> Unit = {},
     // Instancia SOS compartida del NavHost: sobrevive al cambio entre módulos.
     sosVm: SosViewModel = viewModel()
 ) {
@@ -105,8 +118,35 @@ fun SettingsScreen(
     var darkModeEnabled by remember { mutableStateOf(ThemeManager.isDark.value) }
     var showPinDialog by remember { mutableStateOf(false) }
     var showRouteDialog by remember { mutableStateOf(false) }
+    var showCambioSubrutaDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var newPin by remember { mutableStateOf("") }
+    var pinActual by remember { mutableStateOf("") }
+    val rol = UserSession.currentUser?.rol.orEmpty()
+    val esAdmin = rol.equals("ADMIN", ignoreCase = true)
+
+    // El gesto atrás cierra primero lo que esté abierto encima (menú o diálogo).
+    // Así no compite con la salida del NavHost y no aparece el zoom del sistema.
+    val haySuperpuesto = showEsp32Menu || showRouteDialog || showCambioSubrutaDialog ||
+        showDeleteDialog || showPinDialog || showShiftStartDialog ||
+        showLunchDurationDialog || showLunchDialog || showLanguageDialog
+    BackHandler(enabled = haySuperpuesto) {
+        when {
+            showEsp32Menu -> showEsp32Menu = false
+            showRouteDialog -> showRouteDialog = false
+            showCambioSubrutaDialog -> showCambioSubrutaDialog = false
+            showDeleteDialog -> showDeleteDialog = false
+            showPinDialog -> {
+                showPinDialog = false
+                newPin = ""
+                pinActual = ""
+            }
+            showShiftStartDialog -> showShiftStartDialog = false
+            showLunchDurationDialog -> showLunchDurationDialog = false
+            showLunchDialog -> showLunchDialog = false
+            showLanguageDialog -> showLanguageDialog = false
+        }
+    }
 
     LaunchedEffect(Unit) { TurnoSession.refresh() }
 
@@ -242,6 +282,17 @@ fun SettingsScreen(
                 value = TurnoSession.resumen,
                 onClick = { showRouteDialog = true }
             )
+
+            if (!esAdmin) {
+                Spacer(modifier = Modifier.height(10.dp))
+                SettingActionItem(
+                    icon = FeatherIcons.MapPin,
+                    title = "Enviar solicitud de cambio",
+                    subtitle = "Elige línea y subruta; el jefe debe aprobarla",
+                    value = null,
+                    onClick = { showCambioSubrutaDialog = true }
+                )
+            }
 
             Spacer(modifier = Modifier.height(28.dp))
 
@@ -448,23 +499,27 @@ fun SettingsScreen(
                     }
                 )
 
-                SettingActionItem(
-                    icon = FeatherIcons.MapPin,
-                    title = "Ruta actual de micro",
-                    subtitle = if (com.gowayki.nesh.core.session.TurnoSession.hasTurno) {
-                        "Tu ruta la define 'Mi ruta / unidad'"
-                    } else {
-                        "Escoge tu ruta actual de micro"
-                    },
-                    value = SelectedRouteHolder.selected.collectAsState().value?.name,
-                    onClick = {
-                        if (!com.gowayki.nesh.core.session.TurnoSession.hasTurno) {
-                            onRoutePickerClick()
+                // Solo el administrador puede elegir ruta desde el mapa.
+                // Choferes y jefes cambian de subruta enviando una solicitud.
+                if (esAdmin) {
+                    SettingActionItem(
+                        icon = FeatherIcons.MapPin,
+                        title = "Ruta actual de micro",
+                        subtitle = if (com.gowayki.nesh.core.session.TurnoSession.hasTurno) {
+                            "Tu ruta la define 'Mi ruta / unidad'"
                         } else {
-                            ToastManager.show("Cambia tu ruta en 'Mi ruta / unidad'")
+                            "Escoge tu ruta actual de micro"
+                        },
+                        value = SelectedRouteHolder.selected.collectAsState().value?.name,
+                        onClick = {
+                            if (!com.gowayki.nesh.core.session.TurnoSession.hasTurno) {
+                                onRoutePickerClick()
+                            } else {
+                                ToastManager.show("Cambia tu ruta en 'Mi ruta / unidad'")
+                            }
                         }
-                    }
-                )
+                    )
+                }
 
                 SettingSwitchItem(
                     icon = FeatherIcons.Clock,
@@ -848,27 +903,38 @@ fun SettingsScreen(
 
         if (showPinDialog) {
             AlertDialog(
-                onDismissRequest = { showPinDialog = false; newPin = "" },
+                onDismissRequest = { showPinDialog = false; newPin = ""; pinActual = "" },
                 title = { Text("Cambiar PIN") },
                 text = {
-                    OutlinedTextField(
-                        value = newPin,
-                        onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) newPin = it },
-                        label = { Text("Nuevo PIN (6 dígitos)") },
-                        singleLine = true
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = pinActual,
+                            onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) pinActual = it },
+                            label = { Text("PIN actual") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = newPin,
+                            onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) newPin = it },
+                            label = { Text("Nuevo PIN (6 dígitos)") },
+                            singleLine = true
+                        )
+                    }
                 },
                 confirmButton = {
                     TextButton(onClick = {
-                        if (newPin.length == 6) {
+                        if (pinActual.length == 6 && newPin.length == 6) {
+                            onChangePin(pinActual, newPin)
                             showPinDialog = false
-                            ToastManager.show("PIN actualizado correctamente")
+                            pinActual = ""
                             newPin = ""
+                        } else {
+                            ToastManager.show("Ingresa ambos PIN de 6 dígitos")
                         }
                     }) { Text("Guardar") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showPinDialog = false; newPin = "" }) { Text("Cancelar") }
+                    TextButton(onClick = { showPinDialog = false; newPin = ""; pinActual = "" }) { Text("Cancelar") }
                 }
             )
         }
@@ -896,9 +962,22 @@ fun SettingsScreen(
             )
         }
 
+        CambioSubrutaDialog(
+            visible = showCambioSubrutaDialog,
+            onDismiss = { showCambioSubrutaDialog = false },
+            onEnviar = { id ->
+                onCambiarSubruta(id)
+                showCambioSubrutaDialog = false
+            },
+        )
+
         RouteAssignmentDialog(
             visible = showRouteDialog,
             onDismiss = { showRouteDialog = false },
+            onSolicitarCambioSubruta = {
+                onCambiarSubruta(it)
+                showRouteDialog = false
+            },
             onAssigned = { turno ->
                 showRouteDialog = false
                 // La subruta recién asignada manda también en el mapa/recorrido.
@@ -1056,6 +1135,187 @@ private fun SettingActionItem(
                 tint = AppColors.slate,
                 modifier = Modifier.size(18.dp)
             )
+        }
+    }
+}
+
+/**
+ * Solicitud de cambio de subruta desde Ajustes: línea y subruta en menús
+ * desplegables. El backend aprueba el cambio; la app no lo aplica directo.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CambioSubrutaDialog(
+    visible: Boolean,
+    onDismiss: () -> Unit,
+    onEnviar: (String) -> Unit,
+) {
+    if (!visible) return
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val catalogo by SelectedRouteHolder.catalog.collectAsState()
+    var cargando by remember { mutableStateOf(false) }
+    var lineaExpandida by remember { mutableStateOf(false) }
+    var subrutaExpandida by remember { mutableStateOf(false) }
+    var lineaCodigo by remember { mutableStateOf<String?>(null) }
+    var subrutaElegida by remember { mutableStateOf<com.gowayki.nesh.app.features.map.domain.model.CombiRoute?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(visible) {
+        if (!visible) return@LaunchedEffect
+        cargando = true
+        runCatching { SelectedRouteHolder.refreshCatalog(force = true) }
+        cargando = false
+    }
+
+    val lineas = remember(catalogo) {
+        catalogo
+            .groupBy { it.parent ?: "?" }
+            .map { (codigo, rutas) ->
+                codigo to (rutas.firstOrNull { !it.parentName.isNullOrBlank() }?.parentName ?: codigo)
+            }
+            .sortedBy { it.first }
+    }
+    val subrutas = remember(catalogo, lineaCodigo) {
+        catalogo.filter { it.parent == lineaCodigo }
+    }
+    val nombreLinea = lineas.firstOrNull { it.first == lineaCodigo }?.second ?: ""
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = AppColors.cream,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .heightIn(max = 520.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+            ) {
+                Text(
+                    text = "Solicitar cambio de ruta",
+                    style = AppTextStyles.waykiHeader,
+                    color = AppColors.ink,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Elige la línea y la subruta a la que quieres pertenecer. El cambio se aplica cuando el jefe lo aprueba.",
+                    style = AppTextStyles.waykiMini,
+                    color = AppColors.slate,
+                )
+                Spacer(Modifier.height(18.dp))
+
+                ExposedDropdownMenuBox(
+                    expanded = lineaExpandida,
+                    onExpandedChange = { lineaExpandida = it },
+                ) {
+                    OutlinedTextField(
+                        value = nombreLinea,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Línea") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = lineaExpandida) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    )
+                    ExposedDropdownMenu(
+                        expanded = lineaExpandida,
+                        onDismissRequest = { lineaExpandida = false },
+                    ) {
+                        lineas.forEach { (codigo, nombre) ->
+                            DropdownMenuItem(
+                                text = { Text("$codigo · $nombre") },
+                                onClick = {
+                                    lineaCodigo = codigo
+                                    subrutaElegida = null
+                                    lineaExpandida = false
+                                },
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                ExposedDropdownMenuBox(
+                    expanded = subrutaExpandida,
+                    onExpandedChange = { subrutaExpandida = it },
+                ) {
+                    OutlinedTextField(
+                        value = subrutaElegida?.name ?: "",
+                        onValueChange = {},
+                        readOnly = true,
+                        enabled = lineaCodigo != null,
+                        label = { Text("Subruta") },
+                        placeholder = { Text("Primero elige la línea") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = subrutaExpandida) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    )
+                    ExposedDropdownMenu(
+                        expanded = subrutaExpandida,
+                        onDismissRequest = { subrutaExpandida = false },
+                    ) {
+                        subrutas.forEach { ruta ->
+                            DropdownMenuItem(
+                                text = { Text(ruta.name) },
+                                onClick = {
+                                    subrutaElegida = ruta
+                                    subrutaExpandida = false
+                                },
+                            )
+                        }
+                    }
+                }
+
+                if (cargando) {
+                    Spacer(Modifier.height(10.dp))
+                    Text("Cargando catálogo…", style = AppTextStyles.waykiMini, color = AppColors.slate)
+                }
+                if (error != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(error!!, style = AppTextStyles.waykiMini, color = AppColors.error)
+                }
+                Spacer(Modifier.height(12.dp))
+                TextButton(
+                    onClick = {
+                        scope.launch { SelectedRouteHolder.refreshCatalog(force = true) }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Actualizar catálogo", color = AppColors.primary, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(8.dp))
+                com.gowayki.nesh.app.common.ui.shared.WaykiPrimaryButton(
+                    text = "ENVIAR SOLICITUD",
+                    enabled = subrutaElegida?.subrutaDbId != null,
+                    showArrow = false,
+                    onClick = {
+                        val id = subrutaElegida?.subrutaDbId
+                        if (id != null) {
+                            onEnviar(id.toString())
+                        } else {
+                            error = "Selecciona una subruta válida."
+                        }
+                    },
+                )
+                Spacer(Modifier.height(4.dp))
+                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("Cancelar", color = AppColors.slate, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }

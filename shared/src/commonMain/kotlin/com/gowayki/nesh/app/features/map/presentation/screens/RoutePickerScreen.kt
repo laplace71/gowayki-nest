@@ -59,10 +59,6 @@ fun RoutePickerScreen(
         runCatching { SelectedRouteHolder.refreshCatalog() }
     }
 
-    val routes = remember(catalog) {
-        catalog.ifEmpty { SelectedRouteHolder.subrutasForLine("") /* none */ }
-            .let { if (it.isNotEmpty()) it else catalog }
-    }
     val allSubrutas = catalog
     val filtered = remember(query, allSubrutas) {
         val base = allSubrutas
@@ -177,7 +173,7 @@ fun RoutePickerScreen(
                                         color = AppColors.ink
                                     )
                                     Text(
-                                        text = route.operator ?: "",
+                                        text = route.operator,
                                         style = AppTextStyles.waykiMini.copy(fontSize = 11.sp),
                                         color = AppColors.slate
                                     )

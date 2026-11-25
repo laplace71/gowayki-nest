@@ -461,7 +461,9 @@ fun CommunicationScreen(
             }
 
             longPressedConv?.let { conv ->
-                val sheetState = androidx.compose.material3.rememberModalBottomSheetState()
+                val sheetState = androidx.compose.material3.rememberBottomSheetState(
+                initialValue = androidx.compose.material3.SheetValue.Expanded,
+            )
                 androidx.compose.material3.ModalBottomSheet(
                     onDismissRequest = { longPressedConv = null },
                     sheetState = sheetState,

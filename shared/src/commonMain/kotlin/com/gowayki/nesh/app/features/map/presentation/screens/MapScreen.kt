@@ -38,6 +38,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.collectAsState
@@ -92,6 +93,7 @@ import compose.icons.feathericons.X
 import compose.icons.fontawesomeicons.SolidGroup
 import compose.icons.fontawesomeicons.solid.Bus
 import compose.icons.fontawesomeicons.solid.ChevronDown
+import com.gowayki.nesh.core.session.UserSession
 import compose.icons.fontawesomeicons.solid.ShuttleVan
 
 @Composable
@@ -106,6 +108,9 @@ fun MapScreen(
 ) {
     val routeState = SelectedRouteHolder.selected.collectAsState()
     val route = routeState.value
+    // Solo el admin elige líneas desde el mapa. Jefe y chofer cambian de
+    // subruta por solicitud / asignación, nunca desde aquí.
+    val esAdmin = UserSession.currentUser?.rol?.equals("ADMIN", ignoreCase = true) == true
     // Catálogo real del backend (BD): líneas y subrutas con nombres normales.
     val catalog by SelectedRouteHolder.catalog.collectAsState()
     var showRouteSheet by remember { mutableStateOf(false) }
@@ -328,6 +333,14 @@ fun MapScreen(
         controlPointNotified = false
     }
 
+    // Al salir del mapa (o al cerrar la app) el indicador global de "en ruta"
+    // debe apagarse: LaunchedEffect no se ejecuta con valores al disposed.
+    DisposableEffect(Unit) {
+        onDispose {
+            com.gowayki.nesh.core.AppSettings.isOnRoute.value = false
+        }
+    }
+
     // Al cambiar de ruta se detiene el recorrido anterior.
     LaunchedEffect(route?.id) {
         navigating = false
@@ -498,18 +511,17 @@ fun MapScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(AppSpacing.sm)
                 ) {
-                    Box(
-                        Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(AppColors.ink)
-                            // Abre el selector de líneas también cuando ya hay una
-                            // ruta global seleccionada (el botón del card solo está
-                            // en la rama sin selección).
-                            .clickable { showRouteSheet = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(FeatherIcons.Sliders, "Elegir línea", tint = AppColors.cream, modifier = Modifier.size(20.dp))
+                    if (esAdmin) {
+                        Box(
+                            Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(AppColors.ink)
+                                .clickable { showRouteSheet = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(FeatherIcons.Sliders, "Elegir línea", tint = AppColors.cream, modifier = Modifier.size(20.dp))
+                        }
                     }
 
                     WaykiBackButton(onClick = onBack)
@@ -745,7 +757,7 @@ fun MapScreen(
                                         unidadId = uId,
                                         latitud = loc.lat,
                                         longitud = loc.lon,
-                                        velocidadKmh = speedKmh.toDouble(),
+                                        velocidadKmh = speedKmh,
                                         rumboGrados = bearing
                                     )
                                 }
@@ -1094,7 +1106,14 @@ fun MapScreen(
                             }
                         }
                         else -> {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (!esAdmin) {
+                                Text(
+                                    text = "Tu subruta la asigna el jefe de ruta. Cambia de ruta desde Ajustes.",
+                                    style = AppTextStyles.waykiMini,
+                                    color = AppColors.slate,
+                                    modifier = Modifier.padding(vertical = 12.dp),
+                                )
+                            } else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(AppSpacing.md)

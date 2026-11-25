@@ -89,10 +89,30 @@ object RouteCatalogStore {
         return if (subs.isNotEmpty()) subs else ArequipaRoutes.all
     }
 
+    /**
+     * Código de línea (C2, C3…). Si el backend no manda `lineaCodigo`, hay que
+     * sacarlo del NOMBRE ("Línea C2") o del prefijo del código ("SB-C2-1"),
+     * nunca de los primeros caracteres de un id numérico.
+     */
+    private fun parentCode(lineaCodigo: String?, lineaNombre: String?, codigo: String?): String? {
+        lineaCodigo?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+        val desdeNombre = lineaNombre?.trim()
+            ?.replace(Regex("(?i)^l[ií]nea\\s+"), "")
+            ?.split(Regex("\\s+"))?.firstOrNull()
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && it.any { c -> c.isLetter() } }
+        if (desdeNombre != null) return desdeNombre
+        val desdeCodigo = codigo?.trim()
+            ?.removePrefix("SB-")?.removePrefix("sb-")
+            ?.substringBefore("-")
+            ?.takeIf { it.isNotBlank() && it.any { c -> c.isLetter() } }
+        return desdeCodigo
+    }
+
     private fun BackendSubrutaDto.toCombiRoute(): CombiRoute? {
         val code = codigo ?: return null
         val ida = routeIdIda ?: return null
-        val parentCode = (lineaCodigo ?: code.removePrefix("SB-").take(3)).uppercase()
+        val parentCode = parentCode(lineaCodigo, lineaNombre, code).orEmpty().uppercase()
         return CombiRoute(
             id = code,
             name = nombre ?: code,
@@ -105,6 +125,7 @@ object RouteCatalogStore {
             routeId = ida,
             returnRouteId = routeIdRetorno,
             returnName = nombreRetorno,
+            subrutaDbId = id,
         )
     }
 

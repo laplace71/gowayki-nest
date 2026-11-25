@@ -228,6 +228,12 @@ class SosViewModel(
     }
 
     private fun handleSinglePress() {
+        // Un segundo SINGLE mientras ya se está grabando debe CERRAR y enviar
+        // el audio; volver a startRecording() descartaría lo grabado.
+        if (ui.audioRecording) {
+            stopAndSendAudio()
+            return
+        }
         viewModelScope.launch {
             ui = ui.copy(info = "Iniciando grabación de audio…", audioError = null)
             // Reproducir beep de confirmación
@@ -424,20 +430,13 @@ class SosViewModel(
         }
     }
 
-    private fun getDefaultConversationId(): String? {
-        // Usar el primer grupo del fake data para pruebas
-        return "g-linea7"
-    }
+    /** Primera conversación real del repositorio (nunca un id de prueba). */
+    private fun getDefaultConversationId(): String? =
+        _conversations.value.firstOrNull()?.id
 
-    private fun getConversationTitle(conversationId: String): String {
-        return when (conversationId) {
-            "g-linea7" -> "GRUPO · Línea 7 · Central"
-            "p-marco" -> "Privado · Marco Rojas"
-            "g-operativos" -> "GRUPO · Operativos · Línea 7"
-            "p-jefe" -> "Privado · Jefe de línea"
-            else -> "Conversación"
-        }
-    }
+    private fun getConversationTitle(conversationId: String): String =
+        _conversations.value.firstOrNull { it.id == conversationId }?.title
+            ?: "Conversación"
 
     override fun onCleared() {
         runCatching { ble.stop() }

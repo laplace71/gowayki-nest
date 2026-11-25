@@ -6,6 +6,7 @@ import com.gowayki.nesh.app.features.map.domain.model.ArequipaRoutes
 import com.gowayki.nesh.app.features.map.domain.model.CombiRoute
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +15,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Sentido del recorrido seleccionado en la app (IDA o VUELTA). */
 enum class RouteDirection { IDA, RETORNO }
@@ -115,17 +118,24 @@ object SelectedRouteHolder {
         }
     }
 
+    private var persistJob: Job? = null
+    /** Serializa guardar/borrar para que un clear de logout no borre la ruta nueva. */
+    private val storeMutex = Mutex()
+
     private fun persistSelection() {
         val route = _selected.value ?: return
         val dir = _direction.value.name
-        scope.launch {
-            RouteSelectionStore.save(
-                routeId = route.id,
-                routeName = route.name,
-                idaRouteId = route.routeId,
-                returnRouteId = route.returnRouteId,
-                direction = dir
-            )
+        persistJob?.cancel()
+        persistJob = scope.launch {
+            storeMutex.withLock {
+                RouteSelectionStore.save(
+                    routeId = route.id,
+                    routeName = route.name,
+                    idaRouteId = route.routeId,
+                    returnRouteId = route.returnRouteId,
+                    direction = dir
+                )
+            }
         }
     }
 
@@ -290,5 +300,22 @@ object SelectedRouteHolder {
         _cachedGeometry = null
         _idaPoints.value = emptyList()
         _returnPoints.value = emptyList()
+    }
+
+    /**
+     * Cierra la sesión de ruta: ni la selección en memoria ni la persistida
+     * pueden pasar al siguiente chofer que inicie sesión en este dispositivo.
+     * Idempotente y sin llamar a UserSession (evita recursion con clear()).
+     */
+    fun resetForLogout() {
+        persistJob?.cancel()
+        persistJob = null
+        userSelected = false
+        restoredFromStore = false
+        restored = false
+        _selected.value = null
+        _direction.value = RouteDirection.IDA
+        clearGeometryCache()
+        scope.launch { runCatching { storeMutex.withLock { RouteSelectionStore.clear() } } }
     }
 }

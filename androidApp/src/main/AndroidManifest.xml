@@ -32,7 +32,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.WaykiNest"
         android:usesCleartextTraffic="true"
-        android:enableOnBackInvokedCallback="true">
+        android:enableOnBackInvokedCallback="false">
         <activity
             android:exported="true"
             android:launchMode="singleTop"

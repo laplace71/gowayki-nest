@@ -26,6 +26,8 @@ data class CombiRoute(
     val routeId: String? = null,
     val returnRouteId: String? = null,
     val returnName: String? = null,
+    /** Id numérico de la subruta en gowayki_db (el que espera el backend). */
+    val subrutaDbId: Int? = null,
 )
 
 object ArequipaRoutes {

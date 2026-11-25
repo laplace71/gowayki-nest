@@ -95,6 +95,7 @@ fun HomeScreen(
     onSettingsClick: () -> Unit = {},
     onSupportClick: () -> Unit = {},
     onLogoutClick: () -> Unit = {},
+    onSolicitarCambioSubruta: (String) -> Unit = {},
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
@@ -148,7 +149,7 @@ fun HomeScreen(
         idaStops = if (r?.routeId != null && r.routeId == routeId) {
             routeStops
         } else if (r?.routeId != null) {
-            runCatching { RouteStopsStore.stopsFor(r.routeId!!) }.getOrDefault(emptyList())
+            runCatching { RouteStopsStore.stopsFor(r.routeId) }.getOrDefault(emptyList())
         } else {
             emptyList()
         }
@@ -670,6 +671,11 @@ fun HomeScreen(
             showRouteDialog = false
             rutaObligatoria = false
         },
+        onSolicitarCambioSubruta = { subrutaId ->
+            onSolicitarCambioSubruta(subrutaId)
+            showRouteDialog = false
+            rutaObligatoria = false
+        },
         onAssigned = { turno ->
             showRouteDialog = false
             rutaObligatoria = false
@@ -1028,76 +1034,3 @@ private fun PillStat(top: String, bottom: String, modifier: Modifier = Modifier)
     }
 }
 
-@Composable
-private fun BusCard(
-    title: String,
-    line: String,
-    time: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit = {}
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    androidx.compose.material3.Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = AppRadius.card,
-        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = AppColors.cream),
-        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 4.dp),
-        interactionSource = interactionSource,
-    ) {
-        Box(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Bus emoji as compact circle
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(AppColors.primary, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = SolidGroup.Bus,
-                    contentDescription = null,
-                    tint = AppColors.cream,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            // Title and line info
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
-                    color = AppColors.ink
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = line,
-                    style = AppTextStyles.waykiMini,
-                    color = AppColors.slate
-                )
-            }
-
-            // Time and arrow
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = time,
-                    style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
-                    color = AppColors.ink
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = AppColors.ink,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-    }
-    }
-}

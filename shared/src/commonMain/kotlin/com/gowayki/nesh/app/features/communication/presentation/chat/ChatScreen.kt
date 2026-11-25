@@ -408,7 +408,13 @@ fun ChatScreen(
 
     // ── Menú de la conversación ──────────────────────────────────────────
     if (showMenu) {
-        val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val sheetState = androidx.compose.material3.rememberBottomSheetState(
+            initialValue = androidx.compose.material3.SheetValue.Expanded,
+            enabledValues = setOf(
+                androidx.compose.material3.SheetValue.Hidden,
+                androidx.compose.material3.SheetValue.Expanded,
+            ),
+        )
         androidx.compose.material3.ModalBottomSheet(
             onDismissRequest = { showMenu = false },
             sheetState = sheetState,
@@ -521,7 +527,13 @@ fun ChatScreen(
 
     // ── Acciones de un mensaje (mantener presionado) ─────────────────────
     longPressedMessage?.let { msg ->
-        val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val sheetState = androidx.compose.material3.rememberBottomSheetState(
+            initialValue = androidx.compose.material3.SheetValue.Expanded,
+            enabledValues = setOf(
+                androidx.compose.material3.SheetValue.Hidden,
+                androidx.compose.material3.SheetValue.Expanded,
+            ),
+        )
         androidx.compose.material3.ModalBottomSheet(
             onDismissRequest = { longPressedMessage = null },
             sheetState = sheetState,

@@ -57,8 +57,8 @@ object ActiveDriversStore {
         val driverId = "u-$uId"
         val padron = dto.numeroPadron ?: uId.toString()
         val turno = com.gowayki.nesh.core.session.TurnoSession.turno
-        val routeCode = if (dto.lineaId != null && dto.lineaId == turno?.lineaId && !turno?.lineaNombre.isNullOrBlank()) {
-            parseRouteCode(turno?.lineaNombre, dto.lineaId)
+        val routeCode = if (dto.lineaId != null && dto.lineaId == turno?.lineaId && !turno.lineaNombre.isNullOrBlank()) {
+            parseRouteCode(turno.lineaNombre, dto.lineaId)
         } else {
             dto.lineaId?.let { "C$it" } ?: ""
         }
@@ -99,11 +99,4 @@ object ActiveDriversStore {
         _drivers.value = if (self != null) listOf(self) + remoteList else remoteList
     }
 
-    fun clearSelf() {
-        _drivers.value = _drivers.value.filterNot { it.isSelf }
-    }
-
-    fun setAll(list: List<ActiveDriver>) {
-        _drivers.value = list
-    }
 }

@@ -9,6 +9,7 @@ package com.gowayki.nesh.app.common.ui.shared
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -23,6 +24,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +47,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -218,34 +221,32 @@ fun WaykiSubtitle(text: String, modifier: Modifier = Modifier, textAlign: TextAl
 
 // ---------- Modificador interactivo: ripple + estado pressed ----------
 /**
- * Aplica ripple y feedback de presión a cualquier elemento clickeable.
- * Uso: Modifier.clickable { ... }.then(WaykiInteractive())
+ * Ripple + escala sutil al presionar. Debe ser el único `clickable` del
+ * elemento (si se encadena otro, el último se queda el gesto).
  */
 @Composable
 fun Modifier.WaykiInteractive(
     enabled: Boolean = true,
-    rippleColor: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.12f)
+    rippleColor: androidx.compose.ui.graphics.Color = AppColors.onSurfaceMuted.copy(alpha = 0.16f),
 ): Modifier {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed && enabled) 0.98f else 1f,
+        animationSpec = tween(120),
+        label = "waykiPress",
+    )
     return this
         .clickable(
             interactionSource = interactionSource,
             indication = ripple(color = rippleColor),
             enabled = enabled,
-            onClick = {}
+            onClick = {},
         )
-        .then(
-            if (isPressed && enabled) {
-                Modifier.background(androidx.compose.ui.graphics.Color.Transparent)
-            } else {
-                Modifier
-            }
-        )
+        .graphicsLayer { scaleX = scale; scaleY = scale }
 }
 
-// ---------- Botón primario (pastilla, igual que ENTRAR) ----------
+// ---------- Sistema de botones (misma paleta, jerarquía clara) ----------
 @Composable
 private fun ArrowIcon() {
     Canvas(Modifier.size(AppSpacing.arrowIconSize, AppSpacing.arrowIconSize)) {
@@ -254,6 +255,123 @@ private fun ArrowIcon() {
         drawLine(AppColors.cream, Offset(s * 0.28f, s * 0.5f), Offset(s * 0.72f, s * 0.5f), s * 0.09f, StrokeCap.Round)
         drawLine(AppColors.cream, Offset(s * 0.72f, s * 0.5f), Offset(s * 0.5f, s * 0.28f), s * 0.09f, StrokeCap.Round)
         drawLine(AppColors.cream, Offset(s * 0.72f, s * 0.5f), Offset(s * 0.5f, s * 0.72f), s * 0.09f, StrokeCap.Round)
+    }
+}
+
+/** Primario = acción principal · Secundario = alternativa · Texto = acciones suaves. */
+enum class WaykiButtonVariant { Primary, Secondary, Text }
+
+@Composable
+private fun WaykiButtonContent(
+    text: String,
+    isLoading: Boolean,
+    showArrow: Boolean,
+    large: Boolean,
+    contentColor: Color,
+) {
+    if (isLoading) {
+        CircularProgressIndicator(color = contentColor, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+    } else {
+        Text(text, style = if (large) AppTextStyles.waykiButtonLarge else AppTextStyles.waykiButtonSmall)
+        if (showArrow) Box(Modifier.padding(start = AppSpacing.md)) { ArrowIcon() }
+    }
+}
+
+/**
+ * Botón unificado: ripple Material 3, escala al presionar, estados de carga
+ * y deshabilitado. Los colores siguen viniendo de AppColors.
+ */
+@Composable
+fun WaykiActionButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    variant: WaykiButtonVariant = WaykiButtonVariant.Primary,
+    showArrow: Boolean = false,
+    fullWidth: Boolean = true,
+    enabled: Boolean = true,
+    isLoading: Boolean = false,
+    height: Dp = AppSpacing.buttonPrimaryHeight,
+    large: Boolean = true,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val active = enabled && !isLoading
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed && active) 0.97f else 1f,
+        animationSpec = tween(110),
+        label = "buttonScale",
+    )
+    val base = modifier
+        .then(if (fullWidth) Modifier.fillMaxWidth() else Modifier.width(AppSpacing.buttonFixedWidth))
+        .height(height)
+        .graphicsLayer { scaleX = scale; scaleY = scale }
+
+    when (variant) {
+        WaykiButtonVariant.Primary -> {
+            val container by animateColorAsState(
+                targetValue = when {
+                    !active -> AppColors.primary.copy(alpha = 0.4f)
+                    isPressed -> AppColors.primary.copy(alpha = 0.85f)
+                    else -> AppColors.primary
+                },
+                label = "primaryContainer",
+            )
+            Button(
+                onClick = { if (active) onClick() },
+                modifier = base.shadow(
+                    AppSpacing.xl, AppRadius.pill,
+                    ambientColor = AppColors.onSurfaceMuted.copy(alpha = 0.22f),
+                    spotColor = AppColors.onSurfaceMuted.copy(alpha = 0.22f),
+                ),
+                shape = AppRadius.pill,
+                enabled = active,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = container,
+                    contentColor = AppColors.onPrimary,
+                    disabledContainerColor = AppColors.primary.copy(alpha = 0.4f),
+                    disabledContentColor = AppColors.onPrimary.copy(alpha = 0.6f),
+                ),
+                interactionSource = interactionSource,
+            ) {
+                WaykiButtonContent(text, isLoading, showArrow, large, AppColors.onPrimary)
+            }
+        }
+        WaykiButtonVariant.Secondary -> {
+            val borderColor by animateColorAsState(
+                targetValue = if (isPressed && active) AppColors.primary else AppColors.outline.copy(alpha = 0.55f),
+                label = "secondaryBorder",
+            )
+            OutlinedButton(
+                onClick = { if (active) onClick() },
+                modifier = base,
+                shape = AppRadius.pill,
+                enabled = active,
+                border = BorderStroke(1.dp, borderColor),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = AppColors.surface,
+                    contentColor = AppColors.ink,
+                    disabledContainerColor = AppColors.surface.copy(alpha = 0.5f),
+                    disabledContentColor = AppColors.slate.copy(alpha = 0.6f),
+                ),
+                interactionSource = interactionSource,
+            ) {
+                WaykiButtonContent(text, isLoading, showArrow, large, AppColors.ink)
+            }
+        }
+        WaykiButtonVariant.Text -> TextButton(
+            onClick = { if (active) onClick() },
+            modifier = base,
+            enabled = active,
+            shape = AppRadius.pill,
+            colors = ButtonDefaults.textButtonColors(
+                contentColor = AppColors.onBackground,
+                disabledContentColor = AppColors.slate.copy(alpha = 0.6f),
+            ),
+            interactionSource = interactionSource,
+        ) {
+            WaykiButtonContent(text, isLoading, showArrow, large, AppColors.onBackground)
+        }
     }
 }
 
@@ -267,53 +385,60 @@ fun WaykiPrimaryButton(
     enabled: Boolean = true,
     isLoading: Boolean = false,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val buttonColor by animateColorAsState(
-        targetValue = when {
-            !enabled -> AppColors.primary.copy(alpha = 0.4f)
-            isPressed -> AppColors.primary.copy(alpha = 0.8f)
-            else -> AppColors.primary
-        },
-        label = "buttonColor"
+    WaykiActionButton(
+        text = text,
+        onClick = onClick,
+        modifier = modifier,
+        variant = WaykiButtonVariant.Primary,
+        showArrow = showArrow,
+        fullWidth = fullWidth,
+        enabled = enabled,
+        isLoading = isLoading,
+        height = if (fullWidth) AppSpacing.buttonPrimaryHeight else AppSpacing.buttonSecondaryHeight,
+        large = fullWidth,
     )
+}
 
-    Button(
-        onClick = { if (!isLoading && enabled) onClick() },
-        modifier = modifier
-            .then(if (fullWidth) Modifier.fillMaxWidth() else Modifier.width(AppSpacing.buttonFixedWidth))
-            .height(if (fullWidth) AppSpacing.buttonPrimaryHeight else AppSpacing.buttonSecondaryHeight)
-            .shadow(
-                AppSpacing.xl, AppRadius.pill,
-                ambientColor = AppColors.onSurfaceMuted.copy(alpha = 0.27f),
-                spotColor = AppColors.onSurfaceMuted.copy(alpha = 0.27f),
-            ),
-        shape = AppRadius.pill,
-        enabled = enabled && !isLoading,
-        colors = ButtonDefaults.buttonColors(
-            containerColor = buttonColor,
-            contentColor = AppColors.onPrimary,
-            disabledContainerColor = AppColors.primary.copy(alpha = 0.4f),
-            disabledContentColor = AppColors.onPrimary.copy(alpha = 0.6f),
-        ),
-        interactionSource = interactionSource,
-    ) {
-        if (isLoading) {
-            CircularProgressIndicator(
-                color = AppColors.onPrimary,
-                modifier = Modifier.size(24.dp),
-                strokeWidth = 2.dp
-            )
-        } else {
-            Text(
-                text,
-                style = if (fullWidth) AppTextStyles.waykiButtonLarge else AppTextStyles.waykiButtonSmall,
-            )
-            if (showArrow) {
-                Box(Modifier.padding(start = AppSpacing.md)) { ArrowIcon() }
-            }
-        }
-    }
+@Composable
+fun WaykiSecondaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    isLoading: Boolean = false,
+    fullWidth: Boolean = false,
+) {
+    WaykiActionButton(
+        text = text,
+        onClick = onClick,
+        modifier = modifier,
+        variant = WaykiButtonVariant.Secondary,
+        fullWidth = fullWidth,
+        enabled = enabled,
+        isLoading = isLoading,
+        height = AppSpacing.buttonSecondaryHeight,
+        large = false,
+    )
+}
+
+@Composable
+fun WaykiTextButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    fullWidth: Boolean = true,
+) {
+    WaykiActionButton(
+        text = text,
+        onClick = onClick,
+        modifier = modifier,
+        variant = WaykiButtonVariant.Text,
+        enabled = enabled,
+        fullWidth = fullWidth,
+        height = AppSpacing.buttonSecondaryHeight,
+        large = false,
+    )
 }
 
 // ---------- Botón Google circular (estilo diseño) ----------
