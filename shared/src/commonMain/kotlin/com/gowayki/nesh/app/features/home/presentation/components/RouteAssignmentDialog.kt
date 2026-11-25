@@ -510,18 +510,29 @@ fun RouteAssignmentDialog(
                             }
                             Spacer(Modifier.height(12.dp))
                         }
+                        // Si la subruta asignada no tiene combis, mostramos las
+                        // combis vigentes de las demás subrutas para que pueda elegir.
+                        val combisVisibles = if (combisDeMiSubruta.isNotEmpty()) {
+                            combisDeMiSubruta
+                        } else {
+                            unidades
+                        }
                         Text(
-                            text = subrutaFijaNombre?.let { "Combis de $it" }
-                                ?: "Combis de tu subruta",
+                            text = if (combisDeMiSubruta.isNotEmpty()) {
+                                subrutaFijaNombre?.let { "Combis de $it" }
+                                    ?: "Combis de tu subruta"
+                            } else {
+                                "Combis disponibles en otras subrutas"
+                            },
                             style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
                             color = AppColors.slate,
                         )
                         Spacer(Modifier.height(8.dp))
                         when {
                             loading -> CombiLoadingPanel()
-                            combisDeMiSubruta.isEmpty() -> CombiEmptyPanel(
-                                title = "No hay combis disponibles en tu subruta.",
-                                detail = "Las líneas de tu subruta aparecen arriba. Cuando registres una combi aquí, aparecerá en la lista.",
+                            combisVisibles.isEmpty() -> CombiEmptyPanel(
+                                title = "No hay combis disponibles.",
+                                detail = "Cuando registres una combi aparecerá aquí.",
                                 onRetry = {
                                     scope.launch {
                                         loading = true
@@ -532,7 +543,7 @@ fun RouteAssignmentDialog(
                                 },
                             )
                             else -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                combisDeMiSubruta.forEach { u ->
+                                combisVisibles.forEach { u ->
                                     UnidadCard(
                                         unidad = u,
                                         ocupada = u.id in ocupadas && u.id != turno?.unidadId,
