@@ -62,6 +62,7 @@ data class BackendUnidadDto(
     val subrutaCodigo: String? = null,
     val subrutaNombre: String? = null,
     val estado: String? = null,
+    @Serializable(with = PosicionGpsNormalizer::class)
     val posicionActual: PosicionGpsDto? = null,
 )
 
@@ -73,7 +74,7 @@ data class ActualizarPosicionGpsRequestDto(
     val rumboGrados: Int? = 0,
 )
 
-@Serializable(with = PosicionGpsNormalizer::class)
+@Serializable
 data class PosicionGpsDto(
     val unidadId: Int? = null,
     val lineaId: Int? = null,
