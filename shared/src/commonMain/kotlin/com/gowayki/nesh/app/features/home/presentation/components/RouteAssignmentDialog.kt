@@ -360,6 +360,9 @@ fun RouteAssignmentDialog(
         list
     }
 
+    // Líneas del catálogo que contienen la subruta asignada al chofer/jefe.
+    val lineasDeMiSubruta = remember(filas) { filas.filterIsInstance<FilaRuta.Linea>() }
+
     Dialog(
         onDismissRequest = { if (!assigning && !obligatorio) onDismiss() },
         properties = DialogProperties(
@@ -482,6 +485,31 @@ fun RouteAssignmentDialog(
                     CombiActualCard(turno)
                     Spacer(Modifier.height(12.dp))
                     if (!esAdmin && tieneSubrutaFija) {
+                        if (lineasDeMiSubruta.isNotEmpty()) {
+                            Text(
+                                text = "Líneas de tu subruta",
+                                style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                                color = AppColors.slate,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            lineasDeMiSubruta.forEach { linea ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(12.dp)
+                                            .background(linea.color, CircleShape)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = linea.nombre,
+                                        style = AppTextStyles.waykiLabelMedium,
+                                        color = AppColors.ink,
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
+                            }
+                            Spacer(Modifier.height(12.dp))
+                        }
                         Text(
                             text = subrutaFijaNombre?.let { "Combis de $it" }
                                 ?: "Combis de tu subruta",
@@ -493,7 +521,7 @@ fun RouteAssignmentDialog(
                             loading -> CombiLoadingPanel()
                             combisDeMiSubruta.isEmpty() -> CombiEmptyPanel(
                                 title = "No hay combis disponibles en tu subruta.",
-                                detail = "Cuando registres una combi en esta subruta aparecerá aquí.",
+                                detail = "Las líneas de tu subruta aparecen arriba. Cuando registres una combi aquí, aparecerá en la lista.",
                                 onRetry = {
                                     scope.launch {
                                         loading = true
