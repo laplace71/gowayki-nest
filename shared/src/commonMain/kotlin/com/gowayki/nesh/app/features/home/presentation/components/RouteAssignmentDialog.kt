@@ -474,6 +474,30 @@ fun RouteAssignmentDialog(
 
                     Spacer(Modifier.height(10.dp))
                     CombiActualCard(turno)
+                    Spacer(Modifier.height(8.dp))
+                    WaykiTextButton(
+                        text = if (assigning) "Liberando combi…" else "Terminar ruta y liberar combi",
+                        enabled = !assigning,
+                        onClick = {
+                            val actual = TurnoSession.turno ?: return@WaykiTextButton
+                            scope.launch {
+                                assigning = true
+                                error = null
+                                BackendTurnosApi.finalizar(actual.id)
+                                    .onSuccess {
+                                        TurnoSession.clearTurno()
+                                        TurnoSession.refreshActiveTurnos()
+                                        unidadSeleccionada = null
+                                        ToastManager.show("Ruta terminada. La combi queda libre para otro chofer.")
+                                        assigning = false
+                                    }
+                                    .onFailure {
+                                        error = it.message ?: "No se pudo liberar la combi"
+                                        assigning = false
+                                    }
+                            }
+                        },
+                    )
                     Spacer(Modifier.height(12.dp))
                     if (!esAdmin && tieneSubrutaFija) {
                         if (lineasDeMiSubruta.isNotEmpty()) {
