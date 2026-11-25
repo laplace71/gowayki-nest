@@ -7,7 +7,7 @@ mapa en vivo, chat por subruta y un botón de SOS con hardware BLE. Está hecha 
 
 ## Vista rápida
 
-<img src="docs/demo.gif" alt="Demostración de la app Wayki Nest" width="720" />
+Capturas reales del APK de la app con su paleta (lavanda y tinta), tomadas desde un dispositivo Android.
 
 <table>
   <tr>
@@ -16,7 +16,10 @@ mapa en vivo, chat por subruta y un botón de SOS con hardware BLE. Está hecha 
   </tr>
   <tr>
     <td><img src="docs/screenshots/03-mapa.png" alt="Ruta y paraderos" /></td>
-    <td><img src="docs/screenshots/04-equipo.png" alt="Chofer, jefe y administrador" /></td>
+    <td><img src="docs/screenshots/04-comunicacion.png" alt="Comunicación" /></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/05-combis-del-jefe.png" alt="Combis de la subruta del jefe" /></td>
   </tr>
 </table>
 
@@ -25,11 +28,19 @@ mapa en vivo, chat por subruta y un botón de SOS con hardware BLE. Está hecha 
 | Área | Qué hace |
 | --- | --- |
 | **Acceso** | Login con DNI y PIN, bloqueo por intentos fallidos (estado `423`), recuperación de acceso, registro y cambio de PIN desde la app. Los mensajes de error vienen del backend y nunca muestran IPs ni detalles técnicos. |
-| **Turno y ruta** | Elección de línea y unidad, puntos de control del día, horarios programados, porcentaje de cumplimiento, avisos de almuerzo y de combis adelantadas o atrasadas. |
-| **Mapa y subrutas** | Trazado de la ruta, paraderos, subrutas, ubicación GPS del teléfono, distancias y tiempos al inicio del recorrido, con solicitudes de cambio de ruta y catálogo actualizable. |
+| **Turno y ruta** | Elección de línea y unidad, puntos de control del día, horarios programados, porcentaje de cumplimiento, avisos de almuerzo y de combis adelantadas o atrasadas. Al terminar, *“Terminar ruta y liberar combi”* cierra el turno y deja la unidad disponible para otro chofer. |
+| **Mapa y subrutas** | Trazado de la ruta, paraderos, subrutas, ubicación GPS del teléfono, distancias y tiempos al inicio del recorrido, con solicitudes de cambio de ruta y catálogo actualizable. El jefe entra con la subruta que le asignó el panel ya seleccionada. |
 | **Comunicación** | Chat de texto y notas de voz, grupos por ruta y subruta, contador de no leídos, limpiar chat solo para uno y eliminación de grupos con borrado diferido de 72 horas. |
 | **SOS** | Botón físico ESP32 por Bluetooth, GPS con precisión y zona de referencia, emergencias cercanas y activas, y puntos marcados en el mapa; también graba audio y pantalla. |
-| **Perfil y ajustes** | Subruta asignada, línea y combi del turno, alertas de tiempo y de puntos de control, avisos discretos, búsqueda del ESP32 y atribución de datos geográficos. |
+| **Perfil y ajustes** | Subruta asignada, línea y combi del turno, alertas de tiempo y de puntos de control, avisos discretos, búsqueda del ESP32 y atribución de datos geográficos. El jefe solo **consulta** las combis de su subruta (cada una muestra quién la tiene asignada) y puede **crear una nueva** para su línea; su solicitud de cambio se envía al administrador. |
+
+## Roles en la app
+
+| Rol | Qué ve | Qué puede hacer |
+| --- | --- | --- |
+| **ADMIN** | Catálogo completo de líneas, subrutas y combis | Asignar ruta y combi; aprobar solicitudes desde el panel web |
+| **JEFE_RUTA** | Su subruta por defecto y las combis de esa subruta, con el nombre de quien las tiene | Crear una combi para su línea, liberar su combi al terminar y pedir cambio de ruta al administrador |
+| **CHOFER** | Su turno, su recorrido, el chat y el SOS | Tomar una combi de su subruta y pedir cambio de ruta al jefe |
 
 ## Arquitectura
 
