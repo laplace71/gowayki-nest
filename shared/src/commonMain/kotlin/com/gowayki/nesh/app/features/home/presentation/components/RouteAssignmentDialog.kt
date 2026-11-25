@@ -165,6 +165,7 @@ fun RouteAssignmentDialog(
     var loading by remember { mutableStateOf(true) }
     var assigning by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var confirmacion by remember { mutableStateOf<String?>(null) }
     var crearCombi by remember { mutableStateOf(false) }
     var nuevaPlaca by remember { mutableStateOf("") }
     var nuevoPadron by remember { mutableStateOf("") }
@@ -850,7 +851,10 @@ fun RouteAssignmentDialog(
                     WaykiPrimaryButton(
                         text = if (crearCombi) "CERRAR FORMULARIO" else "CREAR NUEVA COMBI PARA MI LÍNEA",
                         enabled = !assigning,
-                        onClick = { crearCombi = !crearCombi },
+                        onClick = {
+                            confirmacion = null
+                            crearCombi = !crearCombi
+                        },
                         showArrow = false,
                     )
                 } else if (cambioSolicitado) {
@@ -1009,7 +1013,14 @@ fun RouteAssignmentDialog(
                                 enabled = !assigning && nuevaPlaca.isNotBlank() && nuevoPadron.isNotBlank(),
                                 isLoading = assigning,
                                 onClick = {
-                                    val lineaId = unidades.firstOrNull()?.lineaId
+                                    val lineaId = subrutaFija?.parent?.let { code ->
+                                        lineas.firstOrNull {
+                                            codigoDeLinea(it.nombre).equals(code, ignoreCase = true)
+                                        }?.id
+                                    } ?: TurnoSession.turno?.lineaId
+                                    ?: unidades.firstOrNull {
+                                        unidadEsDeSubruta(it, subrutaFijaCodigo, subrutaFijaDbId)
+                                    }?.lineaId
                                     if (lineaId == null) {
                                         error = "No se pudo resolver la línea de tu subruta."
                                         return@WaykiPrimaryButton
@@ -1022,15 +1033,17 @@ fun RouteAssignmentDialog(
                                             placa = nuevaPlaca.trim(),
                                             lineaId = lineaId,
                                             subrutaId = subrutaFijaDbId,
-                                        ).onSuccess {
+                                        ).onSuccess { creada ->
                                             unidades = BackendTurnosApi.unidadesTodas()
+                                            confirmacion = "Combi creada: ${creada.numeroPadron ?: "—"} · ${creada.placa ?: "—"}"
                                             nuevaPlaca = ""
                                             nuevoPadron = ""
                                             crearCombi = false
-                                            ToastManager.show("Combi creada para tu línea.")
+                                            ToastManager.show("Combi creada en tu subruta.")
                                             assigning = false
                                         }.onFailure {
                                             error = it.message ?: "No se pudo crear la combi"
+                                            confirmacion = null
                                             assigning = false
                                         }
                                     }
@@ -1039,6 +1052,14 @@ fun RouteAssignmentDialog(
                             )
                         }
                     }
+                }
+                if (confirmacion != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = confirmacion!!,
+                        style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold),
+                        color = AppColors.primary,
+                    )
                 }
                 }
             }
