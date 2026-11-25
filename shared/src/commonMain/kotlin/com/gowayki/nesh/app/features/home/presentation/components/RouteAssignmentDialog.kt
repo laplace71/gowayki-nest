@@ -115,7 +115,7 @@ private fun codigoSubruta(valor: String?): String? = valor?.trim()
  * Una combi pertenece a la subruta por su código SmartBus o por su id numérico
  * de gowayki_db. El backend ya persiste ese id al crear/editar desde el panel.
  */
-private fun unidadEsDeSubruta(
+internal fun unidadEsDeSubruta(
     unidad: BackendUnidadDto,
     codigo: String?,
     subrutaDbId: Int?,
@@ -211,6 +211,9 @@ fun RouteAssignmentDialog(
     // o como id numérico de gowayki_db (lo que guarda el panel).
     val subrutaFijaCruda = TurnoSession.turno?.subrutaCodigo?.takeIf { it.isNotBlank() }
         ?: UserSession.currentUser?.subrutaId
+    // El id numérico del turno es la fuente confiable: el código y el nombre
+    // del catálogo pueden diferir entre SmartBus y la base compartida.
+    val subrutaIdDelTurno = TurnoSession.turno?.subrutaId
     val subrutaFijaNumerica = subrutaFijaCruda?.trim()?.toIntOrNull()
     val subrutaFijaCodigo = when {
         esAdmin || subrutaFijaNumerica != null -> null
@@ -229,8 +232,8 @@ fun RouteAssignmentDialog(
                 (subrutaFijaNumerica != null && ruta.subrutaDbId == subrutaFijaNumerica)
         }
     }
-    val subrutaFijaDbId = remember(subrutaFija, subrutaFijaNumerica) {
-        subrutaFija?.subrutaDbId ?: subrutaFijaNumerica
+    val subrutaFijaDbId = remember(subrutaFija, subrutaFijaNumerica, subrutaIdDelTurno) {
+        subrutaIdDelTurno ?: subrutaFija?.subrutaDbId ?: subrutaFijaNumerica
     }
     val tieneSubrutaFija = subrutaFijaCodigo != null || subrutaFijaDbId != null
     val codigoSubrutaFijo = subrutaFija?.let { ruta ->
