@@ -1,5 +1,23 @@
 # Wayki Nest
 
+## Vista rápida
+
+<img src="docs/demo.gif" alt="Demostración de la app Wayki Nest" width="720" />
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/01-portada.png" alt="Portada" /></td>
+    <td width="50%"><img src="docs/screenshots/02-turno.png" alt="Mi ruta / unidad" /></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/03-mapa.png" alt="Ruta y paraderos" /></td>
+    <td><img src="docs/screenshots/04-equipo.png" alt="Chofer, jefe y administrador" /></td>
+  </tr>
+</table>
+
+El GIF y las imágenes ilustran el flujo actual de la app (turno, combi en uso, ruta y
+roles). Se generaron a partir del video de presentación del proyecto.
+
 ## Descargar el APK (Android)
 
 [**Descargar la última beta**](https://github.com/laplace71/gowayki-nest/releases/download/beta/wayki-nest-beta.apk)
