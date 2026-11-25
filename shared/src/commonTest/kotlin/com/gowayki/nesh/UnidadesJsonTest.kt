@@ -1,6 +1,7 @@
 package com.gowayki.nesh
 
 import com.gowayki.nesh.data.entities.backend.BackendUnidadDto
+import com.gowayki.nesh.data.entities.backend.CrearUnidadRequestDto
 import com.gowayki.nesh.data.entities.backend.PosicionGpsNormalizer
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -28,5 +29,15 @@ class UnidadesJsonTest {
         val json = Json { ignoreUnknownKeys = true }
         val pos = json.decodeFromString(PosicionGpsNormalizer, """{"lat":-16.4,"lng":-71.5}""")
         assertTrue(pos.latitud == -16.4 && pos.longitud == -71.5, "lat=${pos.latitud} lng=${pos.longitud}")
+    }
+
+    @Test
+    fun `el alta de combi se serializa con tipos concretos`() {
+        val json = Json { encodeDefaults = true }
+        val texto = json.encodeToString(
+            CrearUnidadRequestDto.serializer(),
+            CrearUnidadRequestDto(numeroPadron = "12", placa = "v-h500", lineaId = 8, subrutaId = 355),
+        )
+        assertTrue(texto.contains("\"lineaId\":8") && texto.contains("\"subrutaId\":355"), texto)
     }
 }

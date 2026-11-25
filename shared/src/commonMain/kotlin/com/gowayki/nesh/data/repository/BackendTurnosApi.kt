@@ -6,6 +6,7 @@ import com.gowayki.nesh.data.entities.backend.AsignarTurnoRequestDto
 import com.gowayki.nesh.data.entities.backend.BackendMensajeDto
 import com.gowayki.nesh.data.entities.backend.BackendTurnoDto
 import com.gowayki.nesh.data.entities.backend.BackendUnidadDto
+import com.gowayki.nesh.data.entities.backend.CrearUnidadRequestDto
 import com.gowayki.nesh.data.entities.backend.PosicionGpsDto
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -98,11 +99,11 @@ object BackendTurnosApi {
         try {
             val response = client.post("$baseUrl/unidades") {
                 setBody(
-                    mapOf(
-                        "numeroPadron" to numeroPadron,
-                        "placa" to placa,
-                        "lineaId" to lineaId,
-                        "subrutaId" to subrutaId,
+                    CrearUnidadRequestDto(
+                        numeroPadron = numeroPadron,
+                        placa = placa,
+                        lineaId = lineaId,
+                        subrutaId = subrutaId,
                     )
                 )
             }
