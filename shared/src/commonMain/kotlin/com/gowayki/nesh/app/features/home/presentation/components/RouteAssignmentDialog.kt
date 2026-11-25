@@ -259,17 +259,28 @@ fun RouteAssignmentDialog(
     }
     val subrutaFijaNombre = subrutaFija?.name
 
+    fun esSubrutaAsignada(sr: com.gowayki.nesh.app.features.map.domain.model.CombiRoute): Boolean {
+        if (subrutaFijaCodigo != null &&
+            (mismoIdSubruta(sr.id, subrutaFijaCodigo) || mismoIdSubruta(sr.routeId, subrutaFijaCodigo))
+        ) return true
+        return subrutaFijaDbId != null && sr.subrutaDbId == subrutaFijaDbId
+    }
+    // El admin ve todo el catálogo; chofer/jefe solo su subruta, salvo que
+    // estén pidiendo un cambio (entonces necesitan ver las demás).
+    val filtrarPorSubruta = !esAdmin && tieneSubrutaFija && !cambioSolicitado
+
     val filas = remember(
         lineas, unidades, query, ocupadas, catalogSubrutas,
-        TurnoSession.turno?.subrutaCodigo, esAdmin, esChofer, subrutaFijaCodigo, subrutaFijaDbId,
-        cambioSolicitado, subrutaElegida, actualGlobal,
+        TurnoSession.turno?.subrutaCodigo, esAdmin, esChofer, esJefe, subrutaFijaCodigo, subrutaFijaDbId,
+        cambioSolicitado, subrutaElegida, actualGlobal, filtrarPorSubruta,
     ) {
         val unitsByLine = unidades.groupBy { it.lineaId }
         // El chofer/jefe solo ve su línea y su subruta asignada; el admin ve
         // todo el catálogo para elegir línea + subruta + combi.
         val lineasConSubruta = lineas.filter { linea ->
             codigoDeLinea(linea.nombre)?.let { code ->
-                SelectedRouteHolder.subrutasForLine(code).isNotEmpty()
+                val subs = SelectedRouteHolder.subrutasForLine(code)
+                subs.isNotEmpty() && (!filtrarPorSubruta || subs.any { esSubrutaAsignada(it) })
             } == true
         }
         val filteredLineas = if (query.isBlank()) {
@@ -291,10 +302,15 @@ fun RouteAssignmentDialog(
                 var empresaAgregada = false
                 ls.forEach { linea ->
                     val code = codigoDeLinea(linea.nombre)
-                    val subrutas = if (code != null) {
+                    val subrutasDelCatalogo = if (code != null) {
                         SelectedRouteHolder.subrutasForLine(code)
                     } else {
                         emptyList()
+                    }
+                    val subrutas = if (filtrarPorSubruta) {
+                        subrutasDelCatalogo.filter { esSubrutaAsignada(it) }
+                    } else {
+                        subrutasDelCatalogo
                     }
                     if (subrutas.isEmpty()) return@forEach
                     if (!empresaAgregada) {
@@ -303,9 +319,12 @@ fun RouteAssignmentDialog(
                     }
                     list.add(FilaRuta.Linea(linea.id, linea.nombre ?: "Línea ${linea.id}", colorFromHex(linea.colorHex)))
                     val todas = unitsByLine[linea.id] ?: emptyList()
-                    // Cada combi se muestra bajo la subruta que tiene en la BD,
-                    // no bajo la subruta asignada al usuario.
-                    val us = todas
+                    // El admin ve todas; chofer/jefe, solo las de su subruta.
+                    val us = if (filtrarPorSubruta) {
+                        todas.filter { unidadEsDeSubruta(it, subrutaFijaCodigo, subrutaFijaDbId) }
+                    } else {
+                        todas
+                    }
                     val ocultarCombis = false
                     val actualId = if (!esAdmin) subrutaFijaCodigo ?: actualGlobal else actualGlobal
 
@@ -679,7 +698,7 @@ fun RouteAssignmentDialog(
                 // ---------- Escoger ruta / solicitar subruta ----------
                 val tituloLista = when {
                     esAdmin -> "Escoge tu ruta"
-                    esJefe -> "Combis de tu línea"
+                    esJefe -> "Combis de tu subruta"
                     !tieneSubrutaFija -> "Solicita tu subruta"
                     cambioSolicitado -> "Solicitud de cambio"
                     else -> "Escoge tu combi"
