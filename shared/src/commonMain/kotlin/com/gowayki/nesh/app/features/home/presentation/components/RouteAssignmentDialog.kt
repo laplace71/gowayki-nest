@@ -563,8 +563,8 @@ fun RouteAssignmentDialog(
                                         unidad = u,
                                         ocupada = u.id in ocupadas && u.id != turno?.unidadId,
                                         enUso = u.id == turno?.unidadId,
-                                        seleccionada = unidadSeleccionada?.id == u.id,
-                                        onClick = { unidadSeleccionada = u },
+                                        seleccionada = !esJefe && unidadSeleccionada?.id == u.id,
+                                        onClick = { if (!esJefe) unidadSeleccionada = u },
                                     )
                                 }
                             }
@@ -605,6 +605,7 @@ fun RouteAssignmentDialog(
                     Text(
                         text = when {
                             !esAdmin && tieneSubrutaFija && loading -> "Estamos consultando tus combis."
+                            esJefe && tieneSubrutaFija -> "Estas son las combis de tu subruta. Solo las consultas."
                             !esAdmin && tieneSubrutaFija && combisDeMiSubruta.isEmpty() -> ""
                             !esAdmin && tieneSubrutaFija -> "Selecciona la combi con la que vas a trabajar."
                             else -> "Turno en curso."
@@ -614,7 +615,7 @@ fun RouteAssignmentDialog(
                     )
 
                     Spacer(Modifier.height(18.dp))
-                    if (!esAdmin && tieneSubrutaFija && unidadSeleccionada != null &&
+                    if (!esAdmin && !esJefe && tieneSubrutaFija && unidadSeleccionada != null &&
                         unidadSeleccionada?.id != turno?.unidadId
                     ) {
                         WaykiPrimaryButton(
@@ -770,9 +771,9 @@ fun RouteAssignmentDialog(
                                     is FilaRuta.Unidad -> UnidadCard(
                                         unidad = fila.data,
                                         ocupada = fila.ocupada,
-                                        seleccionada = unidadSeleccionada?.id == fila.data.id,
+                                        seleccionada = !esJefe && unidadSeleccionada?.id == fila.data.id,
                                         indentado = fila.indentado,
-                                        onClick = { unidadSeleccionada = fila.data },
+                                        onClick = { if (!esJefe) unidadSeleccionada = fila.data },
                                     )
                                     is FilaRuta.Vacia -> Text(
                                         text = "No hay combis disponibles para esta línea.",

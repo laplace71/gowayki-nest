@@ -124,6 +124,7 @@ fun SettingsScreen(
     var pinActual by remember { mutableStateOf("") }
     val rol = UserSession.currentUser?.rol.orEmpty()
     val esAdmin = rol.equals("ADMIN", ignoreCase = true)
+    val esJefe = rol.equals("JEFE_RUTA", ignoreCase = true)
 
     // El gesto atrás cierra primero lo que esté abierto encima (menú o diálogo).
     // Así no compite con la salida del NavHost y no aparece el zoom del sistema.
@@ -288,7 +289,8 @@ fun SettingsScreen(
                 SettingActionItem(
                     icon = FeatherIcons.MapPin,
                     title = "Enviar solicitud de cambio",
-                    subtitle = "Elige línea y subruta; el jefe debe aprobarla",
+                    subtitle = if (esJefe) "Elige línea y subruta; lo aprueba el administrador"
+                    else "Elige línea y subruta; el jefe debe aprobarla",
                     value = null,
                     onClick = { showCambioSubrutaDialog = true }
                 )
@@ -964,6 +966,7 @@ fun SettingsScreen(
 
         CambioSubrutaDialog(
             visible = showCambioSubrutaDialog,
+            rol = rol,
             onDismiss = { showCambioSubrutaDialog = false },
             onEnviar = { id ->
                 onCambiarSubruta(id)
@@ -1147,10 +1150,12 @@ private fun SettingActionItem(
 @Composable
 private fun CambioSubrutaDialog(
     visible: Boolean,
+    rol: String,
     onDismiss: () -> Unit,
     onEnviar: (String) -> Unit,
 ) {
     if (!visible) return
+    val paraAdministrador = rol.equals("JEFE_RUTA", ignoreCase = true)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val catalogo by SelectedRouteHolder.catalog.collectAsState()
     var cargando by remember { mutableStateOf(false) }
@@ -1205,7 +1210,11 @@ private fun CambioSubrutaDialog(
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "Elige la línea y la subruta a la que quieres pertenecer. El cambio se aplica cuando el jefe lo aprueba.",
+                    text = if (paraAdministrador) {
+                        "Elige la línea y la subruta a la que quieres pertenecer. El cambio lo aprueba el administrador."
+                    } else {
+                        "Elige la línea y la subruta a la que quieres pertenecer. El cambio se aplica cuando el jefe lo aprueba."
+                    },
                     style = AppTextStyles.waykiMini,
                     color = AppColors.slate,
                 )
