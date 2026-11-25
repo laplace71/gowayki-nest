@@ -15,8 +15,6 @@
   </tr>
 </table>
 
-El GIF y las imágenes ilustran el flujo actual de la app (turno, combi en uso, ruta y
-roles). Se generaron a partir del video de presentación del proyecto.
 
 ## Descargar el APK (Android)
 
