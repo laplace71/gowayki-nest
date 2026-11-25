@@ -88,6 +88,34 @@ object BackendTurnosApi {
         }
     }
 
+    /** Crea una combi nueva para la línea/subruta del jefe. */
+    suspend fun crearUnidad(
+        numeroPadron: String,
+        placa: String,
+        lineaId: Int,
+        subrutaId: Int?,
+    ): Result<BackendUnidadDto> = withContext(Dispatchers.Default) {
+        try {
+            val response = client.post("$baseUrl/unidades") {
+                setBody(
+                    mapOf(
+                        "numeroPadron" to numeroPadron,
+                        "placa" to placa,
+                        "lineaId" to lineaId,
+                        "subrutaId" to subrutaId,
+                    )
+                )
+            }
+            if (response.status.isSuccess()) {
+                Result.success(response.body<BackendUnidadDto>())
+            } else {
+                Result.failure(Exception(mensajeDeError(response, "No se pudo crear la combi")))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(e.message ?: "No se pudo conectar con el servidor"))
+        }
+    }
+
     /** Unidades vigentes que pertenecen a una línea. */
     suspend fun unidadesPorLinea(lineaId: Int): List<BackendUnidadDto> = withContext(Dispatchers.Default) {
         try {

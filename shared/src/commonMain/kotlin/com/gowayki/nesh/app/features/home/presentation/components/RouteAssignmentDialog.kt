@@ -165,6 +165,9 @@ fun RouteAssignmentDialog(
     var loading by remember { mutableStateOf(true) }
     var assigning by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var crearCombi by remember { mutableStateOf(false) }
+    var nuevaPlaca by remember { mutableStateOf("") }
+    var nuevoPadron by remember { mutableStateOf("") }
     // Elección explícita del chofer dentro de este diálogo. La selección global
     // de SelectedRouteHolder puede venir de una pantalla anterior y no significa
     // que el chofer haya elegido esa subruta para la unidad actual.
@@ -194,6 +197,9 @@ fun RouteAssignmentDialog(
     }
 
     val ocupadas = TurnoSession.unidadesOcupadas
+    fun nombreAsignado(unidadId: Int): String? = TurnoSession.activeTurnos
+        .firstOrNull { it.unidadId == unidadId }
+        ?.choferNombre?.takeIf { it.isNotBlank() }
     val catalogSubrutas by SelectedRouteHolder.catalog.collectAsState()
 
     // Una sola referencia de "dónde estoy" para TODO el diálogo: el turno si
@@ -564,6 +570,8 @@ fun RouteAssignmentDialog(
                                         ocupada = u.id in ocupadas && u.id != turno?.unidadId,
                                         enUso = u.id == turno?.unidadId,
                                         seleccionada = !esJefe && unidadSeleccionada?.id == u.id,
+                                        asignadoA = nombreAsignado(u.id),
+                                        interactivo = !esJefe,
                                         onClick = { if (!esJefe) unidadSeleccionada = u },
                                     )
                                 }
@@ -671,12 +679,14 @@ fun RouteAssignmentDialog(
                 // ---------- Escoger ruta / solicitar subruta ----------
                 val tituloLista = when {
                     esAdmin -> "Escoge tu ruta"
+                    esJefe -> "Combis de tu línea"
                     !tieneSubrutaFija -> "Solicita tu subruta"
                     cambioSolicitado -> "Solicitud de cambio"
                     else -> "Escoge tu combi"
                 }
                 val subtituloLista = when {
                     esAdmin -> "Elige la línea, la subruta y la combi que vas a manejar hoy."
+                    esJefe -> "Estas son las combis de tu subruta y quién las tiene asignada. Puedes crear una nueva."
                     !tieneSubrutaFija ->
                         "Elige la subruta a la que quieres pertenecer; el jefe debe aprobarla."
                     cambioSolicitado ->
@@ -773,6 +783,8 @@ fun RouteAssignmentDialog(
                                         ocupada = fila.ocupada,
                                         seleccionada = !esJefe && unidadSeleccionada?.id == fila.data.id,
                                         indentado = fila.indentado,
+                                        asignadoA = nombreAsignado(fila.data.id),
+                                        interactivo = !esJefe,
                                         onClick = { if (!esJefe) unidadSeleccionada = fila.data },
                                     )
                                     is FilaRuta.Vacia -> Text(
@@ -815,7 +827,14 @@ fun RouteAssignmentDialog(
                 }
 
                 Spacer(Modifier.height(16.dp))
-                if (cambioSolicitado) {
+                if (esJefe) {
+                    WaykiPrimaryButton(
+                        text = if (crearCombi) "CERRAR FORMULARIO" else "CREAR NUEVA COMBI PARA MI LÍNEA",
+                        enabled = !assigning,
+                        onClick = { crearCombi = !crearCombi },
+                        showArrow = false,
+                    )
+                } else if (cambioSolicitado) {
                     WaykiPrimaryButton(
                         text = "SOLICITAR CAMBIO",
                         enabled = subrutaElegida != null,
@@ -930,6 +949,78 @@ fun RouteAssignmentDialog(
                 )
                 Spacer(Modifier.height(4.dp))
                 WaykiTextButton(text = "Ahora no", onClick = onDismiss, modifier = Modifier.fillMaxWidth())
+
+                if (esJefe && crearCombi) {
+                    Spacer(Modifier.height(14.dp))
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = AppColors.surface,
+                        border = BorderStroke(1.dp, AppColors.outlineVariant),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text(
+                                text = "Nueva combi de mi línea",
+                                style = AppTextStyles.waykiLabelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = AppColors.ink,
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            OutlinedTextField(
+                                value = nuevoPadron,
+                                onValueChange = { nuevoPadron = it },
+                                label = { Text("Nº de padrón") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = nuevaPlaca,
+                                onValueChange = { nuevaPlaca = it },
+                                label = { Text("Placa") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            if (error != null) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(error!!, style = AppTextStyles.waykiMini, color = AppColors.error)
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            WaykiPrimaryButton(
+                                text = "GUARDAR COMBI",
+                                enabled = !assigning && nuevaPlaca.isNotBlank() && nuevoPadron.isNotBlank(),
+                                isLoading = assigning,
+                                onClick = {
+                                    val lineaId = unidades.firstOrNull()?.lineaId
+                                    if (lineaId == null) {
+                                        error = "No se pudo resolver la línea de tu subruta."
+                                        return@WaykiPrimaryButton
+                                    }
+                                    scope.launch {
+                                        assigning = true
+                                        error = null
+                                        BackendTurnosApi.crearUnidad(
+                                            numeroPadron = nuevoPadron.trim(),
+                                            placa = nuevaPlaca.trim(),
+                                            lineaId = lineaId,
+                                            subrutaId = subrutaFijaDbId,
+                                        ).onSuccess {
+                                            unidades = BackendTurnosApi.unidadesTodas()
+                                            nuevaPlaca = ""
+                                            nuevoPadron = ""
+                                            crearCombi = false
+                                            ToastManager.show("Combi creada para tu línea.")
+                                            assigning = false
+                                        }.onFailure {
+                                            error = it.message ?: "No se pudo crear la combi"
+                                            assigning = false
+                                        }
+                                    }
+                                },
+                                showArrow = false,
+                            )
+                        }
+                    }
+                }
                 }
             }
         }
@@ -1203,6 +1294,8 @@ private fun UnidadCard(
     seleccionada: Boolean,
     enUso: Boolean = false,
     indentado: Boolean = false,
+    asignadoA: String? = null,
+    interactivo: Boolean = true,
     onClick: () -> Unit,
 ) {
     val colorEstado = when {
@@ -1229,7 +1322,7 @@ private fun UnidadCard(
             .fillMaxWidth()
             .padding(start = if (indentado) 18.dp else 0.dp)
             .clickable(
-                enabled = !ocupada && !enUso,
+                enabled = interactivo && !ocupada && !enUso,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = ripple(color = AppColors.primary.copy(alpha = 0.18f)),
                 onClick = onClick,
@@ -1281,6 +1374,14 @@ private fun UnidadCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
+                }
+                if (!asignadoA.isNullOrBlank()) {
+                    Spacer(Modifier.height(AppSpacing.xxs))
+                    Text(
+                        text = "La tiene $asignadoA",
+                        style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                        color = AppColors.primary,
+                    )
                 }
             }
             Spacer(Modifier.width(AppSpacing.sm))
