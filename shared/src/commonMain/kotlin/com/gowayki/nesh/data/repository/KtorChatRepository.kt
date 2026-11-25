@@ -51,6 +51,16 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
+/** Limpiar un chat conserva la conversación: solo oculta su contenido. */
+internal fun conversacionTrasLimpiar(
+    conversacion: Conversation,
+    conversationId: String,
+): Conversation = if (conversacion.id == conversationId) {
+    conversacion.copy(preview = "Sin mensajes", unreadCount = 0, lastMessageId = null)
+} else {
+    conversacion
+}
+
 class KtorChatRepository : ChatRepository {
 
     private val chatJson = Json { ignoreUnknownKeys = true }
@@ -442,11 +452,9 @@ class KtorChatRepository : ChatRepository {
         dto: ConversacionResponseDto,
         activeRoute: com.gowayki.nesh.app.features.map.domain.model.CombiRoute?,
     ): Boolean {
-        val corte = chatsLimpiados[dto.id]
-        if (corte != null) {
-            val ultimo = parseIsoToMillis(dto.ultimoMensaje?.createdAt)
-            if (ultimo == null || ultimo <= corte) return false
-        }
+        // Limpiar un chat es solo visual: el grupo SIGUE en la lista aunque no
+        // haya mensajes nuevos. Los mensajes anteriores se ocultan al mapear,
+        // no se elimina la conversación.
         // Solo lectura: el filtro lo usa también el badge cada 20 s. Llamar a
         // effectiveClaveRuta aquí anclaba grupos sin clave a la subruta actual
         // antes de que el chofer abriese Comunicación.
@@ -1041,10 +1049,12 @@ class KtorChatRepository : ChatRepository {
     private fun aplicarLimpiezaLocal(conversationId: String, marcaMillis: Long = currentTimeMillis()) {
         chatsLimpiados[conversationId] = marcaMillis
         _messages.update { all -> all + (conversationId to emptyList()) }
-        _conversations.update { list -> list.filterNot { it.id == conversationId } }
-        _archived.update { list -> list.filterNot { it.id == conversationId } }
-        watchedConversations.update { it - conversationId }
-        manualGroupSubroutes.remove(conversationId)
+        // La conversación permanece: solo se ocultan sus mensajes anteriores.
+        fun sinMensajes(list: List<Conversation>) = list.map {
+            conversacionTrasLimpiar(it, conversationId)
+        }
+        _conversations.update(::sinMensajes)
+        _archived.update(::sinMensajes)
         persist()
     }
 

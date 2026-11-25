@@ -592,7 +592,7 @@ fun CommunicationScreen(
                     onDismissRequest = { clearTarget = null },
                     title = { Text("¿Limpiar este chat?") },
                     text = {
-                        Text("Solo afecta a tu cuenta: ocultarás los mensajes anteriores y el chat saldrá de tu lista, también al reinstalar la app. Los mensajes NO se borran y los demás participantes no notan nada. Si llega un mensaje nuevo, el chat vuelve a aparecer mostrando solo lo nuevo.")
+                        Text("Solo afecta a tu cuenta: se ocultan los mensajes anteriores, pero el grupo sigue en tu lista. Los mensajes NO se borran y los demás participantes no notan nada. Si llega uno nuevo, verás solo lo nuevo.")
                     },
                     confirmButton = {
                         androidx.compose.material3.TextButton(onClick = { onClearChat(target.id); clearTarget = null }) {

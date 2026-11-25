@@ -737,7 +737,7 @@ fun ChatScreen(
             },
             text = {
                 Text(
-                    text = "Solo afecta a tu cuenta: ocultarás los mensajes anteriores y el chat saldrá de tu lista, también al reinstalar la app. Los mensajes NO se borran y los demás participantes no notan nada. Si llega un mensaje nuevo, el chat vuelve a aparecer mostrando solo lo nuevo.",
+                    text = "Solo afecta a tu cuenta: se ocultan los mensajes anteriores, pero el grupo sigue en tu lista. Los mensajes NO se borran y los demás participantes no notan nada. Si llega uno nuevo, verás solo lo nuevo.",
                     style = AppTextStyles.waykiMini,
                     color = AppColors.slate
                 )
