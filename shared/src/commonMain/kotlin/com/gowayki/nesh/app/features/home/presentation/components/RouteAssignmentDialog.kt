@@ -260,12 +260,7 @@ fun RouteAssignmentDialog(
         // todo el catálogo para elegir línea + subruta + combi.
         val lineasConSubruta = lineas.filter { linea ->
             codigoDeLinea(linea.nombre)?.let { code ->
-                val subs = SelectedRouteHolder.subrutasForLine(code)
-                when {
-                    subrutaFijaCodigo != null -> subs.any { mismoIdSubruta(it.id, subrutaFijaCodigo) }
-                    subrutaFijaDbId != null -> subs.any { it.subrutaDbId == subrutaFijaDbId }
-                    else -> subs.isNotEmpty()
-                }
+                SelectedRouteHolder.subrutasForLine(code).isNotEmpty()
             } == true
         }
         val filteredLineas = if (query.isBlank()) {
@@ -287,15 +282,10 @@ fun RouteAssignmentDialog(
                 var empresaAgregada = false
                 ls.forEach { linea ->
                     val code = codigoDeLinea(linea.nombre)
-                    var subrutas = if (code != null) {
+                    val subrutas = if (code != null) {
                         SelectedRouteHolder.subrutasForLine(code)
                     } else {
                         emptyList()
-                    }
-                    if (subrutaFijaCodigo != null) {
-                        subrutas = subrutas.filter { sr -> mismoIdSubruta(sr.id, subrutaFijaCodigo) }
-                    } else if (subrutaFijaDbId != null) {
-                        subrutas = subrutas.filter { sr -> sr.subrutaDbId == subrutaFijaDbId }
                     }
                     if (subrutas.isEmpty()) return@forEach
                     if (!empresaAgregada) {
@@ -304,12 +294,10 @@ fun RouteAssignmentDialog(
                     }
                     list.add(FilaRuta.Linea(linea.id, linea.nombre ?: "Línea ${linea.id}", colorFromHex(linea.colorHex)))
                     val todas = unitsByLine[linea.id] ?: emptyList()
-                    val us = if (!esAdmin && tieneSubrutaFija) {
-                        todas.filter { unidadEsDeSubruta(it, subrutaFijaCodigo, subrutaFijaDbId) }
-                    } else {
-                        todas
-                    }
-                    val ocultarCombis = !esAdmin && (!tieneSubrutaFija || cambioSolicitado)
+                    // Cada combi se muestra bajo la subruta que tiene en la BD,
+                    // no bajo la subruta asignada al usuario.
+                    val us = todas
+                    val ocultarCombis = false
                     val actualId = if (!esAdmin) subrutaFijaCodigo ?: actualGlobal else actualGlobal
 
                     // Orden: línea → cada subruta con su cantidad de combis →
@@ -986,11 +974,18 @@ private fun SubrutaItem(
                 }
             }
             Spacer(Modifier.width(8.dp))
-            Text(
-                text = "$cantidadCombis combi${if (cantidadCombis == 1) "" else "s"}",
-                style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
-                color = texto,
-            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(if (seleccionada) texto.copy(alpha = 0.18f) else color.copy(alpha = 0.12f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = "$cantidadCombis combi${if (cantidadCombis == 1) "" else "s"}",
+                    style = AppTextStyles.waykiMini.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                    color = texto,
+                )
+            }
             if (seleccionada) {
                 Spacer(Modifier.width(6.dp))
                 Icon(
